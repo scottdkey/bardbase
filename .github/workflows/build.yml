@@ -1,0 +1,100 @@
+name: Build Shakespeare Database
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sources/**'
+      - 'tools/build.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build database
+        run: python3 tools/build.py --output build
+
+      - name: Generate build info
+        id: info
+        run: |
+          DB_SIZE=$(du -h build/shakespeare.db | cut -f1)
+          LINES=$(python3 -c "
+          import sqlite3
+          conn = sqlite3.connect('build/shakespeare.db')
+          lines = conn.execute('SELECT COUNT(*) FROM text_lines').fetchone()[0]
+          lexicon = conn.execute('SELECT COUNT(*) FROM lexicon_entries').fetchone()[0]
+          citations = conn.execute('SELECT COUNT(*) FROM lexicon_citations').fetchone()[0]
+          works = conn.execute('SELECT COUNT(*) FROM works').fetchone()[0]
+          print(f'{lines}|{lexicon}|{citations}|{works}')
+          conn.close()
+          ")
+          TEXT_LINES=$(echo $LINES | cut -d'|' -f1)
+          LEXICON=$(echo $LINES | cut -d'|' -f2)
+          CITATIONS=$(echo $LINES | cut -d'|' -f3)
+          WORKS=$(echo $LINES | cut -d'|' -f4)
+
+          # Version based on date + short SHA
+          VERSION="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
+          echo "text_lines=$TEXT_LINES" >> $GITHUB_OUTPUT
+          echo "lexicon=$LEXICON" >> $GITHUB_OUTPUT
+          echo "citations=$CITATIONS" >> $GITHUB_OUTPUT
+          echo "works=$WORKS" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shakespeare-db
+          path: build/shakespeare.db
+          retention-days: 90
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.info.outputs.version }}
+          name: "Shakespeare DB ${{ steps.info.outputs.version }}"
+          body: |
+            ## Shakespeare Database Build
+
+            | Metric | Count |
+            |--------|-------|
+            | **Works** | ${{ steps.info.outputs.works }} |
+            | **Text lines** | ${{ steps.info.outputs.text_lines }} |
+            | **Lexicon entries** | ${{ steps.info.outputs.lexicon }} |
+            | **Citations** | ${{ steps.info.outputs.citations }} |
+            | **Database size** | ${{ steps.info.outputs.db_size }} |
+
+            ### Sources
+            - **OSS/Moby** — Public Domain (Globe-based modern spelling)
+            - **Standard Ebooks** — CC0 (modern-spelling, verse-level)
+            - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
+
+            ### Usage
+            ```bash
+            # Download
+            curl -LO <release-asset-url>/shakespeare.db
+
+            # Or build from source
+            git clone https://github.com/scottdkey/shakespeare_db.git
+            cd shakespeare_db
+            python3 tools/build.py
+            ```
+
+            Built from commit ${{ github.sha }}
+          files: build/shakespeare.db
+          generate_release_notes: false

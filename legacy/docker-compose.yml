@@ -1,0 +1,50 @@
+version: "3.8"
+name: "shakespeare_db"
+services:
+  perseus_database:
+    image: mysql:8.3.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${PERSEUS_DB_NAME}
+      MYSQL_USER: ${PERSEUS_DB_USERNAME}
+      MYSQL_PASSWORD: ${PERSEUS_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${PERSEUS_ROOT_PASS}
+    ports:
+      - ${PERSEUS_DB_PORT}:3306
+    expose:
+      - ${PERSEUS_DB_PORT}
+    volumes:
+      - perseus_db:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d/
+  oss_database:
+    image: mysql:8.3.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${OSS_DB_NAME}
+      MYSQL_USER: ${OSS_DB_USERNAME}
+      MYSQL_PASSWORD: ${OSS_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${OSS_DB_ROOT_PASS}
+    ports:
+      - ${OSS_DB_PORT}:3306
+    expose:
+      - ${OSS_DB_PORT}
+    volumes:
+      - oss_db:/var/lib/mysql
+      - ./oss_sql:/docker-entrypoint-initdb.d/
+  lexicon_db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - ${POSTGRES_PORT}:5432
+    expose:
+      - ${POSTGRES_PORT}
+    volumes:
+      - lexicon_db:/var/lib/postgresql/data
+volumes:
+  perseus_db:
+  oss_db:
+  lexicon_db:
