@@ -57,6 +57,7 @@ func ExtractStatements(sql string) []string {
 		// Read a statement until unquoted semicolon
 		stmtStart := i
 		inQuote := false
+		terminated := false
 		for i < length {
 			ch := sql[i]
 			if ch == '\'' && !inQuote {
@@ -76,13 +77,14 @@ func ExtractStatements(sql string) []string {
 			} else if ch == ';' && !inQuote {
 				statements = append(statements, sql[stmtStart:i+1])
 				i++
+				terminated = true
 				break
 			} else {
 				i++
 			}
 		}
 		// Handle unterminated statement at end of input
-		if i >= length {
+		if !terminated {
 			remaining := strings.TrimSpace(sql[stmtStart:])
 			if remaining != "" {
 				statements = append(statements, remaining)
