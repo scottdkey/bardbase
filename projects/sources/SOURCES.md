@@ -10,12 +10,12 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 - **URL**: https://www.opensourceshakespeare.org/
 - **License**: Public Domain
 - **Attribution**: Courtesy only (not legally required)
-- **Format**: MySQL SQL dump (already in repo at `oss_sql/oss-db-full.sql`)
+- **Format**: MySQL SQL dump (`projects/sources/oss/oss-db-full.sql`)
 - **Content**: 38 works — full text with act/scene/paragraph structure, character attributions, stage directions, word forms. Globe-edition-based modern text.
 - **Missing works**: `allswell`, `henryv`, `loverscomplaint`, `midsummer`, `winterstale` and a few others may be present under different IDs — need full audit
 - **Edition type**: Modern (Globe-based), some works sourced from Gutenberg
 - **Import priority**: P0 — IMMEDIATE (data already in repo)
-- **Status**: Not yet imported to SQLite
+- **Status**: ✅ Imported — Go pipeline parses the SQL dump and imports all works, characters, and text lines
 
 ### 2. Perseus Digital Library — Schmidt Shakespeare Lexicon
 - **URL**: http://www.perseus.tufts.edu/hopper/
@@ -23,25 +23,36 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 - **License**: CC BY-SA 3.0 US
 - **Attribution**: **REQUIRED** — must credit Perseus Digital Library and Alexander Schmidt
 - **CC BY-SA implications**: Any derived work incorporating Perseus content must be shared under a compatible license. This affects the app's overall licensing.
-- **Format**: TEI XML, one file per lexicon entry
+- **Format**: TEI XML, one file per lexicon entry (`projects/sources/lexicon/entries/[A-Z]/*.xml`)
 - **Content**: 20,097 lexicon entries (dictionary of Shakespeare's language) with ~200,000+ citations referencing specific plays, acts, scenes, and lines
 - **Edition type**: Schmidt's references use Globe edition numbering
-- **Import priority**: P1 — as scraping completes
-- **Status**: Scraping in progress (~6,600/20,097 as of 2026-03-14)
+- **Import priority**: P1
+- **Status**: ✅ Scraping complete — 20,070 of 20,097 entries downloaded. Go pipeline parses XML, extracts senses, citations, and resolves references to text lines.
 - **Attribution text**: "Text provided by Perseus Digital Library, http://www.perseus.tufts.edu. Original work: Shakespeare Lexicon and Quotation Dictionary by Alexander Schmidt, 3rd edition, 1902."
 
-### 3. Perseus Digital Library — Shakespeare Play Texts
+### 3. Standard Ebooks
+- **URL**: https://standardebooks.org/
+- **License**: CC0 (Creative Commons Zero — public domain dedication)
+- **Attribution**: None required (but appreciated)
+- **Format**: EPUB → XHTML → JSON (37 play JSONs + sonnets XHTML + poetry XHTML in `projects/sources/se/`)
+- **Content**: 37 Shakespeare plays (individually formatted, proofread), 154 sonnets, 5 poems (Venus & Adonis, Rape of Lucrece, Passionate Pilgrim, Phoenix and the Turtle, A Lover's Complaint)
+- **Edition type**: Modern, highest quality
+- **Import priority**: P0 (data already in repo)
+- **Status**: ✅ Imported — Go pipeline imports all 37 plays as a second edition alongside OSS, plus all sonnets and poems. Cross-edition line mappings generated.
+- **Notes**: CC0 means zero licensing concerns. Highest quality modern-text source.
+
+### 4. Perseus Digital Library — Shakespeare Play Texts
 - **URL**: http://www.perseus.tufts.edu/hopper/
 - **License**: CC BY-SA 3.0 US
 - **Attribution**: **REQUIRED** (same as lexicon)
 - **Format**: TEI XML with dual line numbering (Globe + First Folio)
 - **Content**: Complete Shakespeare plays as used by Schmidt's Lexicon
 - **Edition type**: Globe text with First Folio line number cross-references
-- **Import priority**: P2 — after lexicon scrape completes (same server, be polite)
-- **Status**: Not started
-- **Notes**: These are the direct text references for lexicon citations. Dual line numbering is valuable for cross-edition mapping.
+- **Import priority**: P2 — after lexicon import is fully validated
+- **Status**: ❌ Not started — needs scraping (same server as lexicon, be polite with rate limiting)
+- **Notes**: These are the direct text references for lexicon citations. Dual line numbering is valuable for cross-edition mapping. Would add a third edition to compare alongside OSS Globe and SE Modern.
 
-### 4. EEBO-TCP (Early English Books Online — Text Creation Partnership)
+### 5. EEBO-TCP (Early English Books Online — Text Creation Partnership)
 - **URL**: https://github.com/textcreationpartnership
 - **License**: Public Domain (released January 1, 2015)
 - **Attribution**: Courtesy credit to TCP appreciated but not required
@@ -51,10 +62,10 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
   - **Various Quartos**: Multiple early editions of individual plays
 - **Edition type**: Original spelling diplomatic transcriptions
 - **Import priority**: P2 — First Folio is high value
-- **Status**: Not started
+- **Status**: ❌ Not started — available on GitHub, needs download and parser
 - **Notes**: Original spelling requires a normalization layer for search matching against modern texts. First Folio is the most important single source after Globe/modern text.
 
-### 5. Project Gutenberg
+### 6. Project Gutenberg
 - **URL**: https://www.gutenberg.org/
 - **License**: Public Domain (the texts themselves)
 - **Attribution**: **CONDITIONAL** — if you use the name "Project Gutenberg" in the app, you must comply with their trademark license. If you strip the Gutenberg header/footer and don't reference the name, no attribution needed for PD texts.
@@ -62,19 +73,8 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 - **Content**: Complete works of Shakespeare, multiple editions available
 - **Edition type**: Modern spelling, various editorial choices
 - **Import priority**: P3
-- **Status**: Not started
+- **Status**: ❌ Not started
 - **Trademark note**: The name "Project Gutenberg" is trademarked. Free to use the public domain texts, but referencing the source by name requires compliance with their trademark terms. Safest approach: credit as "public domain text" without using the Gutenberg name, or comply with their full license.
-
-### 6. Standard Ebooks
-- **URL**: https://standardebooks.org/
-- **License**: CC0 (Creative Commons Zero — public domain dedication)
-- **Attribution**: None required (but appreciated)
-- **Format**: EPUB (contains XHTML chapters)
-- **Content**: Individual Shakespeare plays, carefully formatted and proofread
-- **Edition type**: Modern, high quality
-- **Import priority**: P3
-- **Status**: Not started
-- **Notes**: Highest quality modern-text source. CC0 means zero licensing concerns.
 
 ---
 
@@ -89,7 +89,7 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 - **What we store**: URLs only — link to specific acts/scenes/lines on folger.edu
 - **RULE**: Content must NEVER be downloaded or stored locally. Only store reference URLs.
 - **Import priority**: P1 (just URLs, minimal work)
-- **Status**: Not started
+- **Status**: ⚠️ Partial — `folger_url` column exists on `works` table, some URLs populated
 
 ---
 
@@ -186,16 +186,17 @@ The Second Folio (1632) is historically significant but presents a challenge:
 | Source | License | Attribution in App? | Notes |
 |--------|---------|-------------------|-------|
 | OSS/Moby | Public Domain | Courtesy credit | "Based on the Moby Shakespeare" |
-| Perseus | CC BY-SA 3.0 | **YES — Required** | Full credit + compatible license |
+| Standard Ebooks | CC0 | None required | Truly free — no restrictions |
+| Perseus Lexicon | CC BY-SA 3.0 | **YES — Required** | Full credit + compatible license |
+| Perseus Plays | CC BY-SA 3.0 | **YES — Required** | Same as lexicon |
 | EEBO-TCP | Public Domain | Courtesy credit | "Transcription by Text Creation Partnership" |
 | Gutenberg | PD (trademark on name) | Conditional | Don't use "Project Gutenberg" name without compliance |
-| Standard Ebooks | CC0 | None | Truly free |
 | Folger | N/A (links only) | N/A | "Visit Folger Shakespeare Library" with URL |
 | Wikisource | CC BY-SA 3.0 | **YES — Required** | If used |
 
 ### CC BY-SA 3.0 Implications
 
-Perseus and Wikisource both use CC BY-SA 3.0. This means:
+Perseus (and Wikisource if used) both use CC BY-SA 3.0. This means:
 1. **Attribution** is required in the app (credits page, about section)
 2. **ShareAlike** — if you create a derivative work, it must be shared under CC BY-SA 3.0 or a compatible license
 3. This does NOT mean the whole app must be CC BY-SA — only the portions derived from CC BY-SA sources
@@ -204,16 +205,39 @@ Perseus and Wikisource both use CC BY-SA 3.0. This means:
 
 ---
 
+## Current Source Inventory
+
+### What we have on disk (`projects/sources/`)
+
+| Directory | Files | Description |
+|-----------|-------|-------------|
+| `oss/` | 1 file (SQL dump) | OSS/Moby complete MySQL dump |
+| `se/` | 39 files (37 JSONs + 2 XHTMLs) | All 37 plays + sonnets + poetry |
+| `lexicon/entries/[A-Z]/` | 20,070 XML files | Schmidt Lexicon (nearly complete) |
+| `lexicon/entry_list.json` | Entry index | Scraper tracking file |
+
+### What we still need
+
+| Source | Priority | Effort | Blocker |
+|--------|----------|--------|---------|
+| Perseus play texts | P2 | Medium — scraper needed, rate-limited | Same server as lexicon |
+| EEBO-TCP First Folio | P2 | Low — available on GitHub | Parser for TEI XML diplomatic text |
+| EEBO-TCP Quartos | P3 | Medium — multiple files | Parser + normalization layer |
+| Project Gutenberg | P3 | Low — plain text | Parser + Gutenberg header stripping |
+
+---
+
 ## Import Phases
 
-| Phase | Source | Priority | Blocking? |
-|-------|--------|----------|-----------|
-| 0 | OSS SQL dump → SQLite | P0 | No — data in repo |
-| 1 | Schmidt Lexicon XMLs → SQLite | P1 | Waiting on scraper |
-| 1b | Folger reference URLs | P1 | Just URL construction |
-| 2 | Perseus play texts → SQLite | P2 | After lexicon scrape |
-| 2b | EEBO-TCP First Folio | P2 | GitHub download |
-| 3 | Gutenberg + Standard Ebooks | P3 | Downloads |
-| 4 | EEBO-TCP Quartos | P3 | GitHub download |
-| 5 | Verified sources from "Needs Verification" list | P4+ | Pending outreach |
-| 6 | Second Folio (if source found) | P4 | Research needed |
+| Phase | Source | Priority | Status |
+|-------|--------|----------|--------|
+| 0 | OSS SQL dump → SQLite | P0 | ✅ Complete |
+| 0b | Standard Ebooks → SQLite | P0 | ✅ Complete |
+| 1 | Schmidt Lexicon XMLs → SQLite | P1 | ✅ Complete (20,070 entries) |
+| 1b | Folger reference URLs | P1 | ⚠️ Partial |
+| 2 | Perseus play texts → SQLite | P2 | ❌ Not started |
+| 2b | EEBO-TCP First Folio → SQLite | P2 | ❌ Not started |
+| 3 | Gutenberg texts → SQLite | P3 | ❌ Not started |
+| 4 | EEBO-TCP Quartos → SQLite | P3 | ❌ Not started |
+| 5 | Verified sources from "Needs Verification" list | P4+ | ❌ Pending outreach |
+| 6 | Second Folio (if source found) | P4 | ❌ Research needed |
