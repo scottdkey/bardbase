@@ -29,7 +29,7 @@ func main() {
 	sourcesDir := filepath.Join(repoRoot, "sources")
 	outputDir := filepath.Join(repoRoot, *output)
 	dbPath := filepath.Join(outputDir, "shakespeare.db")
-	cacheDir := filepath.Join(outputDir, "se-cache")
+	cacheDir := filepath.Join(sourcesDir, "se")
 
 	ossSQLPath := filepath.Join(sourcesDir, "oss", "oss-db-full.sql")
 	lexiconDir := filepath.Join(sourcesDir, "lexicon", "entries")

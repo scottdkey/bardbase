@@ -16,7 +16,7 @@ type XMLNode struct {
 
 // ParseXML parses XML bytes into a tree of XMLNodes.
 func ParseXML(data []byte) (*XMLNode, error) {
-	decoder := xml.NewDecoder(data)
+	decoder := newXMLDecoder(data)
 	decoder.Strict = false
 	decoder.AutoClose = xml.HTMLAutoClose
 	decoder.Entity = xml.HTMLEntity
