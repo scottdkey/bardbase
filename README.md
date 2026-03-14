@@ -26,7 +26,7 @@ Or download a pre-built database from [Releases](https://github.com/scottdkey/sh
 
 ```
 shakespeare_db/
-├── sources/                    # 📚 Source data (git-tracked)
+├── sources/                    # Source data (git-tracked)
 │   ├── oss/
 │   │   └── oss-db-full.sql    # Open Source Shakespeare MySQL dump (16 MB)
 │   └── lexicon/
