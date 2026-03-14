@@ -1,5 +1,6 @@
-# Build outputs
-build/
+# Build outputs (at repo root)
+/build/
+/bin/
 *.db
 *.db-wal
 *.db-shm
@@ -8,9 +9,12 @@ build/
 se-cache/
 standard-ebooks-cache/
 
-# Node/legacy
-node_modules/
-dist/
+# Go
+vendor/
+
+# Test/coverage
+coverage.out
+coverage.html
 
 # Environment
 .env
@@ -18,11 +22,5 @@ dist/
 # OS
 .DS_Store
 
-# Test artifacts
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-
-# Archives (source SQL is unzipped)
+# Archives
 sql.zip
