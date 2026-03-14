@@ -1,7 +1,12 @@
 .env
-sql
 node_modules
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Build caches (re-downloadable)
+standard-ebooks-cache/
+
+# Legacy files
+schmidt_lexicon.db
