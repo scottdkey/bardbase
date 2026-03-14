@@ -1,409 +1,398 @@
 # Shakespeare Database Schema
 
-SQLite database designed for a Shakespeare dictionary app with multi-edition text comparison, lexicon lookup, and full-text search.
+SQLite database built by the Go pipeline from multiple open-source Shakespeare text sources.
+
+This document reflects the **actual schema** produced by `projects/db-builder/internal/constants/schema.go`.
 
 ---
 
 ## Design Principles
 
 1. **Every line belongs to an edition** — no ambiguity about which version you're reading
-2. **Citations resolve to actual text** — lexicon entries link to retrievable passages
-3. **Side-by-side comparison** — any two editions of the same work, aligned by act/scene/line
-4. **Line mapping across editions** — Globe line 40 in one edition might be line 42 in another
-5. **Attribution is first-class** — every source tracked with license and credit requirements
+2. **Citations resolve to actual text** — lexicon entries link to retrievable passages via `citation_matches`
+3. **Side-by-side comparison** — any two editions of the same work, aligned by `line_mappings`
+4. **Attribution is first-class** — every source tracked with license requirements and display rules
+5. **Cursor pagination** — all primary tables use `id > :cursor ORDER BY id LIMIT :limit`
 6. **Single SQLite file** — ships with the app, no server needed
+7. **Full-text search** — FTS5 indexes on both text and lexicon
 
 ---
 
 ## Tables
 
-### `source_attributions`
-Tracks every data source with its license and required attribution text. Drives the app's credits page.
+### `sources`
 
-```sql
-CREATE TABLE source_attributions (
-    source_id       TEXT PRIMARY KEY,       -- e.g. 'oss_moby', 'perseus', 'eebo_f1'
-    source_name     TEXT NOT NULL,          -- display name
-    source_url      TEXT,                   -- homepage URL
-    license         TEXT NOT NULL,          -- 'PD', 'CC-BY-SA-3.0', 'CC0', etc.
-    attribution_text TEXT,                  -- exact text to display in app credits
-    attribution_required INTEGER DEFAULT 0, -- 1 if legally required
-    notes           TEXT                    -- additional context
-);
-```
+Where data comes from. Each row represents one upstream data provider.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `name` | TEXT UNIQUE | Full display name |
+| `short_code` | TEXT UNIQUE | Abbreviation (e.g. `oss`, `se`, `perseus`) |
+| `url` | TEXT | Homepage URL |
+| `license` | TEXT | License identifier (e.g. `PD`, `CC-BY-SA-3.0`, `CC0`) |
+| `license_url` | TEXT | Link to license text |
+| `attribution_text` | TEXT | Required/courtesy attribution text |
+| `attribution_required` | BOOLEAN | `1` if legally required |
+| `notes` | TEXT | Additional context |
+| `imported_at` | TIMESTAMP | When this source was imported |
 
 ### `works`
-Canonical list of Shakespeare works (plays, poems, sonnets). One row per work regardless of how many editions exist.
 
-```sql
-CREATE TABLE works (
-    work_id         TEXT PRIMARY KEY,       -- e.g. 'hamlet', 'tempest', 'sonnet_18'
-    title           TEXT NOT NULL,          -- 'Hamlet'
-    long_title      TEXT,                   -- 'The Tragedy of Hamlet, Prince of Denmark'
-    short_title     TEXT,                   -- 'Ham.'
-    genre           TEXT,                   -- 'tragedy', 'comedy', 'history', 'poem', 'sonnet'
-    date_composed   INTEGER,               -- approximate year
-    schmidt_abbrev  TEXT                    -- Schmidt's abbreviation: 'ham', 'tmp', etc.
-);
-```
+Canonical list of Shakespeare's works — one row per work regardless of editions.
 
-### `editions`
-A specific version/text of Shakespeare's works from a specific source.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `oss_id` | TEXT UNIQUE | OSS database identifier (e.g. `hamlet`, `12night`) |
+| `title` | TEXT | Display title |
+| `full_title` | TEXT | Full formal title |
+| `short_title` | TEXT | Abbreviated title |
+| `schmidt_abbrev` | TEXT | Schmidt lexicon abbreviation (e.g. `ham`, `tp`) |
+| `work_type` | TEXT | `play`, `poem`, or `sonnet` |
+| `date_composed` | INTEGER | Approximate year |
+| `genre_type` | TEXT | `tragedy`, `comedy`, `history`, `poem`, `sonnet` |
+| `total_words` | INTEGER | Word count (from OSS) |
+| `total_paragraphs` | INTEGER | Paragraph count (from OSS) |
+| `source_text` | TEXT | Source text identifier |
+| `folger_url` | TEXT | Folger Shakespeare Library reference URL |
+| `perseus_id` | TEXT | Perseus Digital Library text identifier |
+| `notes` | TEXT | Additional context |
 
-```sql
-CREATE TABLE editions (
-    edition_id      TEXT PRIMARY KEY,       -- e.g. 'globe_moby', 'f1_eebo', 'q2_hamlet'
-    source_id       TEXT NOT NULL REFERENCES source_attributions(source_id),
-    edition_name    TEXT NOT NULL,          -- 'Globe/Moby Modern Text'
-    edition_type    TEXT,                   -- 'modern', 'f1_diplomatic', 'quarto', 'globe'
-    year_published  INTEGER,               -- year of the edition (1623 for F1, etc.)
-    spelling        TEXT DEFAULT 'modern',  -- 'modern' or 'original'
-    notes           TEXT
-);
-```
-
-### `edition_works`
-Which works are available in which editions (many-to-many).
-
-```sql
-CREATE TABLE edition_works (
-    edition_id      TEXT NOT NULL REFERENCES editions(edition_id),
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    PRIMARY KEY (edition_id, work_id)
-);
-```
+**Indexes**: `oss_id`, `schmidt_abbrev`, `work_type`
 
 ### `characters`
+
 Dramatis personae per work.
 
-```sql
-CREATE TABLE characters (
-    character_id    TEXT PRIMARY KEY,       -- e.g. 'hamlet_hamlet', 'hamlet_ophelia'
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    character_name  TEXT NOT NULL,          -- 'Hamlet'
-    abbreviation    TEXT,                   -- 'Ham.'
-    description     TEXT,                   -- 'Prince of Denmark'
-    speech_count    INTEGER
-);
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `char_id` | TEXT UNIQUE | Character identifier (e.g. `hamlet_hamlet`) |
+| `name` | TEXT | Display name |
+| `abbrev` | TEXT | Abbreviation |
+| `work_id` | INTEGER FK → works | Which work this character belongs to |
+| `oss_work_id` | TEXT | OSS work identifier (for import linkage) |
+| `description` | TEXT | Character description |
+| `speech_count` | INTEGER | Number of speeches |
 
-### `text_sections`
-Act/scene structure per edition per work.
+**Indexes**: `work_id`
 
-```sql
-CREATE TABLE text_sections (
-    section_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    edition_id      TEXT NOT NULL REFERENCES editions(edition_id),
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    act             INTEGER,               -- NULL for poems/sonnets
-    scene           INTEGER,               -- NULL for poems/sonnets
-    section_title   TEXT,                   -- 'Elsinore. A platform before the castle.'
-    sort_order      INTEGER
-);
-```
+### `editions`
+
+A specific version/text from a specific source. Multiple editions can exist per work.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `name` | TEXT | Full name (e.g. `Globe/Moby Modern Text`) |
+| `short_code` | TEXT UNIQUE | Abbreviation (e.g. `globe_moby`, `se_modern`) |
+| `source_id` | INTEGER FK → sources | Which source provided this edition |
+| `year` | INTEGER | Publication year |
+| `editors` | TEXT | Editor(s) |
+| `description` | TEXT | Description |
+| `notes` | TEXT | Additional context |
+
+### `attributions`
+
+Display rules for source credits. Tracks attribution requirements for ALL sources — both legally required (CC BY-SA) and voluntary (public domain courtesy credits). Consuming applications use this to build credits pages and inline attribution.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `source_id` | INTEGER FK → sources (UNIQUE) | One attribution per source |
+| `required` | BOOLEAN | `1` if legally required |
+| `attribution_text` | TEXT | Text to display |
+| `attribution_html` | TEXT | HTML-formatted attribution |
+| `display_format` | TEXT | Where to show: `footer`, `credits_page`, `inline` |
+| `display_context` | TEXT | When to show: `always`, `on_source_content`, `credits_only` |
+| `display_priority` | INTEGER | Sort order (lower = more prominent) |
+| `requires_link_back` | BOOLEAN | Must link to source URL |
+| `link_back_url` | TEXT | URL to link back to |
+| `requires_license_notice` | BOOLEAN | Must display license text |
+| `license_notice_text` | TEXT | License notice to display |
+| `requires_author_credit` | BOOLEAN | Must credit specific author |
+| `author_credit_text` | TEXT | Author credit text |
+| `share_alike_required` | BOOLEAN | CC BY-SA: derived works must use compatible license |
+| `commercial_use_allowed` | BOOLEAN | License permits commercial use |
+| `modification_allowed` | BOOLEAN | License permits modifications |
+| `notes` | TEXT | Additional context |
+| `created_at` | TIMESTAMP | When created |
 
 ### `text_lines`
-Every line of text in every edition. This is the big table.
 
-```sql
-CREATE TABLE text_lines (
-    line_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id      INTEGER NOT NULL REFERENCES text_sections(section_id),
-    edition_id      TEXT NOT NULL REFERENCES editions(edition_id),
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    act             INTEGER,
-    scene           INTEGER,
-    line_number     INTEGER,               -- line number within the scene (edition-specific)
-    globe_line      INTEGER,               -- Globe edition line number (for Schmidt references)
-    tln             INTEGER,               -- Through Line Number (continuous numbering)
-    character_id    TEXT REFERENCES characters(character_id),
-    line_text       TEXT NOT NULL,          -- the actual text
-    line_type       TEXT DEFAULT 'dialogue', -- 'dialogue', 'stage_direction', 'prologue', 'epilogue', 'song'
-    is_prose        INTEGER DEFAULT 0,     -- 1 if prose, 0 if verse
-    original_spelling TEXT                  -- original spelling variant (if different from line_text)
-);
+Every line of text in every edition. This is the largest table.
 
-CREATE INDEX idx_lines_edition_work ON text_lines(edition_id, work_id);
-CREATE INDEX idx_lines_act_scene ON text_lines(work_id, act, scene);
-CREATE INDEX idx_lines_globe ON text_lines(work_id, globe_line);
-CREATE INDEX idx_lines_tln ON text_lines(work_id, tln);
-```
+`line_number` is a **scene-relative sequential line number** used for consistent cross-edition referencing and citation matching (Globe-style numbering).
 
-### `spelling_normalizations`
-Maps original spelling (F1/Quartos) to modern equivalents for cross-edition search.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `work_id` | INTEGER FK → works | Which work |
+| `edition_id` | INTEGER FK → editions | Which edition |
+| `act` | INTEGER | Act number (NULL for poems/sonnets) |
+| `scene` | INTEGER | Scene number (NULL for poems/sonnets) |
+| `paragraph_num` | INTEGER | OSS paragraph number |
+| `line_number` | INTEGER | Scene-relative line number |
+| `character_id` | INTEGER FK → characters | Speaker (NULL for stage directions) |
+| `char_name` | TEXT | Speaker name (denormalized for display) |
+| `content` | TEXT | The actual text |
+| `content_type` | TEXT | `speech`, `stage_direction`, `prologue`, `epilogue`, `song` |
+| `word_count` | INTEGER | Words in this line |
+| `oss_paragraph_id` | INTEGER | OSS paragraph ID (for import linkage) |
+| `sonnet_number` | INTEGER | Sonnet number (sonnets only) |
+| `stanza` | INTEGER | Stanza number (poems/sonnets) |
 
-```sql
-CREATE TABLE spelling_normalizations (
-    original        TEXT NOT NULL,          -- 'heauie'
-    modern          TEXT NOT NULL,          -- 'heavy'
-    source          TEXT,                   -- where this mapping came from
-    PRIMARY KEY (original, modern)
-);
-```
+**Indexes**: `(work_id, edition_id)`, `(work_id, act, scene)`, `(work_id, edition_id, id)` (cursor), `(work_id, edition_id, act, scene, line_number)`
 
-### `line_mappings`
-Aligns lines across editions for side-by-side comparison.
+### `text_divisions`
 
-```sql
-CREATE TABLE line_mappings (
-    mapping_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    act             INTEGER,
-    scene           INTEGER,
-    edition_a       TEXT NOT NULL REFERENCES editions(edition_id),
-    line_a          INTEGER,               -- line number in edition A
-    edition_b       TEXT NOT NULL REFERENCES editions(edition_id),
-    line_b          INTEGER,               -- corresponding line in edition B
-    confidence      REAL DEFAULT 1.0,      -- 0.0-1.0, how sure the mapping is
-    notes           TEXT                    -- e.g. 'line only in Q2', 'F1 splits into two lines'
-);
+Structural divisions (acts/scenes) per edition.
 
-CREATE INDEX idx_mapping_lookup ON line_mappings(work_id, act, scene, edition_a, edition_b);
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `work_id` | INTEGER FK → works | Which work |
+| `edition_id` | INTEGER FK → editions | Which edition |
+| `act` | INTEGER | Act number |
+| `scene` | INTEGER | Scene number |
+| `description` | TEXT | Scene description/location |
+| `line_count` | INTEGER | Lines in this scene |
 
-### `folger_references`
-URLs to Folger Shakespeare Library pages. Reference only — no content stored.
-
-```sql
-CREATE TABLE folger_references (
-    work_id         TEXT NOT NULL REFERENCES works(work_id),
-    act             INTEGER,
-    scene           INTEGER,
-    url             TEXT NOT NULL,
-    page_title      TEXT,
-    PRIMARY KEY (work_id, act, scene)
-);
-```
+**Unique constraint**: `(work_id, edition_id, act, scene)`
 
 ### `lexicon_entries`
-Schmidt's Shakespeare Lexicon — one row per headword.
 
-```sql
-CREATE TABLE lexicon_entries (
-    entry_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    key             TEXT NOT NULL UNIQUE,   -- 'Abandon' (normalized headword)
-    headword        TEXT NOT NULL,          -- display form with punctuation
-    entry_type      TEXT DEFAULT 'main',    -- 'main' or 'cross_ref'
-    raw_xml         TEXT,                   -- original TEI XML for re-parsing
-    definition_text TEXT,                   -- plain text definition (all senses combined)
-    source_id       TEXT DEFAULT 'perseus' REFERENCES source_attributions(source_id)
-);
+Schmidt's Shakespeare Lexicon — one row per headword. Contains ~20,000 entries.
 
-CREATE INDEX idx_lexicon_key ON lexicon_entries(key);
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `key` | TEXT UNIQUE | Normalized headword (for lookup) |
+| `letter` | TEXT | First letter (for browsing/pagination) |
+| `orthography` | TEXT | Display form with original spelling |
+| `entry_type` | TEXT | `main` or `cross_ref` |
+| `full_text` | TEXT | Full definition text (all senses combined) |
+| `raw_xml` | TEXT | Original TEI XML (for re-parsing) |
+| `source_file` | TEXT | Source XML filename |
+| `created_at` | TIMESTAMP | When imported |
+
+**Indexes**: `key`, `letter`, `(letter, id)` (cursor)
 
 ### `lexicon_senses`
+
 Individual numbered senses within a lexicon entry.
 
-```sql
-CREATE TABLE lexicon_senses (
-    sense_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    entry_id        INTEGER NOT NULL REFERENCES lexicon_entries(entry_id),
-    sense_number    INTEGER,               -- 1, 2, 3... (NULL if entry has only one sense)
-    definition      TEXT NOT NULL,          -- the definition text for this sense
-    sort_order      INTEGER
-);
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `entry_id` | INTEGER FK → lexicon_entries | Parent entry |
+| `sense_number` | INTEGER | 1, 2, 3... |
+| `definition_text` | TEXT | Definition for this sense |
+
+**Unique constraint**: `(entry_id, sense_number)`  
+**Indexes**: `entry_id`
 
 ### `lexicon_citations`
+
 Individual citations within lexicon senses — links to specific play/act/scene/line.
 
-```sql
-CREATE TABLE lexicon_citations (
-    citation_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    sense_id        INTEGER NOT NULL REFERENCES lexicon_senses(sense_id),
-    entry_id        INTEGER NOT NULL REFERENCES lexicon_entries(entry_id),
-    work_id         TEXT REFERENCES works(work_id),
-    raw_ref         TEXT NOT NULL,          -- original reference text: 'Ham. III, 2, 47'
-    perseus_ref     TEXT,                   -- Perseus bibl n="" value: 'shak. ham 3.2'
-    act             INTEGER,
-    scene           INTEGER,
-    line            INTEGER,
-    quote_text      TEXT,                   -- quoted text from Schmidt (if present)
-    sort_order      INTEGER
-);
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `entry_id` | INTEGER FK → lexicon_entries | Parent entry |
+| `sense_id` | INTEGER FK → lexicon_senses | Parent sense (nullable) |
+| `work_id` | INTEGER FK → works | Resolved work (nullable if unresolved) |
+| `work_abbrev` | TEXT | Schmidt's abbreviation (e.g. `ham`, `tp`) |
+| `perseus_ref` | TEXT | Perseus bibl `n=""` value |
+| `act` | INTEGER | Act number |
+| `scene` | INTEGER | Scene number |
+| `line` | INTEGER | Line number |
+| `quote_text` | TEXT | Quoted text from Schmidt |
+| `display_text` | TEXT | Formatted display text |
+| `raw_bibl` | TEXT | Raw XML bibl element |
 
-CREATE INDEX idx_citations_work ON lexicon_citations(work_id);
-CREATE INDEX idx_citations_entry ON lexicon_citations(entry_id);
-CREATE INDEX idx_citations_location ON lexicon_citations(work_id, act, scene, line);
-```
+**Indexes**: `entry_id`, `work_id`, `(work_abbrev, act, scene, line)`, `(entry_id, id)` (cursor)
 
-### `lexicon_reference_resolutions`
-Tracks whether each citation actually resolves to a real text line in each edition.
+### `citation_matches`
 
-```sql
-CREATE TABLE lexicon_reference_resolutions (
-    resolution_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    citation_id     INTEGER NOT NULL REFERENCES lexicon_citations(citation_id),
-    edition_id      TEXT NOT NULL REFERENCES editions(edition_id),
-    line_id         INTEGER REFERENCES text_lines(line_id),
-    resolved        INTEGER DEFAULT 0,     -- 1 if matched, 0 if not
-    confidence      REAL DEFAULT 0.0,      -- 0.0-1.0
-    corrected_line  INTEGER,               -- if the line number needed adjustment
-    notes           TEXT,
-    UNIQUE(citation_id, edition_id)
-);
-```
+Resolved links from lexicon citations to actual text lines. Maps lexicon citations to `text_lines` rows in each edition.
 
-### Full-Text Search (FTS5)
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `citation_id` | INTEGER FK → lexicon_citations | Which citation |
+| `text_line_id` | INTEGER FK → text_lines | Matched text line |
+| `edition_id` | INTEGER FK → editions | Which edition the match is in |
+| `match_type` | TEXT | `exact`, `fuzzy`, `positional` |
+| `confidence` | REAL | 1.0 = exact quote, 0.9 = line match, 0.7 = fuzzy, 0.5 = guess |
+| `matched_text` | TEXT | The text that was matched |
+| `notes` | TEXT | Match details |
+
+**Indexes**: `citation_id`, `text_line_id`, `(citation_id, id)` (cursor)
+
+### `line_mappings`
+
+Cross-edition line alignment for side-by-side comparison. Each row aligns one display position across two editions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `work_id` | INTEGER FK → works | Which work |
+| `act` | INTEGER | Act number |
+| `scene` | INTEGER | Scene number |
+| `align_order` | INTEGER | Sequential position in comparison view |
+| `edition_a_id` | INTEGER FK → editions | First edition |
+| `edition_b_id` | INTEGER FK → editions | Second edition |
+| `line_a_id` | INTEGER FK → text_lines | Line in edition A (nullable) |
+| `line_b_id` | INTEGER FK → text_lines | Line in edition B (nullable) |
+| `match_type` | TEXT | `aligned`, `modified`, `only_a`, `only_b` |
+| `similarity` | REAL | Jaccard similarity score (0.0–1.0) |
+
+**Unique constraint**: `(work_id, act, scene, align_order, edition_a_id, edition_b_id)`  
+**Indexes**: `(work_id, act, scene)`, `(work_id, act, scene, id)` (cursor)
+
+### `import_log`
+
+Build tracking — records each phase of the import pipeline.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-increment |
+| `phase` | TEXT | Pipeline phase name |
+| `action` | TEXT | What happened |
+| `details` | TEXT | Additional context |
+| `count` | INTEGER | Row count affected |
+| `duration_secs` | REAL | How long the phase took |
+| `timestamp` | TIMESTAMP | When it happened |
+
+---
+
+## Full-Text Search (FTS5)
+
+### `lexicon_fts`
+
+Full-text search over lexicon entries. Uses Porter stemming for English-language search.
 
 ```sql
 CREATE VIRTUAL TABLE lexicon_fts USING fts5(
-    key,
-    definition_text,
-    content=lexicon_entries,
-    content_rowid=entry_id,
+    key, orthography, full_text,
+    content='lexicon_entries',
+    content_rowid='id',
     tokenize='porter unicode61'
 );
+```
 
+### `text_fts`
+
+Full-text search over all text lines across all editions.
+
+```sql
 CREATE VIRTUAL TABLE text_fts USING fts5(
-    line_text,
-    content=text_lines,
-    content_rowid=line_id,
+    content, char_name,
+    content='text_lines',
+    content_rowid='id',
     tokenize='porter unicode61'
 );
 ```
 
 ---
 
-## Key Queries the App Needs
+## Cursor Pagination
 
-### 1. Dictionary Lookup (Full-Text Search)
+All primary tables support cursor-based pagination using their auto-increment `id` as the cursor. This is more efficient than OFFSET for large datasets and infinite scroll.
+
+**Pattern:**
 ```sql
--- User searches "abandoned"
-SELECT e.key, e.headword, e.definition_text
+SELECT * FROM lexicon_entries
+WHERE letter = ? AND id > :cursor
+ORDER BY id ASC
+LIMIT :limit;
+```
+
+Composite indexes `(filter_column, id)` are provided on all major tables for efficient filtered cursor queries.
+
+---
+
+## Key Queries
+
+### Dictionary Lookup (Full-Text Search)
+```sql
+SELECT e.key, e.orthography, e.full_text
 FROM lexicon_fts f
-JOIN lexicon_entries e ON e.entry_id = f.rowid
+JOIN lexicon_entries e ON e.id = f.rowid
 WHERE lexicon_fts MATCH 'abandon*'
 ORDER BY rank;
 ```
 
-### 2. Get All Citations for a Lexicon Entry
+### All Citations for a Lexicon Entry
 ```sql
-SELECT s.sense_number, s.definition, c.raw_ref, c.work_id, c.act, c.scene, c.line, c.quote_text, w.title
+SELECT s.sense_number, s.definition_text, c.work_abbrev, c.act, c.scene, c.line,
+       c.quote_text, w.title
 FROM lexicon_senses s
-JOIN lexicon_citations c ON c.sense_id = s.sense_id
-LEFT JOIN works w ON w.work_id = c.work_id
+JOIN lexicon_citations c ON c.sense_id = s.id
+LEFT JOIN works w ON w.id = c.work_id
 WHERE s.entry_id = ?
-ORDER BY s.sort_order, c.sort_order;
+ORDER BY s.sense_number, c.id;
 ```
 
-### 3. Retrieve the Actual Text for a Citation
+### Retrieve Text for a Citation
 ```sql
--- Get the passage around a citation (e.g., Hamlet Act 3, Scene 2, line 47 ± 5 lines)
-SELECT tl.line_number, tl.line_text, tl.character_id, c.character_name
+-- Get passage around a citation (e.g. Hamlet Act 3, Scene 2, line 47 ± 5 lines)
+SELECT tl.line_number, tl.content, tl.char_name, tl.content_type
 FROM text_lines tl
-LEFT JOIN characters c ON c.character_id = tl.character_id
-WHERE tl.edition_id = ? AND tl.work_id = 'hamlet' AND tl.act = 3 AND tl.scene = 2
+WHERE tl.edition_id = ? AND tl.work_id = ? AND tl.act = 3 AND tl.scene = 2
   AND tl.line_number BETWEEN 42 AND 52
 ORDER BY tl.line_number;
 ```
 
-### 4. Side-by-Side Edition Comparison
+### Side-by-Side Edition Comparison
 ```sql
--- Compare Globe and First Folio for Hamlet Act 3, Scene 1
-SELECT
-    g.line_number AS globe_line,
-    g.line_text AS globe_text,
-    f.line_number AS f1_line,
-    f.line_text AS f1_text
-FROM text_lines g
-LEFT JOIN line_mappings m ON m.work_id = g.work_id AND m.act = g.act AND m.scene = g.scene
-    AND m.edition_a = g.edition_id AND m.line_a = g.line_number AND m.edition_b = 'f1_eebo'
-LEFT JOIN text_lines f ON f.edition_id = 'f1_eebo' AND f.work_id = g.work_id
-    AND f.act = g.act AND f.scene = g.scene AND f.line_number = m.line_b
-WHERE g.edition_id = 'globe_moby' AND g.work_id = 'hamlet' AND g.act = 3 AND g.scene = 1
-ORDER BY g.line_number;
+SELECT lm.align_order, lm.match_type, lm.similarity,
+       a.content AS text_a, a.char_name AS speaker_a,
+       b.content AS text_b, b.char_name AS speaker_b
+FROM line_mappings lm
+LEFT JOIN text_lines a ON a.id = lm.line_a_id
+LEFT JOIN text_lines b ON b.id = lm.line_b_id
+WHERE lm.work_id = ? AND lm.act = ? AND lm.scene = ?
+ORDER BY lm.align_order;
 ```
 
-### 5. Full-Text Search Across All Editions
+### Full-Text Search Across All Editions
 ```sql
--- Search for "to be or not to be" across all editions
-SELECT e.edition_name, w.title, tl.act, tl.scene, tl.line_number, tl.line_text
+SELECT e.name AS edition, w.title, tl.act, tl.scene, tl.line_number, tl.content
 FROM text_fts f
-JOIN text_lines tl ON tl.line_id = f.rowid
-JOIN editions e ON e.edition_id = tl.edition_id
-JOIN works w ON w.work_id = tl.work_id
+JOIN text_lines tl ON tl.id = f.rowid
+JOIN editions e ON e.id = tl.edition_id
+JOIN works w ON w.id = tl.work_id
 WHERE text_fts MATCH '"to be or not to be"'
-ORDER BY w.title, e.edition_id, tl.act, tl.scene, tl.line_number;
+ORDER BY w.title, e.id, tl.act, tl.scene, tl.line_number;
 ```
 
-### 6. Validate Citation Resolution
+### Get Full Scene
 ```sql
--- Check which citations in the lexicon haven't been resolved for a given edition
-SELECT le.key, lc.raw_ref, lc.work_id, lc.act, lc.scene, lc.line
-FROM lexicon_citations lc
-JOIN lexicon_entries le ON le.entry_id = lc.entry_id
-LEFT JOIN lexicon_reference_resolutions r ON r.citation_id = lc.citation_id AND r.edition_id = ?
-WHERE r.resolved IS NULL OR r.resolved = 0
-ORDER BY lc.work_id, lc.act, lc.scene, lc.line;
-```
-
-### 7. Get Full Act or Scene
-```sql
--- Get entire Act 1, Scene 2 of Hamlet in the Globe edition
-SELECT tl.line_number, tl.line_text, tl.line_type, c.character_name
+SELECT tl.line_number, tl.content, tl.content_type, tl.char_name
 FROM text_lines tl
-LEFT JOIN characters c ON c.character_id = tl.character_id
-WHERE tl.edition_id = 'globe_moby' AND tl.work_id = 'hamlet' AND tl.act = 1 AND tl.scene = 2
+WHERE tl.edition_id = ? AND tl.work_id = ? AND tl.act = 1 AND tl.scene = 2
 ORDER BY tl.line_number;
-
--- Get entire Act 1 (all scenes)
-SELECT tl.scene, tl.line_number, tl.line_text, tl.line_type, c.character_name
-FROM text_lines tl
-LEFT JOIN characters c ON c.character_id = tl.character_id
-WHERE tl.edition_id = 'globe_moby' AND tl.work_id = 'hamlet' AND tl.act = 1
-ORDER BY tl.scene, tl.line_number;
 ```
 
 ---
 
-## Schmidt Abbreviation → Work ID Mapping
+## Entity Relationship Summary
 
-| Schmidt | Work ID | Title |
-|---------|---------|-------|
-| tp / tmp | tempest | The Tempest |
-| gent | twogents | Two Gentlemen of Verona |
-| wiv | merrywives | Merry Wives of Windsor |
-| meas | measure | Measure for Measure |
-| err | comedyerrors | Comedy of Errors |
-| ado | muchado | Much Ado about Nothing |
-| lll | — | Love's Labour's Lost |
-| mid | — | A Midsummer Night's Dream |
-| merch | merchantvenice | Merchant of Venice |
-| ayl / as | asyoulikeit | As You Like It |
-| shr | tamingshrew | Taming of the Shrew |
-| aww / all's | allswell | All's Well That Ends Well |
-| tw / tn | 12night | Twelfth Night |
-| wt / wint | — | The Winter's Tale |
-| john | kingjohn | King John |
-| r2 | richard2 | Richard II |
-| h4a / h4 1 | henry4p1 | Henry IV Part 1 |
-| h4b / h4 2 | henry4p2 | Henry IV Part 2 |
-| h5 | henry5 | Henry V |
-| h6a / h6 1 | henry6p1 | Henry VI Part 1 |
-| h6b / h6 2 | henry6p2 | Henry VI Part 2 |
-| h6c / h6 3 | henry6p3 | Henry VI Part 3 |
-| r3 | richard3 | Richard III |
-| h8 | henry8 | Henry VIII |
-| tro / troil | troilus | Troilus and Cressida |
-| cor | coriolanus | Coriolanus |
-| tit | titus | Titus Andronicus |
-| rom | romeojuliet | Romeo and Juliet |
-| tim | timonathens | Timon of Athens |
-| caes | juliuscaesar | Julius Caesar |
-| mac / mcb | macbeth | Macbeth |
-| ham | hamlet | Hamlet |
-| lr / lear | kinglear | King Lear |
-| oth | othello | Othello |
-| ant | antonycleo | Antony and Cleopatra |
-| cym / cymb | cymbeline | Cymbeline |
-| per | pericles | Pericles |
-| sonn | sonnets | Sonnets |
-| ven | venusadonis | Venus and Adonis |
-| lucr | rapelucrece | Rape of Lucrece |
-| pilgr | passionatepilgrim | Passionate Pilgrim |
-| phoen | phoenixturtle | Phoenix and the Turtle |
-| lc / compl | — | A Lover's Complaint |
-
-**Note**: Entries marked `—` are works that exist in Schmidt but don't have matching IDs in the OSS data. These need to be added to the `works` table manually.
+```
+sources 1──∞ editions 1──∞ text_lines ∞──1 characters
+   │                          │
+   1                          │
+   │                     text_divisions
+attributions                  │
+                              ∞
+                        citation_matches
+                              ∞
+                              │
+lexicon_entries 1──∞ lexicon_senses 1──∞ lexicon_citations
+                                              │
+                                              ∞
+                                        line_mappings
+```
