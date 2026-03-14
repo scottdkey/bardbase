@@ -67,9 +67,9 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 			tx, _ := database.Begin()
 			for _, line := range lines {
 				tx.Exec(`
-					INSERT INTO text_lines (work_id, edition_id, paragraph_num, content, content_type, word_count, stanza)
-					VALUES (?, ?, ?, ?, 'verse', ?, ?)`,
-					work.ID, editionID, line.LineNumber, line.Text, countWords(line.Text), line.Stanza)
+					INSERT INTO text_lines (work_id, edition_id, paragraph_num, line_number, content, content_type, word_count, stanza)
+					VALUES (?, ?, ?, ?, ?, 'verse', ?, ?)`,
+					work.ID, editionID, line.LineNumber, line.LineNumber, line.Text, countWords(line.Text), line.Stanza)
 			}
 			tx.Commit()
 			totalImported += len(lines)
@@ -100,10 +100,10 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 				for _, line := range data.Sonnets[snum] {
 					sortOrder++
 					tx.Exec(`
-						INSERT INTO text_lines (work_id, edition_id, scene, paragraph_num, content,
+						INSERT INTO text_lines (work_id, edition_id, scene, paragraph_num, line_number, content,
 							content_type, word_count, sonnet_number, stanza)
-						VALUES (?, ?, ?, ?, ?, 'verse', ?, ?, ?)`,
-						work.ID, editionID, snum, line.LineNumber, line.Text,
+						VALUES (?, ?, ?, ?, ?, ?, 'verse', ?, ?, ?)`,
+						work.ID, editionID, snum, line.LineNumber, line.LineNumber, line.Text,
 						countWords(line.Text), snum, line.Stanza)
 				}
 			}
@@ -118,9 +118,9 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 			tx, _ := database.Begin()
 			for _, line := range data.LoversComplaint {
 				tx.Exec(`
-					INSERT INTO text_lines (work_id, edition_id, paragraph_num, content, content_type, word_count, stanza)
-					VALUES (?, ?, ?, ?, 'verse', ?, ?)`,
-					work.ID, editionID, line.LineNumber, line.Text, countWords(line.Text), line.Stanza)
+					INSERT INTO text_lines (work_id, edition_id, paragraph_num, line_number, content, content_type, word_count, stanza)
+					VALUES (?, ?, ?, ?, ?, 'verse', ?, ?)`,
+					work.ID, editionID, line.LineNumber, line.LineNumber, line.Text, countWords(line.Text), line.Stanza)
 			}
 			tx.Commit()
 			totalImported += len(data.LoversComplaint)

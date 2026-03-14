@@ -28,6 +28,9 @@ func PrintSummary(database *sql.DB, dbPath string) {
 		{"lexicon_entries", "Lexicon entries"},
 		{"lexicon_senses", "Lexicon senses"},
 		{"lexicon_citations", "Lexicon citations"},
+		{"citation_matches", "Citation matches"},
+		{"line_mappings", "Line mappings"},
+		{"attributions", "Attributions"},
 		{"sources", "Sources"},
 		{"editions", "Editions"},
 	}
@@ -56,6 +59,64 @@ func PrintSummary(database *sql.DB, dbPath string) {
 			fmt.Printf("  %-35s %10d lines\n", name, count)
 		}
 		rows.Close()
+	}
+
+	// Citation match stats
+	fmt.Println()
+	matchRows, err := database.Query(`
+		SELECT match_type, COUNT(*), ROUND(AVG(confidence), 3)
+		FROM citation_matches
+		GROUP BY match_type ORDER BY COUNT(*) DESC`)
+	if err == nil {
+		fmt.Println("  Citation Matches:")
+		for matchRows.Next() {
+			var matchType string
+			var count int
+			var avgConf float64
+			matchRows.Scan(&matchType, &count, &avgConf)
+			fmt.Printf("    %-20s %8d  (avg confidence: %.3f)\n", matchType, count, avgConf)
+		}
+		matchRows.Close()
+	}
+
+	// Line mapping stats
+	mapRows, err := database.Query(`
+		SELECT match_type, COUNT(*), ROUND(AVG(similarity), 3)
+		FROM line_mappings
+		GROUP BY match_type ORDER BY COUNT(*) DESC`)
+	if err == nil {
+		fmt.Println("  Line Mappings:")
+		for mapRows.Next() {
+			var matchType string
+			var count int
+			var avgSim float64
+			mapRows.Scan(&matchType, &count, &avgSim)
+			fmt.Printf("    %-20s %8d  (avg similarity: %.3f)\n", matchType, count, avgSim)
+		}
+		mapRows.Close()
+	}
+
+	// Attribution summary
+	fmt.Println()
+	attrRows, err := database.Query(`
+		SELECT s.short_code, a.required, a.display_format, a.display_priority
+		FROM attributions a
+		JOIN sources s ON a.source_id = s.id
+		ORDER BY a.display_priority DESC`)
+	if err == nil {
+		fmt.Println("  Attributions:")
+		for attrRows.Next() {
+			var code, format string
+			var required bool
+			var priority int
+			attrRows.Scan(&code, &required, &format, &priority)
+			reqStr := "voluntary"
+			if required {
+				reqStr = "REQUIRED"
+			}
+			fmt.Printf("    %-20s %s (format=%s, priority=%d)\n", code, reqStr, format, priority)
+		}
+		attrRows.Close()
 	}
 
 	// File size

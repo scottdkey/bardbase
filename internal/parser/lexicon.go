@@ -34,6 +34,7 @@ type Citation struct {
 	Act         *int
 	Scene       *int
 	Line        *int
+	SenseNumber int // which sense this citation belongs to (0 = unassigned)
 	PerseusRef  string
 	QuoteText   string
 	DisplayText string
@@ -53,6 +54,10 @@ var sensePattern = regexp.MustCompile(`(?:^|\s)(\d+)\)\s`)
 
 // ParsePerseusRef parses a Perseus bibl n= attribute into structured components.
 // Returns nil if the reference is not a valid Shakespeare reference.
+// Two-part references are interpreted based on work type:
+//   - Plays: act.scene (no line number)
+//   - Sonnets: sonnet_number.line
+//   - Poems: section.line
 func ParsePerseusRef(biblN string) *PerseusRef {
 	if biblN == "" || !strings.HasPrefix(biblN, "shak.") {
 		return nil
@@ -73,6 +78,12 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 		return nil
 	}
 
+	// Determine work type for two-part reference interpretation
+	workType := ""
+	if sw, ok := constants.SchmidtWorks[schmidtAbbrev]; ok {
+		workType = sw.WorkType
+	}
+
 	ref := &PerseusRef{
 		SchmidtAbbrev: schmidtAbbrev,
 		Raw:           biblN,
@@ -81,6 +92,7 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 	numParts := strings.Split(numbers, ".")
 	switch len(numParts) {
 	case 3:
+		// Always: act.scene.line
 		if v, err := strconv.Atoi(numParts[0]); err == nil {
 			ref.Act = &v
 		}
@@ -91,11 +103,31 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 			ref.Line = &v
 		}
 	case 2:
-		if v, err := strconv.Atoi(numParts[0]); err == nil {
-			ref.Act = &v
-		}
-		if v, err := strconv.Atoi(numParts[1]); err == nil {
-			ref.Line = &v
+		switch workType {
+		case "sonnet_sequence":
+			// sonnet_number.line
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Scene = &v
+			}
+			if v, err := strconv.Atoi(numParts[1]); err == nil {
+				ref.Line = &v
+			}
+		case "poem":
+			// section.line (stanza or canto)
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Act = &v
+			}
+			if v, err := strconv.Atoi(numParts[1]); err == nil {
+				ref.Line = &v
+			}
+		default:
+			// Play: act.scene (line unknown from this ref alone)
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Act = &v
+			}
+			if v, err := strconv.Atoi(numParts[1]); err == nil {
+				ref.Scene = &v
+			}
 		}
 	case 1:
 		if numParts[0] != "" {
@@ -132,6 +164,71 @@ func ParseSenses(fullText string) []Sense {
 		})
 	}
 	return senses
+}
+
+// assignSensesToCitations determines which sense each citation belongs to
+// by finding the citation's display text position within the full text
+// relative to sense boundaries.
+func assignSensesToCitations(entry *LexiconEntry) {
+	if len(entry.Citations) == 0 {
+		return
+	}
+
+	// If single sense or no senses, all citations belong to sense 1
+	if len(entry.Senses) <= 1 {
+		for i := range entry.Citations {
+			entry.Citations[i].SenseNumber = 1
+		}
+		return
+	}
+
+	// Find sense boundary positions in full text
+	type senseBound struct {
+		number int
+		start  int
+	}
+	matches := sensePattern.FindAllStringSubmatchIndex(entry.FullText, -1)
+	var bounds []senseBound
+	for _, match := range matches {
+		num, _ := strconv.Atoi(entry.FullText[match[2]:match[3]])
+		bounds = append(bounds, senseBound{number: num, start: match[0]})
+	}
+
+	if len(bounds) == 0 {
+		for i := range entry.Citations {
+			entry.Citations[i].SenseNumber = 1
+		}
+		return
+	}
+
+	// For each citation, find its position in the full text
+	for i, cit := range entry.Citations {
+		searchText := cit.DisplayText
+		if searchText == "" {
+			searchText = cit.RawBibl
+		}
+		if searchText == "" {
+			// Can't determine position — assign to first sense
+			entry.Citations[i].SenseNumber = bounds[0].number
+			continue
+		}
+
+		pos := strings.Index(entry.FullText, searchText)
+		if pos == -1 {
+			// Not found — assign to first sense
+			entry.Citations[i].SenseNumber = bounds[0].number
+			continue
+		}
+
+		// Find which sense this position falls in
+		senseNum := bounds[0].number
+		for _, b := range bounds {
+			if pos >= b.start {
+				senseNum = b.number
+			}
+		}
+		entry.Citations[i].SenseNumber = senseNum
+	}
 }
 
 // ParseEntryXML parses a single Schmidt lexicon XML file into a LexiconEntry.
@@ -226,7 +323,7 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 		}
 	}
 
-	return &LexiconEntry{
+	entry := &LexiconEntry{
 		Key:         key,
 		Letter:      letter,
 		EntryType:   entryType,
@@ -236,7 +333,12 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 		SourceFile:  sourceFile,
 		Senses:      senses,
 		Citations:   citations,
-	}, nil
+	}
+
+	// Assign citations to their senses based on text position
+	assignSensesToCitations(entry)
+
+	return entry, nil
 }
 
 func normalizeWhitespace(s string) string {

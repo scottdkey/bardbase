@@ -31,7 +31,7 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 		"Standard Ebooks", "standard_ebooks",
 		"https://standardebooks.org", "CC0 1.0 Universal",
 		"https://creativecommons.org/publicdomain/zero/1.0/",
-		"Standard Ebooks — Free and liberated ebooks. standardebooks.org",
+		"Text from Standard Ebooks (standardebooks.org). Released to the public domain under CC0 1.0 Universal.",
 		false,
 		"Public domain dedication. Based on public domain source texts.")
 	if err != nil {
@@ -105,9 +105,9 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 		charCache := make(map[string]interface{}) // name → *int64 or nil
 		tx, _ := database.Begin()
 		insertStmt, _ := tx.Prepare(`
-			INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num,
+			INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num, line_number,
 				character_id, char_name, content, content_type, word_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
 		for _, line := range allLines {
 			var charID interface{}
@@ -128,8 +128,9 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 				charName = ""
 			}
 
+			// LineInScene is the scene-relative line number — use as both paragraph_num and line_number
 			insertStmt.Exec(
-				work.ID, editionID, line.Act, line.Scene, line.LineInScene,
+				work.ID, editionID, line.Act, line.Scene, line.LineInScene, line.LineInScene,
 				charID, nilIfEmpty(charName), line.Text, ct, countWords(line.Text))
 		}
 		insertStmt.Close()
