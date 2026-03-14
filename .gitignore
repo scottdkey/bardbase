@@ -1,12 +1,28 @@
+# Build outputs
+build/
+*.db
+*.db-wal
+*.db-shm
+
+# Standard Ebooks download cache
+se-cache/
+standard-ebooks-cache/
+
+# Node/legacy
+node_modules/
+dist/
+
+# Environment
 .env
-node_modules
+
+# OS
+.DS_Store
+
+# Test artifacts
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
 
-# Build caches (re-downloadable)
-standard-ebooks-cache/
-
-# Legacy files
-schmidt_lexicon.db
+# Archives (source SQL is unzipped)
+sql.zip
