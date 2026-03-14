@@ -5,14 +5,28 @@ on:
     branches: [main]
     paths:
       - 'sources/**'
-      - 'tools/build.py'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Run tests
+        run: go test ./... -v
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -20,34 +34,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          python-version: '3.12'
+          go-version: '1.22'
 
       - name: Build database
-        run: python3 tools/build.py --output build
+        run: go run ./cmd/build -output build
 
       - name: Generate build info
         id: info
         run: |
           DB_SIZE=$(du -h build/shakespeare.db | cut -f1)
-          LINES=$(python3 -c "
-          import sqlite3
-          conn = sqlite3.connect('build/shakespeare.db')
-          lines = conn.execute('SELECT COUNT(*) FROM text_lines').fetchone()[0]
-          lexicon = conn.execute('SELECT COUNT(*) FROM lexicon_entries').fetchone()[0]
-          citations = conn.execute('SELECT COUNT(*) FROM lexicon_citations').fetchone()[0]
-          works = conn.execute('SELECT COUNT(*) FROM works').fetchone()[0]
-          print(f'{lines}|{lexicon}|{citations}|{works}')
-          conn.close()
-          ")
-          TEXT_LINES=$(echo $LINES | cut -d'|' -f1)
-          LEXICON=$(echo $LINES | cut -d'|' -f2)
-          CITATIONS=$(echo $LINES | cut -d'|' -f3)
-          WORKS=$(echo $LINES | cut -d'|' -f4)
+          # Use sqlite3 to query stats (available on ubuntu-latest)
+          TEXT_LINES=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM text_lines")
+          LEXICON=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM lexicon_entries")
+          CITATIONS=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM lexicon_citations")
+          WORKS=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM works")
 
-          # Version based on date + short SHA
           VERSION="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
@@ -86,13 +90,12 @@ jobs:
 
             ### Usage
             ```bash
-            # Download
-            curl -LO <release-asset-url>/shakespeare.db
+            # Download the pre-built database from this release
 
             # Or build from source
             git clone https://github.com/scottdkey/shakespeare_db.git
             cd shakespeare_db
-            python3 tools/build.py
+            make setup && make run
             ```
 
             Built from commit ${{ github.sha }}
