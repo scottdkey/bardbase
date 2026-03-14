@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TEI.2><text><body><div1 type="alphabetic letter" n="C" org="uniform" sample="complete"><entryFree key="Cain" type="main" opt="n"><orth extent="full" opt="n">Cain,</orth> the first son of Adam and murderer of Abel: <bibl n="shak. lll 4.2.36" default="NO" valid="yes">LLL IV, 2, 36</bibl>. <bibl n="shak. jn 3.4.79" default="NO" valid="yes">John III, 4, 79</bibl>. <bibl n="shak. r2 5.6.43" default="NO" valid="yes">R2 V, 6, 43</bibl>. <bibl n="shak. 2h4 1.1.157" default="NO" valid="yes">H4B I, 1, 157</bibl>. <bibl n="shak. 1h6 1.3.39" default="NO" valid="yes">H6A I, 3, 39</bibl>. <bibl n="shak. ham 5.1.85" default="NO" valid="yes">Hml. V, 1, 85</bibl>.
+</entryFree></div1></body></text></TEI.2>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TEI.2><text><body><div1 type="alphabetic letter" n="D" org="uniform" sample="complete"><entryFree key="Drachma" type="main" opt="n"><orth extent="full" opt="n">Drachma,</orth> an ancient Greek coin: <cit><quote>that do prize their hours at a crack'd d.</quote> <bibl n="shak. cor 1.5.6" default="NO" valid="yes">Cor. I, 5, 6</bibl></cit> (O. Edd. <emph>drachme;</emph> M. Edd., in spite of the verse, <emph>drachm</emph>). <bibl n="shak. jc 3.2.247" default="NO" valid="yes">Caes. III, 2, 247</bibl>. <bibl n="shak. jc 4.3.73" default="NO" valid="yes">IV, 3, 73</bibl>.
+</entryFree></div1></body></text></TEI.2>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TEI.2><text><body><div1 type="alphabetic letter" n="S" org="uniform" sample="complete"><entryFree key="Scout1" type="main" opt="n"><orth extent="full" opt="n">Scout,</orth> subst. one sent to reconnoitre the enemy: <bibl n="shak. lll 5.2.88" default="NO" valid="yes">LLL V, 2, 88</bibl>. <bibl n="shak. 1h6 4.3.1" default="NO" valid="yes">H6A IV, 3, 1</bibl>. <bibl n="shak. 1h6 5.2.10" default="NO" valid="yes">V, 2, 10</bibl>. <bibl n="shak. 3h6 2.1.116" default="NO" valid="yes">H6C II, 1, 116</bibl>. <bibl n="shak. 3h6 4.2.18" default="NO" valid="yes">IV, 2, 18</bibl>. <bibl n="shak. 3h6 5.1.19" default="NO" valid="yes">V, 1, 19</bibl>.
+
+<pb n="1013" />
+</entryFree></div1></body></text></TEI.2>

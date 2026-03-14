@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TEI.2><text><body><div1 type="alphabetic letter" n="D" org="uniform" sample="complete"><entryFree key="Dumbness" type="main" opt="n"><orth extent="full" opt="n">Dumbness,</orth> 1) incapacity to speak: <bibl n="shak. lr 4.1.63" default="NO" valid="yes">Lr. IV, 1, 63</bibl>.<lb />2) silence: <bibl n="shak. tn 3.2.25" default="NO" valid="yes">Tw. III, 2, 25</bibl>. <bibl n="shak. wt 5.2.15" default="NO" valid="yes">Wint. V, 2, 15</bibl>. <bibl n="shak. tro 3.2.140" default="NO" valid="yes">Troil. III, 2, 140</bibl>.
+<lb />3) show without words: <cit><quote>to the d. of the gesture one might interpret,</quote> <bibl n="shak. tim 1.1.33" default="NO" valid="yes">Tim. I, 1, 33</bibl></cit>.
+</entryFree></div1></body></text></TEI.2>
