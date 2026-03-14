@@ -1,6 +1,8 @@
 # Build outputs (at repo root)
 /build/
 /bin/
+
+# Database files
 *.db
 *.db-wal
 *.db-shm
@@ -9,12 +11,18 @@
 se-cache/
 standard-ebooks-cache/
 
-# Go
+# Go (db-builder)
 vendor/
+
+# Node.js (web)
+node_modules/
 
 # Test/coverage
 coverage.out
 coverage.html
+
+# SvelteKit
+.svelte-kit/
 
 # Environment
 .env

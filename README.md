@@ -4,7 +4,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/scottdkey/shakespeare_db)](https://github.com/scottdkey/shakespeare_db/releases/latest)
 [![Download](https://img.shields.io/github/downloads/scottdkey/shakespeare_db/total)](https://github.com/scottdkey/shakespeare_db/releases/latest)
 
-A comprehensive SQLite database of Shakespeare's complete works, built from multiple open-source and public domain sources.
+A comprehensive SQLite database of Shakespeare's complete works with a web UI, built from multiple open-source and public domain sources.
 
 ## What's in it
 
@@ -17,7 +17,26 @@ A comprehensive SQLite database of Shakespeare's complete works, built from mult
 | Full-text search (FTS5) across text + lexicon | Generated | — |
 | Folger Shakespeare Library reference URLs | [Folger](https://www.folger.edu) | — |
 
-## Quick start
+## Monorepo Structure
+
+```
+shakespeare_db/
+├── projects/
+│   ├── sources/       Original texts — READ-ONLY (OSS, SE, Perseus)
+│   ├── data/          Shared reference JSON (work mappings, attributions)
+│   ├── db-builder/    Go pipeline → produces SQLite database
+│   └── web/           SvelteKit PWA → deployed to Cloudflare (future)
+├── Makefile           Root: delegates to per-project Makefiles
+└── .github/workflows/ CI/CD
+```
+
+Each project has its own Makefile (or package.json) with its own actions. The root Makefile delegates via namespace:
+
+```bash
+make <project> <action>
+```
+
+## Quick Start
 
 ### Download pre-built
 
@@ -31,75 +50,72 @@ Requires **Go 1.22+**.
 git clone https://github.com/scottdkey/shakespeare_db.git
 cd shakespeare_db
 
-# Install dependencies
-make setup
-
 # Run all tests
-make test
+make db-builder test
 
 # Build the database (~55 MB)
-make run
+make db-builder run
 # → build/shakespeare.db
+
+# Skip SE downloads (use cached data)
+make db-builder run-cached
 ```
 
-### Build options
+### All Make Commands
 
 ```bash
-# Skip SE downloads (use cached data only)
-make run-cached
+# db-builder (Go pipeline)
+make db-builder build        # Compile binary
+make db-builder test         # Run all tests
+make db-builder run          # Full pipeline
+make db-builder run-cached   # Skip downloads
+make db-builder lint         # go vet
+make db-builder cover        # Test coverage report
+make db-builder clean        # Remove artifacts
 
-# Run a single build step
-make run-step-oss       # OSS/Moby import only
-make run-step-lexicon   # Schmidt lexicon only
-make run-step-se        # Standard Ebooks plays only
-make run-step-poetry    # Poetry + sonnets + Folger URLs
-make run-step-fts       # Rebuild FTS indexes
+# sources (read-only originals)
+make sources verify          # Check all files exist
+make sources list            # List all source files
+make sources stats           # File counts per source
 
-# Or use the binary directly
-go run ./cmd/build -output build -skip-download -step oss
-```
+# data (reference mappings)
+make data validate           # Validate all JSON files
+make data list               # List all data files
 
-## Project structure
+# web (SvelteKit — future)
+make web dev                 # Dev server
+make web build               # Production build
+make web test                # Run tests
 
-```
-cmd/build/              CLI entry point
-internal/
-  constants/            Reference data (Schmidt maps, schema DDL)
-  parser/               Pure parsing functions (MySQL, XML, XHTML)
-  db/                   SQLite connection & schema management
-  fetch/                HTTP client with retries
-  importer/             Build steps (OSS, lexicon, SE plays, poetry, FTS)
-sources/
-  oss/                  OSS MySQL dump (Public Domain)
-  lexicon/entries/      Schmidt XML files (CC BY-SA 3.0)
+# Cross-project
+make test-all                # Tests across all projects
+make clean-all               # Clean all projects
+make help                    # Show all commands
 ```
 
 ## Testing
 
-Every parser is a pure function with dedicated tests:
+Every parser is a pure function with dedicated tests. The full suite includes unit tests, integration tests, and end-to-end verification:
 
 ```bash
 # All tests
-go test ./...
-
-# Specific package
-go test ./internal/parser/ -v -run TestParseMySQLValues
+make db-builder test
 
 # With coverage
-make cover
+make db-builder cover
 ```
 
 ## Schema
 
-See [SCHEMA.md](SCHEMA.md) for the full database schema.
+See [projects/db-builder/SCHEMA.md](projects/db-builder/SCHEMA.md) for the full database schema.
 
-## Sources & licensing
+## Sources & Licensing
 
-See [SOURCES.md](SOURCES.md) for detailed source attribution and licensing.
+See [projects/sources/SOURCES.md](projects/sources/SOURCES.md) for detailed source attribution and licensing.
 
 ## CI/CD
 
-On push to `main` (when source data or build code changes):
-1. Tests run
-2. Database builds from scratch
-3. GitHub Release created with the `.db` file attached
+- **Push to main / PR** → tests + build + upload artifact
+- **Manual trigger** → tests + build + optional GitHub Release (must check "Create a release")
+
+Releases are never automatic — they require a manual workflow dispatch with the release flag enabled.
