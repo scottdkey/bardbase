@@ -300,7 +300,7 @@ func TestAppQuery_EditionComparison(t *testing.T) {
 	}
 
 	// Lines 1-4 are identical text → perfect aligned
-	// Line 5 differs: "To die, to sleep—" vs "To die: to sleep;"
+	// Line 5 differs: "To die, to sleep—" vs "To die— perchance to dream."
 	if perfectAligned < 4 {
 		t.Errorf("expected at least 4 perfectly aligned lines, got %d", perfectAligned)
 	}

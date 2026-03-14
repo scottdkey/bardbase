@@ -82,7 +82,7 @@ func seedE2EData(t *testing.T, database *sql.DB) {
 		{2, "Whether 'tis nobler in the mind to suffer", "Whether 'tis nobler in the mind to suffer"},
 		{3, "The slings and arrows of outrageous fortune,", "The slings and arrows of outrageous fortune,"},
 		{4, "Or to take arms against a sea of troubles,", "Or to take arms against a sea of troubles,"},
-		{5, "And by opposing end them. To die, to sleep—", "And by opposing end them. To die: to sleep;"},
+		{5, "And by opposing end them. To die, to sleep—", "And by opposing, end them. To die— perchance to dream."},
 	}
 
 	for _, l := range hamletLines {
@@ -459,8 +459,8 @@ func TestE2E_LineMappingsShowDifferences(t *testing.T) {
 		t.Error("expected some perfectly aligned lines (identical text across editions)")
 	}
 
-	// Line 5 differs: "To die, to sleep—" vs "To die: to sleep;"
-	// Should still be "aligned" but with similarity < 1.0, or "modified"
+	// Line 5 differs: "To die, to sleep—" vs "To die— perchance to dream."
+	// Should be "modified" or "aligned" with similarity < 1.0 (different words)
 	var totalMappings int
 	database.QueryRow("SELECT COUNT(*) FROM line_mappings").Scan(&totalMappings)
 	t.Logf("Total mappings: %d (aligned@1.0: %d)", totalMappings, alignedCount)
