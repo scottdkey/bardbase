@@ -31,8 +31,14 @@ type textLineRow struct {
 }
 
 // ResolveCitations matches lexicon citations to actual text_lines rows.
-// For each citation with a valid work + act + scene reference, it searches
-// for matching text lines in each edition using line numbers and/or quote text.
+//
+// Handles three reference types:
+//   - Play citations: act + scene + optional line (e.g., "Tp. I, 1, 52")
+//   - Sonnet citations: scene (= sonnet number) + line, no act (e.g., "Son. 1, 14")
+//   - Poem citations: just line number, no act/scene (e.g., "Ven. 52")
+//
+// For each citation with a valid work reference, it searches for matching
+// text lines in each edition using line numbers and/or quote text.
 // Results are stored in the citation_matches table.
 func ResolveCitations(database *sql.DB) error {
 	fmt.Println()
@@ -67,11 +73,13 @@ func ResolveCitations(database *sql.DB) error {
 		return nil
 	}
 
-	// Load citations that have at least work_id and act set
+	// Load ALL citations that have at least a work_id and some location info.
+	// Previously required act IS NOT NULL which excluded sonnets and poems.
 	citRows, err := database.Query(`
 		SELECT id, entry_id, sense_id, work_id, act, scene, line, quote_text
 		FROM lexicon_citations
-		WHERE work_id IS NOT NULL AND act IS NOT NULL`)
+		WHERE work_id IS NOT NULL
+		  AND (act IS NOT NULL OR scene IS NOT NULL OR line IS NOT NULL OR quote_text IS NOT NULL)`)
 	if err != nil {
 		return fmt.Errorf("querying citations: %w", err)
 	}
@@ -114,26 +122,53 @@ func ResolveCitations(database *sql.DB) error {
 		return nil
 	}
 
-	// Group citations by (work_id, act, scene) for batch loading
-	type sceneKey struct {
+	// Classify citations into three types for different resolution strategies:
+	//   play:   act is set → group by (work_id, act, scene)
+	//   sonnet: scene is set, act is nil → group by (work_id, scene)
+	//   poem:   only line and/or quote_text → group by (work_id)
+
+	type playKey struct {
 		WorkID int64
 		Act    int
 		Scene  int
 	}
-	citationsByScene := make(map[sceneKey][]citationRow)
-	for _, c := range citations {
-		if c.Act == nil {
-			continue
-		}
-		scn := 0
-		if c.Scene != nil {
-			scn = *c.Scene
-		}
-		key := sceneKey{WorkID: c.WorkID, Act: *c.Act, Scene: scn}
-		citationsByScene[key] = append(citationsByScene[key], c)
+	type sonnetKey struct {
+		WorkID int64
+		Scene  int // sonnet number
+	}
+	type poemKey struct {
+		WorkID int64
 	}
 
-	// Process each scene group
+	playCitations := make(map[playKey][]citationRow)
+	sonnetCitations := make(map[sonnetKey][]citationRow)
+	poemCitations := make(map[poemKey][]citationRow)
+
+	for _, c := range citations {
+		if c.Act != nil {
+			// Play citation: has act (and usually scene)
+			scn := 0
+			if c.Scene != nil {
+				scn = *c.Scene
+			}
+			key := playKey{WorkID: c.WorkID, Act: *c.Act, Scene: scn}
+			playCitations[key] = append(playCitations[key], c)
+		} else if c.Scene != nil {
+			// Sonnet citation: has scene (sonnet number) but no act
+			key := sonnetKey{WorkID: c.WorkID, Scene: *c.Scene}
+			sonnetCitations[key] = append(sonnetCitations[key], c)
+		} else {
+			// Poem citation: only line and/or quote_text
+			key := poemKey{WorkID: c.WorkID}
+			poemCitations[key] = append(poemCitations[key], c)
+		}
+	}
+
+	fmt.Printf("    Play citations: %d groups\n", len(playCitations))
+	fmt.Printf("    Sonnet citations: %d groups\n", len(sonnetCitations))
+	fmt.Printf("    Poem citations: %d groups\n", len(poemCitations))
+
+	// Process all types
 	tx, err := database.Begin()
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -152,15 +187,47 @@ func ResolveCitations(database *sql.DB) error {
 	fuzzyMatches := 0
 	noMatches := 0
 
-	for key, sceneCitations := range citationsByScene {
-		// Load text lines for this scene from all editions
+	matchCitation := func(cit citationRow, lines []textLineRow) {
+		// Group lines by edition
+		linesByEdition := make(map[int64][]textLineRow)
+		for _, tl := range lines {
+			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
+		}
+
+		for editionID, edLines := range linesByEdition {
+			matchLine, matchType, confidence := findBestMatch(edLines, cit)
+			if matchLine == nil {
+				noMatches++
+				continue
+			}
+
+			insertStmt.Exec(cit.ID, matchLine.ID, editionID, matchType, confidence, matchLine.Content)
+			totalMatches++
+
+			switch matchType {
+			case "exact_quote":
+				exactMatches++
+			case "line_number":
+				lineMatches++
+			case "fuzzy_text":
+				fuzzyMatches++
+			}
+		}
+	}
+
+	// === Resolve play citations ===
+	for key, sceneCitations := range playCitations {
 		var query string
 		var args []interface{}
 		if key.Scene > 0 {
-			query = "SELECT id, content, line_number, edition_id FROM text_lines WHERE work_id = ? AND act = ? AND scene = ? AND line_number IS NOT NULL ORDER BY edition_id, line_number"
+			query = `SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
+				WHERE work_id = ? AND act = ? AND scene = ? AND line_number IS NOT NULL
+				ORDER BY edition_id, line_number`
 			args = []interface{}{key.WorkID, key.Act, key.Scene}
 		} else {
-			query = "SELECT id, content, line_number, edition_id FROM text_lines WHERE work_id = ? AND act = ? AND line_number IS NOT NULL ORDER BY edition_id, line_number"
+			query = `SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
+				WHERE work_id = ? AND act = ? AND line_number IS NOT NULL
+				ORDER BY edition_id, line_number`
 			args = []interface{}{key.WorkID, key.Act}
 		}
 
@@ -169,36 +236,67 @@ func ResolveCitations(database *sql.DB) error {
 			continue
 		}
 
-		// Group lines by edition
-		linesByEdition := make(map[int64][]textLineRow)
+		var lines []textLineRow
 		for lineRows.Next() {
 			var tl textLineRow
 			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
-			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
+			lines = append(lines, tl)
 		}
 		lineRows.Close()
 
-		// Match each citation against each edition's lines
 		for _, cit := range sceneCitations {
-			for editionID, lines := range linesByEdition {
-				matchLine, matchType, confidence := findBestMatch(lines, cit)
-				if matchLine == nil {
-					noMatches++
-					continue
-				}
+			matchCitation(cit, lines)
+		}
+	}
 
-				insertStmt.Exec(cit.ID, matchLine.ID, editionID, matchType, confidence, matchLine.Content)
-				totalMatches++
+	// === Resolve sonnet citations ===
+	// Sonnet citations have scene = sonnet number, line = line within sonnet
+	for key, sCitations := range sonnetCitations {
+		lineRows, err := database.Query(`
+			SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
+			WHERE work_id = ? AND scene = ? AND line_number IS NOT NULL
+			ORDER BY edition_id, line_number`,
+			key.WorkID, key.Scene)
+		if err != nil {
+			continue
+		}
 
-				switch matchType {
-				case "exact_quote":
-					exactMatches++
-				case "line_number":
-					lineMatches++
-				case "fuzzy_text":
-					fuzzyMatches++
-				}
-			}
+		var lines []textLineRow
+		for lineRows.Next() {
+			var tl textLineRow
+			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
+			lines = append(lines, tl)
+		}
+		lineRows.Close()
+
+		for _, cit := range sCitations {
+			matchCitation(cit, lines)
+		}
+	}
+
+	// === Resolve poem citations ===
+	// Poem citations typically have only line number (e.g., "Ven. 52" → line 52)
+	// Load all lines for the work and match by line_number or fuzzy text
+	for key, pCitations := range poemCitations {
+		lineRows, err := database.Query(`
+			SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
+			WHERE work_id = ? AND line_number IS NOT NULL
+			ORDER BY edition_id, line_number`,
+			key.WorkID)
+		if err != nil {
+			continue
+		}
+
+		var lines []textLineRow
+		for lineRows.Next() {
+			var tl textLineRow
+			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
+			lines = append(lines, tl)
+		}
+		lineRows.Close()
+
+		for _, cit := range pCitations {
+			matchCitation(cit, lines)
 		}
 	}
 
