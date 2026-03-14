@@ -118,14 +118,25 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 				continue
 			}
 
-			// Insert senses
+			// Insert senses and build sense_number → sense_id map
+			senseIDMap := make(map[int]int64)
 			for _, sense := range entry.Senses {
-				tx.Exec(`INSERT OR IGNORE INTO lexicon_senses (entry_id, sense_number, definition_text) VALUES (?, ?, ?)`,
+				sResult, sErr := tx.Exec(`INSERT OR IGNORE INTO lexicon_senses (entry_id, sense_number, definition_text) VALUES (?, ?, ?)`,
 					entryID, sense.Number, sense.Text)
+				if sErr == nil {
+					senseID, _ := sResult.LastInsertId()
+					if senseID == 0 {
+						tx.QueryRow("SELECT id FROM lexicon_senses WHERE entry_id = ? AND sense_number = ?",
+							entryID, sense.Number).Scan(&senseID)
+					}
+					if senseID > 0 {
+						senseIDMap[sense.Number] = senseID
+					}
+				}
 				totalSenses++
 			}
 
-			// Insert citations
+			// Insert citations with sense_id linkage
 			for _, cit := range entry.Citations {
 				var workID interface{}
 				if cit.WorkAbbrev != "" {
@@ -134,11 +145,19 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 					}
 				}
 
+				// Resolve sense_id from the citation's assigned sense number
+				var senseID interface{}
+				if cit.SenseNumber > 0 {
+					if sid, ok := senseIDMap[cit.SenseNumber]; ok {
+						senseID = sid
+					}
+				}
+
 				tx.Exec(`
-					INSERT INTO lexicon_citations (entry_id, work_id, work_abbrev, perseus_ref,
+					INSERT INTO lexicon_citations (entry_id, sense_id, work_id, work_abbrev, perseus_ref,
 						act, scene, line, quote_text, display_text, raw_bibl)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					entryID, workID, nilIfEmpty(cit.WorkAbbrev), nilIfEmpty(cit.PerseusRef),
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					entryID, senseID, workID, nilIfEmpty(cit.WorkAbbrev), nilIfEmpty(cit.PerseusRef),
 					cit.Act, cit.Scene, cit.Line,
 					nilIfEmpty(cit.QuoteText), nilIfEmpty(cit.DisplayText), nilIfEmpty(cit.RawBibl))
 				totalCitations++

@@ -1,10 +1,11 @@
-// Package importer implements the five build steps that populate the Shakespeare database.
+// Package importer implements the build steps that populate the Shakespeare database.
 package importer
 
 import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -57,6 +58,7 @@ type OSSParagraph struct {
 	Section      int
 	Chapter      int
 	WordCount    int
+	LineNumber   int // computed scene-relative line number
 }
 
 // ImportOSS imports the OSS/Moby Shakespeare data from a MySQL dump file.
@@ -76,7 +78,7 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 	sourceID, err := db.GetSourceID(database,
 		"Open Source Shakespeare / Moby", "oss_moby",
 		"https://www.opensourceshakespeare.org", "Public Domain", "",
-		"", false,
+		"Text from Open Source Shakespeare (opensourceshakespeare.org), based on the Moby project. Public domain.", false,
 		"Globe-based modern spelling text. Originally from Moby project.")
 	if err != nil {
 		return err
@@ -205,6 +207,36 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 		}
 	}
 
+	// Compute scene-relative line numbers
+	// Sort by (WorkID, Section, Chapter, ParagraphNum) for stable ordering
+	sort.Slice(paragraphs, func(i, j int) bool {
+		if paragraphs[i].WorkID != paragraphs[j].WorkID {
+			return paragraphs[i].WorkID < paragraphs[j].WorkID
+		}
+		if paragraphs[i].Section != paragraphs[j].Section {
+			return paragraphs[i].Section < paragraphs[j].Section
+		}
+		if paragraphs[i].Chapter != paragraphs[j].Chapter {
+			return paragraphs[i].Chapter < paragraphs[j].Chapter
+		}
+		return paragraphs[i].ParagraphNum < paragraphs[j].ParagraphNum
+	})
+
+	prevWork := ""
+	prevSection := -1
+	prevChapter := -1
+	lineNum := 0
+	for i := range paragraphs {
+		if paragraphs[i].WorkID != prevWork || paragraphs[i].Section != prevSection || paragraphs[i].Chapter != prevChapter {
+			lineNum = 0
+			prevWork = paragraphs[i].WorkID
+			prevSection = paragraphs[i].Section
+			prevChapter = paragraphs[i].Chapter
+		}
+		lineNum++
+		paragraphs[i].LineNumber = lineNum
+	}
+
 	// Insert works
 	fmt.Printf("  Works: %d\n", len(works))
 	for _, w := range works {
@@ -286,9 +318,9 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
 	stmt, err := tx.Prepare(`
-		INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num,
+		INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num, line_number,
 			character_id, char_name, content, content_type, word_count, oss_paragraph_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		tx.Rollback()
 		return fmt.Errorf("preparing statement: %w", err)
@@ -308,7 +340,7 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 		}
 
 		_, err := stmt.Exec(
-			dbWorkID, editionID, p.Section, p.Chapter, p.ParagraphNum,
+			dbWorkID, editionID, p.Section, p.Chapter, p.ParagraphNum, p.LineNumber,
 			nilIfZero(charDBID), nilIfEmpty(charName), p.Text, contentType,
 			p.WordCount, p.ParagraphID)
 		if err != nil {

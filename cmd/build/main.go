@@ -6,6 +6,8 @@
 //	go run ./cmd/build -skip-download         # Skip SE downloads (use cache)
 //	go run ./cmd/build -output build          # Custom output directory
 //	go run ./cmd/build -step oss              # Run only one step
+//
+// Steps: oss, lexicon, se, poetry, attributions, citations, mappings, fts
 package main
 
 import (
@@ -21,7 +23,7 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory")
 	skipDownload := flag.Bool("skip-download", false, "Skip Standard Ebooks downloads (use cache only)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, attributions, citations, mappings, fts")
 	flag.Parse()
 
 	// Resolve paths relative to repo root
@@ -73,6 +75,9 @@ func main() {
 		{"lexicon", func() error { return importer.ImportLexicon(database, lexiconDir) }},
 		{"se", func() error { return importer.ImportSEPlays(database, cacheDir, *skipDownload) }},
 		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *skipDownload) }},
+		{"attributions", func() error { return importer.PopulateAttributions(database) }},
+		{"citations", func() error { return importer.ResolveCitations(database) }},
+		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"fts", func() error { return importer.BuildFTS(database) }},
 	}
 
@@ -90,7 +95,7 @@ func main() {
 			}
 		}
 		if !found {
-			fmt.Fprintf(os.Stderr, "Unknown step: %s (valid: oss, lexicon, se, poetry, fts)\n", *step)
+			fmt.Fprintf(os.Stderr, "Unknown step: %s (valid: oss, lexicon, se, poetry, attributions, citations, mappings, fts)\n", *step)
 			os.Exit(1)
 		}
 	} else {
