@@ -14,9 +14,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
   contents: write
 
@@ -24,8 +21,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.22'
       - name: Run tests
@@ -39,10 +36,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
 
@@ -53,7 +50,6 @@ jobs:
         id: info
         run: |
           DB_SIZE=$(du -h build/shakespeare.db | cut -f1)
-          # Use sqlite3 to query stats (available on ubuntu-latest)
           TEXT_LINES=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM text_lines")
           LEXICON=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM lexicon_entries")
           CITATIONS=$(sqlite3 build/shakespeare.db "SELECT COUNT(*) FROM lexicon_citations")
@@ -68,43 +64,46 @@ jobs:
           echo "works=$WORKS" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shakespeare-db
           path: build/shakespeare.db
           retention-days: 90
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.info.outputs.version }}
-          name: "Shakespeare DB ${{ steps.info.outputs.version }}"
-          body: |
-            ## Shakespeare Database Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.info.outputs.version }}"
 
-            | Metric | Count |
-            |--------|-------|
-            | **Works** | ${{ steps.info.outputs.works }} |
-            | **Text lines** | ${{ steps.info.outputs.text_lines }} |
-            | **Lexicon entries** | ${{ steps.info.outputs.lexicon }} |
-            | **Citations** | ${{ steps.info.outputs.citations }} |
-            | **Database size** | ${{ steps.info.outputs.db_size }} |
+          BODY="## Shakespeare Database Build
 
-            ### Sources
-            - **OSS/Moby** — Public Domain (Globe-based modern spelling)
-            - **Standard Ebooks** — CC0 (modern-spelling, verse-level)
-            - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
+          | Metric | Count |
+          |--------|-------|
+          | **Works** | ${{ steps.info.outputs.works }} |
+          | **Text lines** | ${{ steps.info.outputs.text_lines }} |
+          | **Lexicon entries** | ${{ steps.info.outputs.lexicon }} |
+          | **Citations** | ${{ steps.info.outputs.citations }} |
+          | **Database size** | ${{ steps.info.outputs.db_size }} |
 
-            ### Usage
-            ```bash
-            # Download the pre-built database from this release
+          ### Sources
+          - **OSS/Moby** — Public Domain (Globe-based modern spelling)
+          - **Standard Ebooks** — CC0 (modern-spelling, verse-level)
+          - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
 
-            # Or build from source
-            git clone https://github.com/scottdkey/shakespeare_db.git
-            cd shakespeare_db
-            make setup && make run
-            ```
+          ### Usage
+          \`\`\`bash
+          # Download the pre-built database from this release
 
-            Built from commit ${{ github.sha }}
-          files: build/shakespeare.db
-          generate_release_notes: false
+          # Or build from source
+          git clone https://github.com/scottdkey/shakespeare_db.git
+          cd shakespeare_db
+          make setup && make run
+          \`\`\`
+
+          Built from commit ${{ github.sha }}"
+
+          gh release create "$VERSION" \
+            --title "Shakespeare DB $VERSION" \
+            --notes "$BODY" \
+            build/shakespeare.db
