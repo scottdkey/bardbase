@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Package db handles SQLite database connections and schema management.
 package db
 

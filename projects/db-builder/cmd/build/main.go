@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Command build constructs the Shakespeare database from source data.
 //
 // This is the main entry point for the db-builder project within the

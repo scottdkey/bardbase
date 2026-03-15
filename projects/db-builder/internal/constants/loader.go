@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Package constants contains all reference data for the Shakespeare database build.
 //
 // Data is loaded from JSON files in projects/data/ at initialization time.

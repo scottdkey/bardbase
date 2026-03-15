@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Package parser contains pure parsing functions for all source data formats.
 package parser
 

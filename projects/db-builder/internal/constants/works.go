@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package constants
 
 // SchmidtWork maps a Schmidt abbreviation to its full title, Perseus text ID, and work type.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package constants
 
 // OSSToSchmidt maps OSS/Moby work IDs to Schmidt abbreviations.
