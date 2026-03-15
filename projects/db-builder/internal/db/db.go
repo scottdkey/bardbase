@@ -17,6 +17,15 @@ import (
 
 // Open creates or opens a SQLite database at the given path.
 // It sets optimal pragmas for bulk import performance.
+//
+// Build-time pragmas optimize for sequential writes during import:
+//   - page_size=4096: standard page size, good balance for mixed workloads
+//   - journal_mode=WAL: allows concurrent reads during import
+//   - synchronous=NORMAL: faster writes, safe with WAL
+//   - cache_size=-64000: 64MB cache for large imports
+//   - mmap_size=268435456: 256MB memory-mapped I/O for read performance
+//   - temp_store=MEMORY: temp tables in memory (faster sorts/joins)
+//   - foreign_keys=ON: enforce referential integrity
 func Open(dbPath string) (*sql.DB, error) {
 	// Ensure parent directory exists
 	dir := filepath.Dir(dbPath)
@@ -29,10 +38,15 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
-	// Performance pragmas for bulk import
+	// Performance pragmas for bulk import.
+	// page_size must be set before creating tables (or on empty DB).
 	pragmas := []string{
+		"PRAGMA page_size=4096",
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA synchronous=NORMAL",
+		"PRAGMA cache_size=-64000",
+		"PRAGMA mmap_size=268435456",
+		"PRAGMA temp_store=MEMORY",
 		"PRAGMA foreign_keys=ON",
 	}
 	for _, pragma := range pragmas {
@@ -43,6 +57,29 @@ func Open(dbPath string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// Optimize runs post-import optimizations on the database.
+// Should be called after all data is imported and before the DB is
+// distributed. Runs ANALYZE (updates query planner statistics),
+// PRAGMA optimize (lets SQLite choose additional optimizations),
+// and VACUUM (defragments and reclaims space).
+func Optimize(db *sql.DB) error {
+	steps := []struct {
+		name string
+		sql  string
+	}{
+		{"analyze", "ANALYZE"},
+		{"optimize", "PRAGMA optimize"},
+		{"wal_checkpoint", "PRAGMA wal_checkpoint(TRUNCATE)"},
+		{"vacuum", "VACUUM"},
+	}
+	for _, step := range steps {
+		if _, err := db.Exec(step.sql); err != nil {
+			return fmt.Errorf("%s: %w", step.name, err)
+		}
+	}
+	return nil
 }
 
 // CreateSchema executes the full DDL schema against the database.

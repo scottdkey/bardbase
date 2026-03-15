@@ -64,7 +64,7 @@ func main() {
 		}
 	}
 
-	// Open database
+	// Open database with tuned pragmas
 	database, err := db.Open(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -121,6 +121,14 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Error in step %s: %v\n", s.name, err)
 				os.Exit(1)
 			}
+		}
+
+		// Post-import optimization: ANALYZE + VACUUM for smallest output
+		fmt.Println()
+		fmt.Println("Optimizing database...")
+		if err := db.Optimize(database); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: optimization failed: %v\n", err)
+			// Non-fatal — DB is still usable
 		}
 	}
 
