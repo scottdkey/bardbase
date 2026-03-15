@@ -11,39 +11,9 @@ import (
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
 )
 
-// setupAttributionDB creates a test database with schema and the 3 required sources.
-func setupAttributionDB(t *testing.T) *sql.DB {
-	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-	database, err := db.Open(dbPath)
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
-	if err := db.CreateSchema(database); err != nil {
-		t.Fatalf("CreateSchema failed: %v", err)
-	}
-
-	// Insert the 3 sources that PopulateAttributions expects
-	sources := []struct {
-		name, code, url, license string
-	}{
-		{"Open Source Shakespeare", "oss_moby", "https://www.opensourceshakespeare.org/", "Public Domain"},
-		{"Perseus Schmidt Lexicon", "perseus_schmidt", "http://www.perseus.tufts.edu", "CC BY-SA 3.0"},
-		{"Standard Ebooks", "standard_ebooks", "https://standardebooks.org", "CC0 1.0"},
-	}
-	for _, s := range sources {
-		_, err := db.GetSourceID(database, s.name, s.code, s.url, s.license, "", "", false, "")
-		if err != nil {
-			t.Fatalf("inserting source %s: %v", s.code, err)
-		}
-	}
-
-	return database
-}
 
 func TestPopulateAttributions_CreatesAllThree(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	err := PopulateAttributions(database)
@@ -61,7 +31,7 @@ func TestPopulateAttributions_CreatesAllThree(t *testing.T) {
 }
 
 func TestPopulateAttributions_PerseusIsRequired(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -80,7 +50,7 @@ func TestPopulateAttributions_PerseusIsRequired(t *testing.T) {
 }
 
 func TestPopulateAttributions_OSSIsVoluntary(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -99,7 +69,7 @@ func TestPopulateAttributions_OSSIsVoluntary(t *testing.T) {
 }
 
 func TestPopulateAttributions_SEIsVoluntary(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -118,7 +88,7 @@ func TestPopulateAttributions_SEIsVoluntary(t *testing.T) {
 }
 
 func TestPopulateAttributions_PerseusDisplayRules(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -180,7 +150,7 @@ func TestPopulateAttributions_PerseusDisplayRules(t *testing.T) {
 }
 
 func TestPopulateAttributions_OSSDisplayRules(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -228,7 +198,7 @@ func TestPopulateAttributions_OSSDisplayRules(t *testing.T) {
 }
 
 func TestPopulateAttributions_HasHTMLVersions(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -259,7 +229,7 @@ func TestPopulateAttributions_HasHTMLVersions(t *testing.T) {
 }
 
 func TestPopulateAttributions_Idempotent(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	// Run twice — should not duplicate records (INSERT OR REPLACE)
@@ -294,7 +264,7 @@ func TestPopulateAttributions_MissingSourceSkipped(t *testing.T) {
 }
 
 func TestPopulateAttributions_PerseusLinkBackURL(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
@@ -314,7 +284,7 @@ func TestPopulateAttributions_PerseusLinkBackURL(t *testing.T) {
 }
 
 func TestPopulateAttributions_PerseusAuthorCredit(t *testing.T) {
-	database := setupAttributionDB(t)
+	database := newAttributionTestDB(t)
 	defer database.Close()
 
 	PopulateAttributions(database)
