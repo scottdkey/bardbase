@@ -6,7 +6,6 @@ package importer
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
@@ -23,10 +22,7 @@ import (
 // For each shared section, it aligns lines using text similarity
 // (Needleman-Wunsch algorithm with Jaccard word similarity scoring).
 func BuildLineMappings(database *sql.DB) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 7: Build Cross-Edition Line Mappings")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 7: Build Cross-Edition Line Mappings")
 
 	start := time.Now()
 

@@ -21,10 +21,7 @@ import (
 
 // ImportSEPlays imports Standard Ebooks play text from GitHub.
 func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 3: Import Standard Ebooks Plays")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 3: Import Standard Ebooks Plays")
 
 	start := time.Now()
 	os.MkdirAll(cacheDir, 0755)

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
@@ -20,10 +19,7 @@ import (
 
 // ImportSEPoetry imports Standard Ebooks poetry, sonnets, and Folger URLs.
 func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 4: Import Poetry + Folger URLs")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 4: Import Poetry + Folger URLs")
 
 	start := time.Now()
 	os.MkdirAll(cacheDir, 0755)

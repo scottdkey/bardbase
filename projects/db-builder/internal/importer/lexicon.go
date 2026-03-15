@@ -19,10 +19,7 @@ import (
 
 // ImportLexicon imports Schmidt lexicon XML entries from the given directory.
 func ImportLexicon(database *sql.DB, entriesDir string) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 2: Import Schmidt Lexicon")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 2: Import Schmidt Lexicon")
 
 	info, err := os.Stat(entriesDir)
 	if err != nil || !info.IsDir() {

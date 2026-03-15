@@ -6,7 +6,6 @@ package importer
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
@@ -14,10 +13,7 @@ import (
 
 // BuildFTS rebuilds all full-text search indexes.
 func BuildFTS(database *sql.DB) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 5: Build Full-Text Search Indexes")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 5: Build Full-Text Search Indexes")
 
 	start := time.Now()
 

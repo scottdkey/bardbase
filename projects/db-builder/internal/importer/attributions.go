@@ -6,7 +6,6 @@ package importer
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
@@ -20,10 +19,7 @@ import (
 //
 // Data is loaded from projects/data/attributions.json via the constants package.
 func PopulateAttributions(database *sql.DB) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 5: Populate Attribution Rules")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 5: Populate Attribution Rules")
 
 	start := time.Now()
 
