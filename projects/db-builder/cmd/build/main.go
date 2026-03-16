@@ -20,7 +20,7 @@
 //	go run ./cmd/build -output build          # Custom output directory
 //	go run ./cmd/build -step oss              # Run only one step
 //
-// Steps: oss, lexicon, se, poetry, attributions, citations, mappings, fts
+// Steps: oss, lexicon, se, poetry, perseus, attributions, citations, mappings, fts
 package main
 
 import (
@@ -36,7 +36,7 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
 	skipDownload := flag.Bool("skip-download", false, "Skip Standard Ebooks downloads (use cache only)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, attributions, citations, mappings, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, attributions, citations, mappings, fts")
 	flag.Parse()
 
 	// Resolve paths relative to the monorepo root.
@@ -81,6 +81,17 @@ func main() {
 
 	// Define the build pipeline as an ordered sequence of steps.
 	// Each step is idempotent — it can be re-run independently via -step flag.
+	//
+	// Pipeline order:
+	//   1. oss         — Import Open Source Shakespeare (base works, characters, text)
+	//   2. lexicon     — Import Schmidt Lexicon (20k entries)
+	//   3. se          — Import Standard Ebooks plays (modern edition)
+	//   4. poetry      — Import Standard Ebooks poetry (sonnets, poems)
+	//   5. perseus     — Import Perseus Globe edition plays (37 plays from TEI XML)
+	//   6. attributions — Populate attribution records for all sources
+	//   7. citations   — Resolve lexicon citations to text_lines
+	//   8. mappings    — Build cross-edition line alignments
+	//   9. fts         — Build full-text search index
 	type buildStep struct {
 		name string
 		fn   func() error
@@ -91,10 +102,17 @@ func main() {
 		{"lexicon", func() error { return importer.ImportLexicon(database, lexiconDir) }},
 		{"se", func() error { return importer.ImportSEPlays(database, cacheDir, *skipDownload) }},
 		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *skipDownload) }},
+		{"perseus", func() error { return importer.ImportPerseusPlays(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"fts", func() error { return importer.BuildFTS(database) }},
+	}
+
+	// Build valid step names for error message
+	validSteps := make([]string, len(steps))
+	for i, s := range steps {
+		validSteps[i] = s.name
 	}
 
 	if *step != "" {
@@ -111,7 +129,7 @@ func main() {
 			}
 		}
 		if !found {
-			fmt.Fprintf(os.Stderr, "Unknown step: %s (valid: oss, lexicon, se, poetry, attributions, citations, mappings, fts)\n", *step)
+			fmt.Fprintf(os.Stderr, "Unknown step: %s (valid: %s)\n", *step, fmt.Sprintf("%v", validSteps))
 			os.Exit(1)
 		}
 	} else {
