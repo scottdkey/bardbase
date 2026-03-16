@@ -103,8 +103,7 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 		totalPlays++
 
 		// Clear existing Perseus data for this work (idempotent re-import).
-		database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
-		database.Exec("DELETE FROM text_divisions WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+		clearWorkEditionData(database, work.ID, editionID)
 
 		// Insert lines in a transaction for speed.
 		tx, err := database.Begin()
@@ -132,17 +131,8 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 		verseCounters := make(map[sceneKey]int)
 
 		for _, line := range lines {
-			var charID interface{}
 			charName := line.Character
-
-			if charName != "" {
-				if cached, ok := charCache[charName]; ok {
-					charID = cached
-				} else {
-					charID = lookupCharacter(database, work.ID, charName)
-					charCache[charName] = charID
-				}
-			}
+			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := "speech"
 			sk := sceneKey{line.Act, line.Scene}
@@ -202,29 +192,23 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 	return nil
 }
 
-// perseusWork holds the minimal info needed to match a Perseus XML to a DB work.
-type perseusWork struct {
-	ID    int64
-	Title string
-}
-
 // buildPerseusWorksMap queries the works table for all rows with a perseus_id
-// and returns a map from perseus_id → perseusWork.
-func buildPerseusWorksMap(database *sql.DB) (map[string]perseusWork, error) {
+// and returns a map from perseus_id → workInfo.
+func buildPerseusWorksMap(database *sql.DB) (map[string]workInfo, error) {
 	rows, err := database.Query("SELECT id, title, perseus_id FROM works WHERE perseus_id IS NOT NULL AND perseus_id != ''")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	m := make(map[string]perseusWork)
+	m := make(map[string]workInfo)
 	for rows.Next() {
 		var id int64
 		var title, perseusID string
 		if err := rows.Scan(&id, &title, &perseusID); err != nil {
 			continue
 		}
-		m[perseusID] = perseusWork{ID: id, Title: title}
+		m[perseusID] = workInfo{ID: id, Title: title}
 	}
 	return m, nil
 }

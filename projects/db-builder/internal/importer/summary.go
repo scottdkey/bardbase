@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
@@ -128,5 +127,5 @@ func PrintSummary(database *sql.DB, dbPath string) {
 	}
 
 	fmt.Printf("  Built: %s\n", time.Now().UTC().Format("2006-01-02 15:04:05 UTC"))
-	fmt.Println("=" + strings.Repeat("=", 59))
+	printBar()
 }

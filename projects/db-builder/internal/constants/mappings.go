@@ -19,6 +19,11 @@ var SEPoetryMap map[string]string
 // Loaded from projects/data/folger_slugs.json.
 var FolgerSlugs map[string]string
 
+// FolioPlayTitles maps normalized First Folio play head text to OSS work IDs.
+// Normalization: replace long-s (ſ→s), lowercase, collapse whitespace.
+// Loaded from projects/data/folio_play_titles.json.
+var FolioPlayTitles map[string]string
+
 // GenreMap maps OSS single-letter genre codes to full work type names.
 // Loaded from projects/data/genre_map.json.
 var GenreMap map[string]string

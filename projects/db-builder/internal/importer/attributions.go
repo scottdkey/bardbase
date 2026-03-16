@@ -36,13 +36,6 @@ func PopulateAttributions(database *sql.DB) error {
 			continue
 		}
 
-		boolToInt := func(b bool) int {
-			if b {
-				return 1
-			}
-			return 0
-		}
-
 		_, err = database.Exec(`
 			INSERT OR REPLACE INTO attributions (
 				source_id, required, attribution_text, attribution_html,

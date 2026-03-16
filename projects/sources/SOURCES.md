@@ -48,39 +48,28 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 - **Format**: TEI XML with dual line numbering (Globe + First Folio)
 - **Content**: Complete Shakespeare plays as used by Schmidt's Lexicon
 - **Edition type**: Globe text with First Folio line number cross-references
-- **Import priority**: P2 — after lexicon import is fully validated
-- **Status**: ❌ Not started — needs scraping (same server as lexicon, be polite with rate limiting)
-- **Notes**: These are the direct text references for lexicon citations. Dual line numbering is valuable for cross-edition mapping. Would add a third edition to compare alongside OSS Globe and SE Modern.
+- **Import priority**: P2
+- **Status**: ✅ Imported — 43 XML files downloaded to `projects/sources/perseus-plays/`. Go pipeline (step 5: perseus) parses TEI and inserts as "Perseus Globe Edition" alongside OSS and SE.
+- **Notes**: These are the direct text references for lexicon citations. Dual line numbering enables cross-edition mapping.
 
 ### 5. EEBO-TCP (Early English Books Online — Text Creation Partnership)
 - **URL**: https://github.com/textcreationpartnership
-- **License**: Public Domain (released January 1, 2015)
-- **Attribution**: Courtesy credit to TCP appreciated but not required
-- **Format**: TEI XML
+- **License**: CC0 1.0 Universal (public domain, released January 1, 2015)
+- **Attribution**: Courtesy credit appreciated but not required
+- **Format**: TEI P5 XML, diplomatic transcriptions in original spelling
 - **Content**:
-  - **First Folio** (1623): TCP ID `A22442` — full diplomatic transcription, original spelling
-  - **Various Quartos**: Multiple early editions of individual plays
-- **Edition type**: Original spelling diplomatic transcriptions
-- **Import priority**: P2 — First Folio is high value
-- **Status**: ❌ Not started — available on GitHub, needs download and parser
-- **Notes**: Original spelling requires a normalization layer for search matching against modern texts. First Folio is the most important single source after Globe/modern text.
-
-### 6. Project Gutenberg
-- **URL**: https://www.gutenberg.org/
-- **License**: Public Domain (the texts themselves)
-- **Attribution**: **CONDITIONAL** — if you use the name "Project Gutenberg" in the app, you must comply with their trademark license. If you strip the Gutenberg header/footer and don't reference the name, no attribution needed for PD texts.
-- **Format**: Plain text, some HTML
-- **Content**: Complete works of Shakespeare, multiple editions available
-- **Edition type**: Modern spelling, various editorial choices
-- **Import priority**: P3
-- **Status**: ❌ Not started
-- **Trademark note**: The name "Project Gutenberg" is trademarked. Free to use the public domain texts, but referencing the source by name requires compliance with their trademark terms. Safest approach: credit as "public domain text" without using the Gutenberg name, or comply with their full license.
+  - **First Folio** (1623): TCP ID `A11954`, STC 22273 — 35 plays, original spelling. Downloaded to `projects/sources/eebo-tcp/A11954.xml`
+  - **Various Quartos**: Available on GitHub (A11959 Hamlet, A12044 Sonnets 1609, A12034 Poems, A11966 1H4, A12040 Lucrece, A12017 Titus, A68931 2H6). Downloaded to `projects/sources/eebo-tcp/`.
+- **Edition type**: Original spelling diplomatic transcriptions (long-s normalized to s on import)
+- **Import priority**: P2 — First Folio done; quartos next
+- **Status**: ✅ First Folio imported — parser (`parser/folio.go`) and importer (`importer/folio.go`) complete. Added as step 6 in build pipeline. Edition short code: `first_folio`. Quarto files downloaded but not yet parsed/imported.
+- **Notes**: First Folio covers 35 of 36 F1 plays (all except Troilus, which had a complex print history and was omitted from the TCP transcription). Long-s (ſ→s) is normalized at import time. Original spelling is preserved otherwise.
 
 ---
 
 ## Reference Only (NO Download)
 
-### 7. Folger Shakespeare Library
+### 6. Folger Shakespeare Library
 - **URL**: https://www.folger.edu/explore/shakespeares-works/
 - **License**: Proprietary — free to view on their website
 - **Attribution**: N/A (reference links only)
@@ -190,7 +179,6 @@ The Second Folio (1632) is historically significant but presents a challenge:
 | Perseus Lexicon | CC BY-SA 3.0 | **YES — Required** | Full credit + compatible license |
 | Perseus Plays | CC BY-SA 3.0 | **YES — Required** | Same as lexicon |
 | EEBO-TCP | Public Domain | Courtesy credit | "Transcription by Text Creation Partnership" |
-| Gutenberg | PD (trademark on name) | Conditional | Don't use "Project Gutenberg" name without compliance |
 | Folger | N/A (links only) | N/A | "Visit Folger Shakespeare Library" with URL |
 | Wikisource | CC BY-SA 3.0 | **YES — Required** | If used |
 
@@ -215,15 +203,14 @@ Perseus (and Wikisource if used) both use CC BY-SA 3.0. This means:
 | `se/` | 39 files (37 JSONs + 2 XHTMLs) | All 37 plays + sonnets + poetry |
 | `lexicon/entries/[A-Z]/` | 20,070 XML files | Schmidt Lexicon (nearly complete) |
 | `lexicon/entry_list.json` | Entry index | Scraper tracking file |
+| `perseus-plays/` | 43 XML files | Perseus Globe edition TEI XML |
+| `eebo-tcp/` | 8 XML files | First Folio (A11954) + 7 quartos |
 
 ### What we still need
 
 | Source | Priority | Effort | Blocker |
 |--------|----------|--------|---------|
-| Perseus play texts | P2 | Medium — scraper needed, rate-limited | Same server as lexicon |
-| EEBO-TCP First Folio | P2 | Low — available on GitHub | Parser for TEI XML diplomatic text |
-| EEBO-TCP Quartos | P3 | Medium — multiple files | Parser + normalization layer |
-| Project Gutenberg | P3 | Low — plain text | Parser + Gutenberg header stripping |
+| EEBO-TCP Quartos (import) | P3 | Medium — parse 7 individual play XML files | Need parser + work matching |
 
 ---
 
@@ -235,9 +222,8 @@ Perseus (and Wikisource if used) both use CC BY-SA 3.0. This means:
 | 0b | Standard Ebooks → SQLite | P0 | ✅ Complete |
 | 1 | Schmidt Lexicon XMLs → SQLite | P1 | ✅ Complete (20,070 entries) |
 | 1b | Folger reference URLs | P1 | ⚠️ Partial |
-| 2 | Perseus play texts → SQLite | P2 | ❌ Not started |
-| 2b | EEBO-TCP First Folio → SQLite | P2 | ❌ Not started |
-| 3 | Gutenberg texts → SQLite | P3 | ❌ Not started |
-| 4 | EEBO-TCP Quartos → SQLite | P3 | ❌ Not started |
+| 2 | Perseus play texts → SQLite | P2 | ✅ Complete (43 files, step 5, `perseus_globe` edition) |
+| 2b | EEBO-TCP First Folio → SQLite | P2 | ✅ Complete (35 plays, step 6, `first_folio` edition) |
+| 3 | EEBO-TCP Quartos → SQLite | P3 | ⚠️ Files downloaded, import not yet built |
 | 5 | Verified sources from "Needs Verification" list | P4+ | ❌ Pending outreach |
 | 6 | Second Folio (if source found) | P4 | ❌ Research needed |

@@ -6,12 +6,12 @@
 # Usage (from repo root):
 #   make db-builder build         # Compile the builder binary
 #   make db-builder test          # Run all tests
-#   make db-builder run           # Full pipeline build
-#   make db-builder run-cached    # Skip SE downloads, use cached data
+#   make db-builder run           # Full pipeline build (uses cached sources)
+#   make db-builder run-fresh     # Full pipeline build, re-download source files
 #   make db-builder lint          # Run go vet
 #   make db-builder clean         # Remove build artifacts
 
-.PHONY: build test run run-cached lint cover setup clean
+.PHONY: build test run run-fresh lint cover setup clean
 
 # Compile the CLI binary to the repo-root bin/ directory
 build:
@@ -30,9 +30,9 @@ cover:
 run:
 	go run ./cmd/build -output build
 
-# Run with cached SE data (skip network downloads)
-run-cached:
-	go run ./cmd/build -output build -skip-download
+# Re-download all source files before building
+run-fresh:
+	go run ./cmd/build -output build -force-download
 
 # Run a single named step (e.g., make run-step-oss)
 run-step-%:

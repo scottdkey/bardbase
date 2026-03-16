@@ -94,6 +94,9 @@ func loadAllData(dir string) error {
 	if err := loadStringMap(filepath.Join(dir, "folger_slugs.json"), &FolgerSlugs); err != nil {
 		return fmt.Errorf("folger_slugs.json: %w", err)
 	}
+	if err := loadStringMap(filepath.Join(dir, "folio_play_titles.json"), &FolioPlayTitles); err != nil {
+		return fmt.Errorf("folio_play_titles.json: %w", err)
+	}
 	if err := loadStringMap(filepath.Join(dir, "genre_map.json"), &GenreMap); err != nil {
 		return fmt.Errorf("genre_map.json: %w", err)
 	}

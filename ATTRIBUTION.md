@@ -52,39 +52,29 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 ---
 
-## 4. Perseus Digital Library — Shakespeare Play Texts (Planned)
+## 4. Perseus Digital Library — Shakespeare Play Texts
 
 - **URL**: http://www.perseus.tufts.edu/hopper/
 - **License**: CC BY-SA 3.0 US
 - **Attribution**: **REQUIRED** (same terms as Schmidt Lexicon above)
 - **Content**: Complete Shakespeare plays as used by Schmidt's Lexicon, with
-  Globe edition numbering and First Folio line cross-references.
-- **Status**: Not yet imported
+  Globe edition numbering and First Folio line cross-references. 43 TEI XML
+  files in `projects/sources/perseus-plays/`.
+- **Status**: Imported — `perseus_globe` edition in the database
 
 ---
 
-## 5. EEBO-TCP — Early English Books Online (Planned)
+## 5. EEBO-TCP — Early English Books Online
 
 - **URL**: https://github.com/textcreationpartnership
-- **License**: Public Domain (released January 1, 2015)
+- **License**: CC0 1.0 Universal (public domain, released January 1, 2015)
 - **Attribution**: Voluntary — courtesy credit to the Text Creation Partnership
   is appreciated but not required.
-- **Content**: First Folio (1623) diplomatic transcription (TCP ID A22442),
-  original spelling. Various Quartos.
-- **Status**: Not yet imported
-
----
-
-## 6. Project Gutenberg (Planned)
-
-- **URL**: https://www.gutenberg.org/
-- **License**: Public Domain (the texts themselves)
-- **Attribution**: Conditional — if the name "Project Gutenberg" is used, full
-  trademark license compliance is required. This project uses the public domain
-  texts without referencing the Gutenberg trademark.
-- **Content**: Complete works in plain text, multiple editions.
-- **Credit**: Public domain text sources.
-- **Status**: Not yet imported
+- **Content**: First Folio (1623) diplomatic transcription (TCP ID A11954,
+  STC 22273), original spelling, 35 plays. Source file in
+  `projects/sources/eebo-tcp/A11954.xml`. Various early Quartos also
+  downloaded.
+- **Status**: First Folio imported — `first_folio` edition in the database
 
 ---
 
@@ -97,7 +87,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 | Standard Ebooks | CC0 1.0 | No | No |
 | Perseus Play Texts | CC BY-SA 3.0 | **Yes** | **Yes** |
 | EEBO-TCP | Public Domain | No | No |
-| Project Gutenberg | Public Domain | No | No |
 
 Because Perseus content is licensed CC BY-SA 3.0, the compiled database is
 released under **CC BY-SA 4.0** (forward-compatible). See `LICENSES/data.md`.

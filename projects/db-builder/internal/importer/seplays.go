@@ -20,7 +20,7 @@ import (
 )
 
 // ImportSEPlays imports Standard Ebooks play text from GitHub.
-func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
+func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error {
 	stepBanner("STEP 3: Import Standard Ebooks Plays")
 
 	start := time.Now()
@@ -47,18 +47,10 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 	}
 
 	// Build work map
-	worksMap := make(map[string]workInfo)
-	rows, err := database.Query("SELECT id, oss_id, title FROM works")
+	worksMap, err := buildWorksMap(database)
 	if err != nil {
-		return fmt.Errorf("querying works: %w", err)
+		return err
 	}
-	for rows.Next() {
-		var id int64
-		var ossID, title string
-		rows.Scan(&id, &ossID, &title)
-		worksMap[ossID] = workInfo{ID: id, Title: title}
-	}
-	rows.Close()
 
 	totalLines := 0
 	totalPlays := 0
@@ -79,7 +71,7 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 		totalPlays++
 
 		cacheFile := filepath.Join(cacheDir, repoName+".json")
-		actsData, err := loadOrDownloadPlay(cacheFile, repoName, skipDownload, work.Title, totalPlays)
+		actsData, err := loadOrDownloadPlay(cacheFile, repoName, forceDownload, work.Title, totalPlays)
 		if err != nil || actsData == nil {
 			continue
 		}
@@ -98,8 +90,7 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 		}
 
 		// Clear existing SE data for this work
-		database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
-		database.Exec("DELETE FROM text_divisions WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+		clearWorkEditionData(database, work.ID, editionID)
 
 		// Insert lines with character matching
 		charCache := make(map[string]interface{}) // name → *int64 or nil
@@ -110,17 +101,8 @@ func ImportSEPlays(database *sql.DB, cacheDir string, skipDownload bool) error {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
 		for _, line := range allLines {
-			var charID interface{}
 			charName := line.Character
-
-			if charName != "" {
-				if cached, ok := charCache[charName]; ok {
-					charID = cached
-				} else {
-					charID = lookupCharacter(database, work.ID, charName)
-					charCache[charName] = charID
-				}
-			}
+			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := "speech"
 			if line.IsStageDirection {
@@ -164,17 +146,16 @@ type workInfo struct {
 	Title string
 }
 
-func loadOrDownloadPlay(cacheFile, repoName string, skipDownload bool, title string, num int) (map[string]string, error) {
-	// Try cache first
-	if data, err := os.ReadFile(cacheFile); err == nil {
-		var acts map[string]string
-		if json.Unmarshal(data, &acts) == nil {
-			return acts, nil
+func loadOrDownloadPlay(cacheFile, repoName string, forceDownload bool, title string, num int) (map[string]string, error) {
+	// Use cache unless force-download is requested
+	if !forceDownload {
+		if data, err := os.ReadFile(cacheFile); err == nil {
+			var acts map[string]string
+			if json.Unmarshal(data, &acts) == nil {
+				return acts, nil
+			}
 		}
-	}
-
-	if skipDownload {
-		fmt.Printf("  [%2d/37] %s — SKIPPED (no cache, --skip-download)\n", num, title)
+		fmt.Printf("  [%2d/37] %s — SKIPPED (no cache; use -force-download to fetch)\n", num, title)
 		return nil, nil
 	}
 

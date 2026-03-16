@@ -288,63 +288,21 @@ func alignEditionPair(database *sql.DB, pair editionPair, stmt *sql.Stmt, worksP
 
 // loadSceneLines loads play text lines for a given scene into AlignableLine format.
 func loadSceneLines(database *sql.DB, workID, editionID int64, act, scene int) []parser.AlignableLine {
-	rows, err := database.Query(`
-		SELECT id, content, COALESCE(line_number, 0)
-		FROM text_lines
-		WHERE work_id = ? AND edition_id = ? AND act = ? AND scene = ?
-		ORDER BY line_number, id`, workID, editionID, act, scene)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	var lines []parser.AlignableLine
-	for rows.Next() {
-		var l parser.AlignableLine
-		rows.Scan(&l.ID, &l.Content, &l.LineNumber)
-		lines = append(lines, l)
-	}
-	return lines
+	return queryAlignableLines(database,
+		"work_id = ? AND edition_id = ? AND act = ? AND scene = ?",
+		workID, editionID, act, scene)
 }
 
 // loadSonnetLines loads lines for a specific sonnet (scene = sonnet number).
 func loadSonnetLines(database *sql.DB, workID, editionID int64, sonnetNum int) []parser.AlignableLine {
-	rows, err := database.Query(`
-		SELECT id, content, COALESCE(line_number, 0)
-		FROM text_lines
-		WHERE work_id = ? AND edition_id = ? AND scene = ? AND (act IS NULL OR act = 0)
-		ORDER BY line_number, id`, workID, editionID, sonnetNum)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	var lines []parser.AlignableLine
-	for rows.Next() {
-		var l parser.AlignableLine
-		rows.Scan(&l.ID, &l.Content, &l.LineNumber)
-		lines = append(lines, l)
-	}
-	return lines
+	return queryAlignableLines(database,
+		"work_id = ? AND edition_id = ? AND scene = ? AND (act IS NULL OR act = 0)",
+		workID, editionID, sonnetNum)
 }
 
 // loadPoemLines loads all lines for a poem (no act/scene structure).
 func loadPoemLines(database *sql.DB, workID, editionID int64) []parser.AlignableLine {
-	rows, err := database.Query(`
-		SELECT id, content, COALESCE(line_number, 0)
-		FROM text_lines
-		WHERE work_id = ? AND edition_id = ? AND (act IS NULL OR act = 0) AND (scene IS NULL OR scene = 0)
-		ORDER BY line_number, id`, workID, editionID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	var lines []parser.AlignableLine
-	for rows.Next() {
-		var l parser.AlignableLine
-		rows.Scan(&l.ID, &l.Content, &l.LineNumber)
-		lines = append(lines, l)
-	}
-	return lines
+	return queryAlignableLines(database,
+		"work_id = ? AND edition_id = ? AND (act IS NULL OR act = 0) AND (scene IS NULL OR scene = 0)",
+		workID, editionID)
 }

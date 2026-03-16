@@ -15,12 +15,12 @@
 //	make db-builder run-cached
 //
 //	# Or directly from projects/db-builder/:
-//	go run ./cmd/build                        # Full build
-//	go run ./cmd/build -skip-download         # Skip SE downloads (use cache)
+//	go run ./cmd/build                        # Full build (uses cached source files)
+//	go run ./cmd/build -force-download        # Re-download SE source files
 //	go run ./cmd/build -output build          # Custom output directory
 //	go run ./cmd/build -step oss              # Run only one step
 //
-// Steps: oss, lexicon, se, poetry, perseus, attributions, citations, mappings, fts
+// Steps: oss, lexicon, se, poetry, perseus, folio, attributions, citations, mappings, fts
 package main
 
 import (
@@ -35,7 +35,7 @@ import (
 
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
-	skipDownload := flag.Bool("skip-download", false, "Skip Standard Ebooks downloads (use cache only)")
+	forceDownload := flag.Bool("force-download", false, "Re-download Standard Ebooks source files (ignores cache)")
 	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, attributions, citations, mappings, fts")
 	flag.Parse()
 
@@ -88,10 +88,11 @@ func main() {
 	//   3. se          — Import Standard Ebooks plays (modern edition)
 	//   4. poetry      — Import Standard Ebooks poetry (sonnets, poems)
 	//   5. perseus     — Import Perseus Globe edition plays (37 plays from TEI XML)
-	//   6. attributions — Populate attribution records for all sources
-	//   7. mappings    — Build cross-edition line alignments (needed by citation propagation)
-	//   8. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
-	//   9. fts         — Build full-text search index
+	//   6. folio       — Import First Folio 1623 (EEBO-TCP A11954, 35 plays, original spelling)
+	//   7. attributions — Populate attribution records for all sources
+	//   8. mappings    — Build cross-edition line alignments (needed by citation propagation)
+	//   9. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
+	//  10. fts         — Build full-text search index
 	type buildStep struct {
 		name string
 		fn   func() error
@@ -100,9 +101,10 @@ func main() {
 	steps := []buildStep{
 		{"oss", func() error { return importer.ImportOSS(database, ossSQLPath) }},
 		{"lexicon", func() error { return importer.ImportLexicon(database, lexiconDir) }},
-		{"se", func() error { return importer.ImportSEPlays(database, cacheDir, *skipDownload) }},
-		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *skipDownload) }},
+		{"se", func() error { return importer.ImportSEPlays(database, cacheDir, *forceDownload) }},
+		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *forceDownload) }},
 		{"perseus", func() error { return importer.ImportPerseusPlays(database, sourcesDir) }},
+		{"folio", func() error { return importer.ImportFirstFolio(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},

@@ -18,7 +18,7 @@ import (
 )
 
 // ImportSEPoetry imports Standard Ebooks poetry, sonnets, and Folger URLs.
-func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error {
+func ImportSEPoetry(database *sql.DB, cacheDir string, forceDownload bool) error {
 	stepBanner("STEP 4: Import Poetry + Folger URLs")
 
 	start := time.Now()
@@ -33,22 +33,17 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 	}
 
 	// Build works map
-	works := make(map[string]workInfo)
-	rows, _ := database.Query("SELECT id, oss_id, title FROM works")
-	for rows.Next() {
-		var id int64
-		var ossID, title string
-		rows.Scan(&id, &ossID, &title)
-		works[ossID] = workInfo{ID: id, Title: title}
+	works, err := buildWorksMap(database)
+	if err != nil {
+		return err
 	}
-	rows.Close()
 
 	base := "https://raw.githubusercontent.com/standardebooks/william-shakespeare_poetry/master/src/epub/text"
 	totalImported := 0
 
 	// === Poetry ===
 	poetryCache := filepath.Join(cacheDir, "se-poetry.xhtml")
-	poetryHTML := loadOrDownloadFile(poetryCache, base+"/poetry.xhtml", skipDownload, "Poetry")
+	poetryHTML := loadOrDownloadFile(poetryCache, base+"/poetry.xhtml", forceDownload, "Poetry")
 
 	if poetryHTML != "" {
 		poems := parser.ParseSEPoetry(poetryHTML)
@@ -62,7 +57,7 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 				continue
 			}
 
-			database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+			clearWorkEditionData(database, work.ID, editionID)
 			tx, _ := database.Begin()
 			for _, line := range lines {
 				tx.Exec(`
@@ -78,14 +73,14 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 
 	// === Sonnets ===
 	sonnetsCache := filepath.Join(cacheDir, "se-sonnets.xhtml")
-	sonnetsHTML := loadOrDownloadFile(sonnetsCache, base+"/sonnets.xhtml", skipDownload, "Sonnets")
+	sonnetsHTML := loadOrDownloadFile(sonnetsCache, base+"/sonnets.xhtml", forceDownload, "Sonnets")
 
 	if sonnetsHTML != "" {
 		data := parser.ParseSESonnets(sonnetsHTML)
 
 		// Sonnets proper
 		if work, ok := works["sonnets"]; ok {
-			database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+			clearWorkEditionData(database, work.ID, editionID)
 			tx, _ := database.Begin()
 			sortOrder := 0
 
@@ -113,7 +108,7 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 
 		// Lover's Complaint
 		if work, ok := works["loverscomplaint"]; ok && len(data.LoversComplaint) > 0 {
-			database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+			clearWorkEditionData(database, work.ID, editionID)
 			tx, _ := database.Begin()
 			for _, line := range data.LoversComplaint {
 				tx.Exec(`
@@ -148,14 +143,13 @@ func ImportSEPoetry(database *sql.DB, cacheDir string, skipDownload bool) error 
 	return nil
 }
 
-func loadOrDownloadFile(cachePath, url string, skipDownload bool, label string) string {
-	// Try cache
-	if data, err := os.ReadFile(cachePath); err == nil {
-		return string(data)
-	}
-
-	if skipDownload {
-		fmt.Printf("  %s — SKIPPED (no cache)\n", label)
+func loadOrDownloadFile(cachePath, url string, forceDownload bool, label string) string {
+	// Use cache unless force-download is requested
+	if !forceDownload {
+		if data, err := os.ReadFile(cachePath); err == nil {
+			return string(data)
+		}
+		fmt.Printf("  %s — SKIPPED (no cache; use -force-download to fetch)\n", label)
 		return ""
 	}
 

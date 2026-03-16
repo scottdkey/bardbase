@@ -8,17 +8,23 @@ These are unmodified original source files. If you need derived or curated data,
 
 | Directory | Source | License | Files | Description |
 |-----------|--------|---------|-------|-------------|
-| `oss/` | [Open Source Shakespeare](https://opensourceshakespeare.org) | Public Domain | 1 SQL dump | Globe-based modern spelling, full MySQL dump (38 works) |
-| `se/` | [Standard Ebooks](https://standardebooks.org) | CC0 | 37 JSONs + 2 XHTMLs | Modern-spelling, verse-level text for all 37 plays + sonnets + poems |
+| `oss/` | [Open Source Shakespeare](https://opensourceshakespeare.org) | Public Domain | 1 SQL dump | Globe-based modern spelling, full MySQL dump |
+| `se/` | [Standard Ebooks](https://standardebooks.org) | CC0 | 37 JSONs + 2 XHTMLs | Modern-spelling text for all 37 plays + sonnets + poems |
 | `lexicon/` | [Perseus Digital Library](http://www.perseus.tufts.edu) | CC BY-SA 3.0 | 20,070 XMLs | Schmidt's Shakespeare Lexicon (TEI XML, one file per entry) |
+| `perseus-plays/` | [Perseus Digital Library](http://www.perseus.tufts.edu) | CC BY-SA 3.0 | 43 XMLs | Globe edition play texts with dual Globe/First Folio line numbering |
+| `eebo-tcp/` | [EEBO-TCP](https://github.com/textcreationpartnership) | CC0 | 8 XMLs | First Folio 1623 (A11954) + 7 early Quarto editions |
 
 ## Source Status
 
-| Source | Total Expected | On Disk | Coverage |
-|--------|---------------|---------|----------|
-| OSS/Moby | 1 SQL dump | 1 | 100% |
-| Standard Ebooks | 37 plays + sonnets + poems | 39 files | 100% |
-| Schmidt Lexicon | 20,097 entries | 20,070 XMLs | 99.9% |
+| Source | Files on Disk | Imported | Edition |
+|--------|--------------|----------|---------|
+| OSS/Moby | 1 SQL dump | ✅ | `globe_moby` |
+| Standard Ebooks plays | 37 JSONs | ✅ | `se_modern` |
+| Standard Ebooks poetry | 2 XHTMLs | ✅ | `se_modern` |
+| Schmidt Lexicon | 20,070 XMLs | ✅ | — (lexicon tables) |
+| Perseus Globe plays | 43 XMLs | ✅ | `perseus_globe` |
+| First Folio (EEBO-TCP A11954) | 1 XML | ✅ | `first_folio` |
+| Early Quartos (EEBO-TCP) | 7 XMLs | ⚠️ downloaded, not yet imported | — |
 
 ## Contract
 
@@ -30,14 +36,4 @@ Every other project in this monorepo treats `sources/` as **immutable input**:
 
 If a source file needs correction, the fix belongs upstream with the original publisher — not here.
 
-## Planned Additions
-
-These directories will be added as new sources are downloaded:
-
-| Directory | Source | License | Status |
-|-----------|--------|---------|--------|
-| `perseus-texts/` | Perseus Shakespeare Play Texts | CC BY-SA 3.0 | Not started — needs scraping |
-| `eebo-tcp/` | EEBO-TCP First Folio + Quartos | Public Domain | Not started — available on GitHub |
-| `gutenberg/` | Project Gutenberg texts | Public Domain | Not started |
-
-See [SOURCES.md](SOURCES.md) for the full catalog of all known Shakespeare text sources.
+See [SOURCES.md](SOURCES.md) for the full catalog of all known Shakespeare text sources and their licensing details.

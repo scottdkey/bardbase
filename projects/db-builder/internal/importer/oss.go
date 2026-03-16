@@ -66,9 +66,7 @@ type OSSParagraph struct {
 
 // ImportOSS imports the OSS/Moby Shakespeare data from a MySQL dump file.
 func ImportOSS(database *sql.DB, sqlPath string) error {
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 1: Import OSS/Moby Shakespeare")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 1: Import OSS/Moby Shakespeare")
 
 	content, err := os.ReadFile(sqlPath)
 	if err != nil {
@@ -364,16 +362,3 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 	return nil
 }
 
-func nilIfEmpty(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-func nilIfZero(n int64) interface{} {
-	if n == 0 {
-		return nil
-	}
-	return n
-}
