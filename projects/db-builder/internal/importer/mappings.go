@@ -12,15 +12,50 @@ import (
 	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
 )
 
-// BuildLineMappings creates cross-edition line alignments for side-by-side comparison.
+// editionPair holds the two editions being aligned.
+type editionPair struct {
+	AID   int64
+	ACode string
+	BID   int64
+	BCode string
+}
+
+// mappingStats tracks alignment counts for a mapping run.
+type mappingStats struct {
+	total, aligned, modified, onlyA, onlyB int
+}
+
+func (s *mappingStats) record(mt string) {
+	s.total++
+	switch mt {
+	case "aligned":
+		s.aligned++
+	case "modified":
+		s.modified++
+	case "only_a":
+		s.onlyA++
+	case "only_b":
+		s.onlyB++
+	}
+}
+
+func (s *mappingStats) add(other mappingStats) {
+	s.total += other.total
+	s.aligned += other.aligned
+	s.modified += other.modified
+	s.onlyA += other.onlyA
+	s.onlyB += other.onlyB
+}
+
+// BuildLineMappings creates cross-edition line alignments for all edition pairs.
+//
+// For each pair of editions that share works, it aligns lines using text similarity
+// (Needleman-Wunsch algorithm with Jaccard word similarity scoring).
 //
 // Handles three structure types:
 //   - Plays: aligns scenes (act + scene) across editions
 //   - Sonnets: aligns individual sonnets (scene = sonnet number) across editions
 //   - Poems: aligns entire poems (by work_id) across editions
-//
-// For each shared section, it aligns lines using text similarity
-// (Needleman-Wunsch algorithm with Jaccard word similarity scoring).
 func BuildLineMappings(database *sql.DB) error {
 	stepBanner("STEP 7: Build Cross-Edition Line Mappings")
 
@@ -29,24 +64,48 @@ func BuildLineMappings(database *sql.DB) error {
 	// Clear existing mappings
 	database.Exec("DELETE FROM line_mappings")
 
-	// Get edition IDs
-	var ossEditionID, seEditionID int64
-	database.QueryRow("SELECT id FROM editions WHERE short_code = 'oss_globe'").Scan(&ossEditionID)
-	database.QueryRow("SELECT id FROM editions WHERE short_code = 'se_modern'").Scan(&seEditionID)
+	// Get all editions that have text_lines
+	type edInfo struct {
+		ID   int64
+		Code string
+	}
+	var editions []edInfo
+	edRows, err := database.Query(`
+		SELECT DISTINCT e.id, e.short_code
+		FROM editions e
+		JOIN text_lines tl ON tl.edition_id = e.id
+		ORDER BY e.id`)
+	if err != nil {
+		return fmt.Errorf("querying editions: %w", err)
+	}
+	for edRows.Next() {
+		var e edInfo
+		edRows.Scan(&e.ID, &e.Code)
+		editions = append(editions, e)
+	}
+	edRows.Close()
 
-	if ossEditionID == 0 || seEditionID == 0 {
-		fmt.Println("  Need both oss_globe and se_modern editions. Skipping.")
+	if len(editions) < 2 {
+		fmt.Println("  Need at least 2 editions. Skipping.")
 		return nil
 	}
 
-	totalPairs := 0
-	alignedCount := 0
-	modifiedCount := 0
-	onlyACount := 0
-	onlyBCount := 0
-	worksProcessed := make(map[int64]bool)
+	// Build all edition pairs
+	var pairs []editionPair
+	for i := 0; i < len(editions); i++ {
+		for j := i + 1; j < len(editions); j++ {
+			pairs = append(pairs, editionPair{
+				AID: editions[i].ID, ACode: editions[i].Code,
+				BID: editions[j].ID, BCode: editions[j].Code,
+			})
+		}
+	}
 
-	// Prepare insert statement
+	fmt.Printf("  Edition pairs: %d\n", len(pairs))
+
+	worksProcessed := make(map[int64]bool)
+	var totalStats mappingStats
+
 	tx, err := database.Begin()
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -60,35 +119,55 @@ func BuildLineMappings(database *sql.DB) error {
 		return fmt.Errorf("preparing insert: %w", err)
 	}
 
-	insertPair := func(workID int64, act, scene, order int, pair parser.AlignedPair) {
+	for _, pair := range pairs {
+		pairStats := alignEditionPair(database, pair, insertStmt, worksProcessed)
+		totalStats.add(pairStats)
+		fmt.Printf("    %s ↔ %s: %d pairs (aligned=%d)\n",
+			pair.ACode, pair.BCode, pairStats.total, pairStats.aligned)
+	}
+
+	insertStmt.Close()
+	tx.Commit()
+
+	elapsed := time.Since(start).Seconds()
+	db.LogImport(database, "mappings", "build_complete",
+		fmt.Sprintf("%d pairs across %d works: aligned=%d modified=%d only_a=%d only_b=%d",
+			totalStats.total, len(worksProcessed), totalStats.aligned, totalStats.modified,
+			totalStats.onlyA, totalStats.onlyB),
+		totalStats.total, elapsed)
+
+	fmt.Printf("  ✓ %d alignment pairs across %d works in %.1fs\n",
+		totalStats.total, len(worksProcessed), elapsed)
+	fmt.Printf("    aligned: %d, modified: %d, only_a: %d, only_b: %d\n",
+		totalStats.aligned, totalStats.modified, totalStats.onlyA, totalStats.onlyB)
+	return nil
+}
+
+// alignEditionPair aligns all shared sections (scenes, sonnets, poems) between two editions.
+func alignEditionPair(database *sql.DB, pair editionPair, stmt *sql.Stmt, worksProcessed map[int64]bool) mappingStats {
+	var stats mappingStats
+
+	insert := func(workID int64, act, scene, order int, p parser.AlignedPair) {
 		var lineAID, lineBID interface{}
-		if pair.LineA != nil {
-			lineAID = pair.LineA.ID
+		if p.LineA != nil {
+			lineAID = p.LineA.ID
 		}
-		if pair.LineB != nil {
-			lineBID = pair.LineB.ID
+		if p.LineB != nil {
+			lineBID = p.LineB.ID
 		}
-
-		insertStmt.Exec(
-			workID, act, scene, order,
-			ossEditionID, seEditionID,
+		stmt.Exec(workID, act, scene, order,
+			pair.AID, pair.BID,
 			lineAID, lineBID,
-			pair.MatchType, pair.Similarity)
-
-		totalPairs++
-		switch pair.MatchType {
-		case "aligned":
-			alignedCount++
-		case "modified":
-			modifiedCount++
-		case "only_a":
-			onlyACount++
-		case "only_b":
-			onlyBCount++
-		}
+			p.MatchType, p.Similarity)
+		stats.record(p.MatchType)
 	}
 
 	// === 1. Align play scenes (act > 0) ===
+	type sceneRef struct {
+		WorkID     int64
+		Act, Scene int
+	}
+
 	sceneRows, err := database.Query(`
 		SELECT DISTINCT t1.work_id, t1.act, t1.scene
 		FROM text_lines t1
@@ -98,17 +177,11 @@ func BuildLineMappings(database *sql.DB) error {
 			WHERE t2.work_id = t1.work_id AND t2.act = t1.act AND t2.scene = t1.scene
 			  AND t2.edition_id = ?
 		  )
-		ORDER BY t1.work_id, t1.act, t1.scene`, ossEditionID, seEditionID)
+		ORDER BY t1.work_id, t1.act, t1.scene`, pair.AID, pair.BID)
 	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("querying shared scenes: %w", err)
+		return stats
 	}
 
-	type sceneRef struct {
-		WorkID int64
-		Act    int
-		Scene  int
-	}
 	var scenes []sceneRef
 	for sceneRows.Next() {
 		var s sceneRef
@@ -117,19 +190,17 @@ func BuildLineMappings(database *sql.DB) error {
 	}
 	sceneRows.Close()
 
-	fmt.Printf("  Play scenes to align: %d\n", len(scenes))
-
 	for _, scene := range scenes {
-		ossLines := loadSceneLines(database, scene.WorkID, ossEditionID, scene.Act, scene.Scene)
-		seLines := loadSceneLines(database, scene.WorkID, seEditionID, scene.Act, scene.Scene)
+		aLines := loadSceneLines(database, scene.WorkID, pair.AID, scene.Act, scene.Scene)
+		bLines := loadSceneLines(database, scene.WorkID, pair.BID, scene.Act, scene.Scene)
 
-		if len(ossLines) == 0 && len(seLines) == 0 {
+		if len(aLines) == 0 && len(bLines) == 0 {
 			continue
 		}
 
-		pairs := parser.AlignSequences(ossLines, seLines)
-		for i, pair := range pairs {
-			insertPair(scene.WorkID, scene.Act, scene.Scene, i+1, pair)
+		pairs := parser.AlignSequences(aLines, bLines)
+		for i, p := range pairs {
+			insert(scene.WorkID, scene.Act, scene.Scene, i+1, p)
 		}
 		worksProcessed[scene.WorkID] = true
 	}
@@ -147,7 +218,7 @@ func BuildLineMappings(database *sql.DB) error {
 			  AND (t2.act IS NULL OR t2.act = 0)
 			  AND t2.edition_id = ?
 		  )
-		ORDER BY t1.work_id, t1.scene`, ossEditionID, seEditionID)
+		ORDER BY t1.work_id, t1.scene`, pair.AID, pair.BID)
 	if err == nil {
 		var sonnetScenes []sceneRef
 		for sonnetRows.Next() {
@@ -157,22 +228,19 @@ func BuildLineMappings(database *sql.DB) error {
 		}
 		sonnetRows.Close()
 
-		if len(sonnetScenes) > 0 {
-			fmt.Printf("  Sonnets to align: %d\n", len(sonnetScenes))
-			for _, sn := range sonnetScenes {
-				ossLines := loadSonnetLines(database, sn.WorkID, ossEditionID, sn.Scene)
-				seLines := loadSonnetLines(database, sn.WorkID, seEditionID, sn.Scene)
+		for _, sn := range sonnetScenes {
+			aLines := loadSonnetLines(database, sn.WorkID, pair.AID, sn.Scene)
+			bLines := loadSonnetLines(database, sn.WorkID, pair.BID, sn.Scene)
 
-				if len(ossLines) == 0 && len(seLines) == 0 {
-					continue
-				}
-
-				pairs := parser.AlignSequences(ossLines, seLines)
-				for i, pair := range pairs {
-					insertPair(sn.WorkID, 0, sn.Scene, i+1, pair)
-				}
-				worksProcessed[sn.WorkID] = true
+			if len(aLines) == 0 && len(bLines) == 0 {
+				continue
 			}
+
+			pairs := parser.AlignSequences(aLines, bLines)
+			for i, p := range pairs {
+				insert(sn.WorkID, 0, sn.Scene, i+1, p)
+			}
+			worksProcessed[sn.WorkID] = true
 		}
 	}
 
@@ -189,7 +257,7 @@ func BuildLineMappings(database *sql.DB) error {
 			  AND (t2.act IS NULL OR t2.act = 0) AND (t2.scene IS NULL OR t2.scene = 0)
 			  AND t2.edition_id = ?
 		  )
-		ORDER BY t1.work_id`, ossEditionID, seEditionID)
+		ORDER BY t1.work_id`, pair.AID, pair.BID)
 	if err == nil {
 		var poemWorks []int64
 		for poemRows.Next() {
@@ -199,38 +267,23 @@ func BuildLineMappings(database *sql.DB) error {
 		}
 		poemRows.Close()
 
-		if len(poemWorks) > 0 {
-			fmt.Printf("  Poems to align: %d\n", len(poemWorks))
-			for _, workID := range poemWorks {
-				ossLines := loadPoemLines(database, workID, ossEditionID)
-				seLines := loadPoemLines(database, workID, seEditionID)
+		for _, workID := range poemWorks {
+			aLines := loadPoemLines(database, workID, pair.AID)
+			bLines := loadPoemLines(database, workID, pair.BID)
 
-				if len(ossLines) == 0 && len(seLines) == 0 {
-					continue
-				}
-
-				pairs := parser.AlignSequences(ossLines, seLines)
-				for i, pair := range pairs {
-					insertPair(workID, 0, 0, i+1, pair)
-				}
-				worksProcessed[workID] = true
+			if len(aLines) == 0 && len(bLines) == 0 {
+				continue
 			}
+
+			pairs := parser.AlignSequences(aLines, bLines)
+			for i, p := range pairs {
+				insert(workID, 0, 0, i+1, p)
+			}
+			worksProcessed[workID] = true
 		}
 	}
 
-	insertStmt.Close()
-	tx.Commit()
-
-	elapsed := time.Since(start).Seconds()
-	db.LogImport(database, "mappings", "build_complete",
-		fmt.Sprintf("%d pairs across %d works: aligned=%d modified=%d only_a=%d only_b=%d",
-			totalPairs, len(worksProcessed), alignedCount, modifiedCount, onlyACount, onlyBCount),
-		totalPairs, elapsed)
-
-	fmt.Printf("  ✓ %d alignment pairs across %d works in %.1fs\n", totalPairs, len(worksProcessed), elapsed)
-	fmt.Printf("    aligned: %d, modified: %d, only_oss: %d, only_se: %d\n",
-		alignedCount, modifiedCount, onlyACount, onlyBCount)
-	return nil
+	return stats
 }
 
 // loadSceneLines loads play text lines for a given scene into AlignableLine format.

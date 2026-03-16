@@ -89,8 +89,8 @@ func main() {
 	//   4. poetry      — Import Standard Ebooks poetry (sonnets, poems)
 	//   5. perseus     — Import Perseus Globe edition plays (37 plays from TEI XML)
 	//   6. attributions — Populate attribution records for all sources
-	//   7. citations   — Resolve lexicon citations to text_lines
-	//   8. mappings    — Build cross-edition line alignments
+	//   7. mappings    — Build cross-edition line alignments (needed by citation propagation)
+	//   8. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
 	//   9. fts         — Build full-text search index
 	type buildStep struct {
 		name string
@@ -104,8 +104,8 @@ func main() {
 		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *skipDownload) }},
 		{"perseus", func() error { return importer.ImportPerseusPlays(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
-		{"citations", func() error { return importer.ResolveCitations(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
+		{"citations", func() error { return importer.ResolveCitations(database) }},
 		{"fts", func() error { return importer.BuildFTS(database) }},
 	}
 
