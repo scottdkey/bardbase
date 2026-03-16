@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package importer
 
 import (
@@ -12,10 +15,7 @@ import (
 
 // PrintSummary prints the final database build summary.
 func PrintSummary(database *sql.DB, dbPath string) {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("BUILD COMPLETE")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("BUILD COMPLETE")
 
 	tables := []struct {
 		table string

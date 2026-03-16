@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Package importer implements the build steps that populate the Shakespeare database.
 package importer
 

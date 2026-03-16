@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package constants
 
 // SchemaSQL is the complete DDL for the Shakespeare database.

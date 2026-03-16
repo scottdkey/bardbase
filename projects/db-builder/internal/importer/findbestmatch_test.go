@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package importer
 
 import (
@@ -16,7 +19,6 @@ func makeCitation(quoteText string, line *int) citationRow {
 	}
 }
 
-func intPtr(v int) *int { return &v }
 
 // === Strategy 1: Exact Quote Match ===
 

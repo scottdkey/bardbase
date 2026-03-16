@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 // Package fetch provides HTTP utilities with retry logic for downloading source data.
 package fetch
 

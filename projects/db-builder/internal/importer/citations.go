@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Scott Key
+
 package importer
 
 import (
@@ -41,10 +44,7 @@ type textLineRow struct {
 // text lines in each edition using line numbers and/or quote text.
 // Results are stored in the citation_matches table.
 func ResolveCitations(database *sql.DB) error {
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 59))
-	fmt.Println("STEP 6: Resolve Lexicon Citations → Text Lines")
-	fmt.Println("=" + strings.Repeat("=", 59))
+	stepBanner("STEP 6: Resolve Lexicon Citations → Text Lines")
 
 	start := time.Now()
 
@@ -74,7 +74,6 @@ func ResolveCitations(database *sql.DB) error {
 	}
 
 	// Load ALL citations that have at least a work_id and some location info.
-	// Previously required act IS NOT NULL which excluded sonnets and poems.
 	citRows, err := database.Query(`
 		SELECT id, entry_id, sense_id, work_id, act, scene, line, quote_text
 		FROM lexicon_citations
@@ -146,7 +145,6 @@ func ResolveCitations(database *sql.DB) error {
 
 	for _, c := range citations {
 		if c.Act != nil {
-			// Play citation: has act (and usually scene)
 			scn := 0
 			if c.Scene != nil {
 				scn = *c.Scene
@@ -154,11 +152,9 @@ func ResolveCitations(database *sql.DB) error {
 			key := playKey{WorkID: c.WorkID, Act: *c.Act, Scene: scn}
 			playCitations[key] = append(playCitations[key], c)
 		} else if c.Scene != nil {
-			// Sonnet citation: has scene (sonnet number) but no act
 			key := sonnetKey{WorkID: c.WorkID, Scene: *c.Scene}
 			sonnetCitations[key] = append(sonnetCitations[key], c)
 		} else {
-			// Poem citation: only line and/or quote_text
 			key := poemKey{WorkID: c.WorkID}
 			poemCitations[key] = append(poemCitations[key], c)
 		}
@@ -188,7 +184,6 @@ func ResolveCitations(database *sql.DB) error {
 	noMatches := 0
 
 	matchCitation := func(cit citationRow, lines []textLineRow) {
-		// Group lines by edition
 		linesByEdition := make(map[int64][]textLineRow)
 		for _, tl := range lines {
 			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
@@ -215,86 +210,43 @@ func ResolveCitations(database *sql.DB) error {
 		}
 	}
 
-	// === Resolve play citations ===
+	// === Resolve play citations (unified via loadTextLines) ===
 	for key, sceneCitations := range playCitations {
-		var query string
-		var args []interface{}
+		var lines []textLineRow
+		var err error
 		if key.Scene > 0 {
-			query = `SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
-				WHERE work_id = ? AND act = ? AND scene = ? AND line_number IS NOT NULL
-				ORDER BY edition_id, line_number`
-			args = []interface{}{key.WorkID, key.Act, key.Scene}
+			lines, err = loadTextLines(database, "work_id = ? AND act = ? AND scene = ?",
+				key.WorkID, key.Act, key.Scene)
 		} else {
-			query = `SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
-				WHERE work_id = ? AND act = ? AND line_number IS NOT NULL
-				ORDER BY edition_id, line_number`
-			args = []interface{}{key.WorkID, key.Act}
+			lines, err = loadTextLines(database, "work_id = ? AND act = ?",
+				key.WorkID, key.Act)
 		}
-
-		lineRows, err := database.Query(query, args...)
 		if err != nil {
 			continue
 		}
-
-		var lines []textLineRow
-		for lineRows.Next() {
-			var tl textLineRow
-			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
-			lines = append(lines, tl)
-		}
-		lineRows.Close()
-
 		for _, cit := range sceneCitations {
 			matchCitation(cit, lines)
 		}
 	}
 
-	// === Resolve sonnet citations ===
-	// Sonnet citations have scene = sonnet number, line = line within sonnet
+	// === Resolve sonnet citations (unified via loadTextLines) ===
 	for key, sCitations := range sonnetCitations {
-		lineRows, err := database.Query(`
-			SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
-			WHERE work_id = ? AND scene = ? AND line_number IS NOT NULL
-			ORDER BY edition_id, line_number`,
+		lines, err := loadTextLines(database, "work_id = ? AND scene = ?",
 			key.WorkID, key.Scene)
 		if err != nil {
 			continue
 		}
-
-		var lines []textLineRow
-		for lineRows.Next() {
-			var tl textLineRow
-			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
-			lines = append(lines, tl)
-		}
-		lineRows.Close()
-
 		for _, cit := range sCitations {
 			matchCitation(cit, lines)
 		}
 	}
 
-	// === Resolve poem citations ===
-	// Poem citations typically have only line number (e.g., "Ven. 52" → line 52)
-	// Load all lines for the work and match by line_number or fuzzy text
+	// === Resolve poem citations (unified via loadTextLines) ===
 	for key, pCitations := range poemCitations {
-		lineRows, err := database.Query(`
-			SELECT id, content, COALESCE(line_number, 0), edition_id FROM text_lines
-			WHERE work_id = ? AND line_number IS NOT NULL
-			ORDER BY edition_id, line_number`,
-			key.WorkID)
+		lines, err := loadTextLines(database, "work_id = ?", key.WorkID)
 		if err != nil {
 			continue
 		}
-
-		var lines []textLineRow
-		for lineRows.Next() {
-			var tl textLineRow
-			lineRows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
-			lines = append(lines, tl)
-		}
-		lineRows.Close()
-
 		for _, cit := range pCitations {
 			matchCitation(cit, lines)
 		}
@@ -324,7 +276,6 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 
 	// Strategy 1: Exact quote match (highest confidence)
 	if cit.QuoteText != "" {
-		// Clean up Schmidt quote text (remove -- abbreviations)
 		cleanQuote := strings.ReplaceAll(cit.QuoteText, "--", "")
 		cleanQuote = strings.TrimSpace(cleanQuote)
 
@@ -341,13 +292,11 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 	if cit.Line != nil {
 		for i, line := range lines {
 			if line.LineNumber == *cit.Line {
-				// If we also have quote text, verify with fuzzy match
 				if cit.QuoteText != "" {
 					sim := parser.JaccardSimilarity(line.Content, cit.QuoteText)
 					if sim > 0.15 {
 						return &lines[i], "line_number", 0.9
 					}
-					// Line number matched but text is very different — still return but lower confidence
 					return &lines[i], "line_number", 0.7
 				}
 				return &lines[i], "line_number", 0.9
