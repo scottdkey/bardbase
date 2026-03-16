@@ -1,0 +1,36 @@
+{
+	"name": "shakespeare-db-web",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/kit": "^2.55.0",
+		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@types/better-sqlite3": "^7.6.13",
+		"@vite-pwa/sveltekit": "^1.1.0",
+		"better-sqlite3": "^12.8.0",
+		"svelte": "^5.53.12",
+		"svelte-check": "^4.4.5",
+		"typescript": "^5.9.3",
+		"vite": "^8.0.0",
+		"workbox-precaching": "^7.4.0",
+		"workbox-routing": "^7.4.0",
+		"workbox-strategies": "^7.4.0"
+	},
+	"dependencies": {
+		"sql.js": "^1.14.1"
+	},
+	"overrides": {
+		"serialize-javascript": "^7.0.4",
+		"cookie": "^0.7.0"
+	}
+}

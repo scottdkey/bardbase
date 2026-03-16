@@ -224,6 +224,25 @@ func ResolveCitations(database *sql.DB) error {
 		if err != nil {
 			continue
 		}
+
+		// Fallback: if the scene returned 0 lines, the 2-part Perseus reference
+		// (e.g., "shak. tmp 5.169") was probably act.line, not act.scene.
+		// Reload the entire act and inject the scene value as each citation's line number.
+		if len(lines) == 0 && key.Scene > 0 {
+			lines, err = loadTextLines(database, "work_id = ? AND act = ?",
+				key.WorkID, key.Act)
+			if err != nil {
+				continue
+			}
+			// Rewrite each citation in this group: scene was actually the line number.
+			for i := range sceneCitations {
+				if sceneCitations[i].Line == nil {
+					lineNum := key.Scene
+					sceneCitations[i].Line = &lineNum
+				}
+			}
+		}
+
 		for _, cit := range sceneCitations {
 			matchCitation(cit, lines)
 		}
@@ -280,9 +299,21 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 		cleanQuote = strings.TrimSpace(cleanQuote)
 
 		if len(cleanQuote) > 3 {
+			// 1a: Single-line substring match.
 			for i, line := range lines {
 				if parser.ContainsNormalized(line.Content, cleanQuote) {
 					return &lines[i], "exact_quote", 1.0
+				}
+			}
+
+			// 1b: Multi-line match — Schmidt quotes often span two verse lines.
+			// Concatenate adjacent non-stage-direction line pairs and check.
+			if len(lines) > 1 {
+				for i := 0; i < len(lines)-1; i++ {
+					combined := lines[i].Content + " " + lines[i+1].Content
+					if parser.ContainsNormalized(combined, cleanQuote) {
+						return &lines[i], "exact_quote", 0.95
+					}
 				}
 			}
 		}
@@ -303,17 +334,39 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 			}
 		}
 
-		// Try nearby lines (±3) if exact line number didn't match
-		for delta := 1; delta <= 3; delta++ {
+		// Try nearby lines if exact line number didn't match.
+		// With a quote: scan ±20 and return the best-scoring candidate (handles
+		// Globe vs SE line-number offset caused by stage directions).
+		// Without a quote: scan ±10 with decreasing confidence.
+		if cit.QuoteText != "" {
+			const maxDeltaQuote = 20
+			bestSim := 0.0
+			bestIdx := -1
 			for i, line := range lines {
-				if line.LineNumber == *cit.Line+delta || line.LineNumber == *cit.Line-delta {
-					if cit.QuoteText != "" {
-						sim := parser.JaccardSimilarity(line.Content, cit.QuoteText)
-						if sim > 0.2 {
-							return &lines[i], "line_number", 0.7
+				d := line.LineNumber - *cit.Line
+				if d < 0 {
+					d = -d
+				}
+				if d > 0 && d <= maxDeltaQuote {
+					sim := parser.JaccardSimilarity(line.Content, cit.QuoteText)
+					if sim > bestSim {
+						bestSim = sim
+						bestIdx = i
+					}
+				}
+			}
+			if bestSim > 0.2 && bestIdx >= 0 {
+				return &lines[bestIdx], "line_number", 0.7
+			}
+		} else {
+			for delta := 1; delta <= 10; delta++ {
+				for i, line := range lines {
+					if line.LineNumber == *cit.Line+delta || line.LineNumber == *cit.Line-delta {
+						conf := 0.6 - float64(delta)*0.1
+						if conf < 0.1 {
+							conf = 0.1
 						}
-					} else {
-						return &lines[i], "line_number", 0.6 - float64(delta)*0.1
+						return &lines[i], "line_number", conf
 					}
 				}
 			}
@@ -331,7 +384,7 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				bestIdx = i
 			}
 		}
-		if bestScore > 0.25 && bestIdx >= 0 {
+		if bestScore > 0.20 && bestIdx >= 0 {
 			return &lines[bestIdx], "fuzzy_text", bestScore
 		}
 	}

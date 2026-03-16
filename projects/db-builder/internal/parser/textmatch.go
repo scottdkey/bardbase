@@ -8,10 +8,38 @@ import (
 	"unicode"
 )
 
+// normalizeSpecialChars replaces early-modern print variants with ASCII equivalents
+// before the main normalization pass removes punctuation.
+func normalizeSpecialChars(s string) string {
+	// Ligatures (common in early-print OCR)
+	s = strings.ReplaceAll(s, "ﬁ", "fi")
+	s = strings.ReplaceAll(s, "ﬂ", "fl")
+	s = strings.ReplaceAll(s, "ﬀ", "ff")
+	s = strings.ReplaceAll(s, "ﬃ", "ffi")
+	s = strings.ReplaceAll(s, "ﬄ", "ffl")
+	s = strings.ReplaceAll(s, "ﬅ", "st")
+	s = strings.ReplaceAll(s, "ﬆ", "st")
+	// Long s (ſ → s)
+	s = strings.ReplaceAll(s, "ſ", "s")
+	s = strings.ReplaceAll(s, "ſ", "s") // U+017F long s
+	// Modifier-letter apostrophe and curved quotes → plain apostrophe
+	s = strings.ReplaceAll(s, "\u02BC", "'")
+	s = strings.ReplaceAll(s, "\u02BB", "'")
+	s = strings.ReplaceAll(s, "\u2019", "'")
+	s = strings.ReplaceAll(s, "\u2018", "'")
+	// Early-modern I/J and U/V interchangeability (lowercase after ToLower pass)
+	// Handled after lowercasing in the main loop below.
+	return s
+}
+
 // NormalizeForMatch lowercases text, removes punctuation, and normalizes whitespace.
+// Also normalises early-modern print variants (ligatures, long-s, etc.).
 // Used for fuzzy text comparison between editions and citation matching.
 func NormalizeForMatch(s string) string {
+	s = normalizeSpecialChars(s)
 	s = strings.ToLower(s)
+	// After lowercasing, map archaic letter variants used in early-modern printing.
+	s = strings.ReplaceAll(s, "vv", "w") // vv → w (rare but present in OCR)
 	var result strings.Builder
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {

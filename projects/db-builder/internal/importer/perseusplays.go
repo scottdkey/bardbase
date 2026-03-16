@@ -125,6 +125,12 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 
 		charCache := make(map[string]interface{}) // speaker → *int64 or nil
 
+		// Compute Globe verse line numbers per scene.
+		// Schmidt's lexicon cites Globe verse lines which do NOT count stage directions.
+		// We use a verse-only counter as line_number so citations match directly.
+		type sceneKey struct{ act, scene int }
+		verseCounters := make(map[sceneKey]int)
+
 		for _, line := range lines {
 			var charID interface{}
 			charName := line.Character
@@ -139,14 +145,22 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 			}
 
 			ct := "speech"
+			sk := sceneKey{line.Act, line.Scene}
+			var lineNum int
+
 			if line.IsStageDirection {
 				ct = "stage_direction"
 				charName = ""
+				// Stage directions get the current verse counter (sorts with preceding verse line).
+				lineNum = verseCounters[sk]
+			} else {
+				verseCounters[sk]++
+				lineNum = verseCounters[sk]
 			}
 
 			insertStmt.Exec(
 				work.ID, editionID,
-				line.Act, line.Scene, line.LineInScene,
+				line.Act, line.Scene, lineNum,
 				charID, nilIfEmpty(charName),
 				line.Text, ct, countWords(line.Text))
 		}
