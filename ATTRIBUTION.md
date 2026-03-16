@@ -9,7 +9,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 - **URL**: https://www.opensourceshakespeare.org/
 - **License**: Public Domain
-- **Attribution**: Voluntary (not legally required)
 - **Content**: Complete works text with act/scene structure, character
   attributions, stage directions. Globe-edition-based modern text.
 - **Credit**: Text from Open Source Shakespeare
@@ -22,7 +21,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 - **URL**: http://www.perseus.tufts.edu/hopper/
 - **Text ID**: Perseus:text:1999.03.0079
 - **License**: CC BY-SA 3.0 US
-- **Attribution**: **REQUIRED**
 - **Content**: 20,097 lexicon entries (dictionary of Shakespeare's language)
   with ~200,000+ citations referencing specific plays, acts, scenes, and lines.
 - **Required Credit**:
@@ -44,7 +42,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 - **URL**: https://standardebooks.org/
 - **License**: CC0 1.0 Universal (Public Domain Dedication)
-- **Attribution**: Voluntary (not legally required)
 - **Content**: Individual Shakespeare plays, carefully formatted and proofread.
   Highest quality modern-text source.
 - **Credit**: Text from Standard Ebooks (standardebooks.org). Released to the
@@ -56,7 +53,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 - **URL**: http://www.perseus.tufts.edu/hopper/
 - **License**: CC BY-SA 3.0 US
-- **Attribution**: **REQUIRED** (same terms as Schmidt Lexicon above)
 - **Content**: Complete Shakespeare plays as used by Schmidt's Lexicon, with
   Globe edition numbering and First Folio line cross-references. 43 TEI XML
   files in `projects/sources/perseus-plays/`.
@@ -68,8 +64,6 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 - **URL**: https://github.com/textcreationpartnership
 - **License**: CC0 1.0 Universal (public domain, released January 1, 2015)
-- **Attribution**: Voluntary — courtesy credit to the Text Creation Partnership
-  is appreciated but not required.
 - **Content**: First Folio (1623) diplomatic transcription (TCP ID A11954,
   STC 22273), original spelling, 35 plays. Source file in
   `projects/sources/eebo-tcp/A11954.xml`. Various early Quartos also
@@ -80,13 +74,13 @@ here as required by applicable licenses and as a courtesy to all contributors.
 
 ## License Summary
 
-| Source | License | Attribution Required | ShareAlike |
-|--------|---------|---------------------|------------|
-| Open Source Shakespeare | Public Domain | No | No |
-| Perseus Schmidt Lexicon | CC BY-SA 3.0 | **Yes** | **Yes** |
-| Standard Ebooks | CC0 1.0 | No | No |
-| Perseus Play Texts | CC BY-SA 3.0 | **Yes** | **Yes** |
-| EEBO-TCP | Public Domain | No | No |
+| Source | License | ShareAlike |
+|--------|---------|------------|
+| Open Source Shakespeare | Public Domain | No |
+| Perseus Schmidt Lexicon | CC BY-SA 3.0 | **Yes** |
+| Standard Ebooks | CC0 1.0 | No |
+| Perseus Play Texts | CC BY-SA 3.0 | **Yes** |
+| EEBO-TCP | Public Domain | No |
 
 Because Perseus content is licensed CC BY-SA 3.0, the compiled database is
 released under **CC BY-SA 4.0** (forward-compatible). See `LICENSES/data.md`.
