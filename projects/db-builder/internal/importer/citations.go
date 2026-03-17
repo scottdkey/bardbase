@@ -46,7 +46,7 @@ type textLineRow struct {
 // text lines in each edition using line numbers and/or quote text.
 // Results are stored in the citation_matches table.
 func ResolveCitations(database *sql.DB) error {
-	stepBanner("STEP 6: Resolve Lexicon Citations → Text Lines")
+	stepBanner("STEP 9: Resolve Lexicon Citations → Text Lines")
 
 	start := time.Now()
 
