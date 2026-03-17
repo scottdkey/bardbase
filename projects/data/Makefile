@@ -1,6 +1,6 @@
-# data — Shared reference data for the Heminge monorepo
+# data — Shared reference data for the Bardbase monorepo
 #
-# Contains JSON mapping files that both db-builder and web read from.
+# Contains JSON mapping files that both capell and web read from.
 # These are NOT original sources — they are derived/curated reference data
 # maintained by this project.
 #

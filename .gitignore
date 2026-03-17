@@ -11,7 +11,7 @@
 se-cache/
 standard-ebooks-cache/
 
-# Go (db-builder)
+# Go (capell)
 vendor/
 
 # Node.js (web)
@@ -32,4 +32,4 @@ coverage.html
 
 # Archives
 sql.zip
-projects/db-builder/build
+projects/capell/build

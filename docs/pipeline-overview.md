@@ -1,6 +1,6 @@
 # Build Pipeline Overview
 
-The `db-builder` binary executes a deterministic, multi-phase pipeline that reads from committed source files and writes a single SQLite database (`build/heminge.db`). Phases run sequentially; each phase is logged to the `import_log` table with its duration and row count.
+The `capell` binary executes a deterministic, multi-phase pipeline that reads from committed source files and writes a single SQLite database (`build/bardbase.db`). Phases run sequentially; each phase is logged to the `import_log` table with its duration and row count.
 
 ## Phase Order
 
@@ -111,9 +111,9 @@ See [fts-search.md](fts-search.md) for setup and query examples.
 ## Running the Pipeline
 
 ```bash
-make db-builder run          # full pipeline, uses cached SE source files
-make db-builder run-fresh    # full pipeline, re-downloads SE sources first
-make db-builder test         # run all unit tests
+make capell run          # full pipeline, uses cached SE source files
+make capell run-fresh    # full pipeline, re-downloads SE sources first
+make capell test         # run all unit tests
 ```
 
 Individual steps can be run in isolation (useful during development):

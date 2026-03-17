@@ -15,7 +15,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.work.title} — Heminge</title>
+	<title>{data.work.title} — Variorum</title>
 </svelte:head>
 
 <h1>{data.work.title}</h1>

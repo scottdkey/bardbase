@@ -30,7 +30,7 @@ These are unmodified original source files. If you need derived or curated data,
 
 Every other project in this monorepo treats `sources/` as **immutable input**:
 
-- `db-builder` reads from here to build the SQLite database
+- `capell` reads from here to build the SQLite database
 - `web` never touches these files
 - `data` contains curated mappings derived from studying these sources
 

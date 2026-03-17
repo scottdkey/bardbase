@@ -18,7 +18,7 @@ Curated reference data shared across all projects in the monorepo. These files m
 
 ## Contract
 
-- **db-builder** loads all files at init time via auto-discovery of the repo root
+- **capell** loads all files at init time via auto-discovery of the repo root
 - **web** may read these files at build time for UI configuration
 - **sources** is never modified — derived mappings belong here instead
 

@@ -1,35 +1,35 @@
-# Heminge
+# Bardbase
 
-[![Build](https://github.com/scottdkey/heminge/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/heminge/actions/workflows/build.yml)
-[![Latest Release](https://img.shields.io/github/v/release/scottdkey/heminge)](https://github.com/scottdkey/heminge/releases/latest)
-[![Download](https://img.shields.io/github/downloads/scottdkey/heminge/total)](https://github.com/scottdkey/heminge/releases/latest)
+[![Build](https://github.com/scottdkey/bardbase/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/scottdkey/bardbase)](https://github.com/scottdkey/bardbase/releases/latest)
+[![Download](https://img.shields.io/github/downloads/scottdkey/bardbase/total)](https://github.com/scottdkey/bardbase/releases/latest)
 
 A SQLite database of Shakespeare's complete works — multiple editions, full-text search, and a complete Shakespeare lexicon.
 
 ## Quick Start
 
-**Download the pre-built database** from the [latest release](https://github.com/scottdkey/heminge/releases/latest).
+**Download the pre-built database** from the [latest release](https://github.com/scottdkey/bardbase/releases/latest).
 
 **Build from source** (requires Go 1.22+):
 
 ```bash
-git clone https://github.com/scottdkey/heminge.git
-cd heminge
-make db-builder test   # run tests
-make db-builder run    # build → build/heminge.db
+git clone https://github.com/scottdkey/bardbase.git
+cd bardbase
+make capell test   # run tests
+make capell run    # build → build/bardbase.db
 ```
 
 ## Make Commands
 
 ```bash
-# db-builder
-make db-builder build          # compile binary
-make db-builder test           # run all tests
-make db-builder run            # full build pipeline (uses cached sources)
-make db-builder run-fresh      # full build, re-download source files
-make db-builder lint           # go vet
-make db-builder cover          # test coverage report
-make db-builder clean          # remove artifacts
+# capell
+make capell build          # compile binary
+make capell test           # run all tests
+make capell run            # full build pipeline (uses cached sources)
+make capell run-fresh      # full build, re-download source files
+make capell lint           # go vet
+make capell cover          # test coverage report
+make capell clean          # remove artifacts
 
 # sources
 make sources verify            # check all source files exist
@@ -57,19 +57,19 @@ make help                      # show all commands
 ## Structure
 
 ```
-heminge/
+bardbase/
 ├── projects/
 │   ├── sources/       source texts — committed, read-only
 │   ├── data/          reference JSON (work mappings, attributions)
-│   ├── db-builder/    Go pipeline → produces SQLite database
-│   └── web/           SvelteKit PWA (future)
+│   ├── capell/        Go pipeline → produces SQLite database
+│   └── web/           SvelteKit PWA — Variorum
 ├── Makefile
 └── .github/workflows/
 ```
 
 ## Schema
 
-See [projects/db-builder/SCHEMA.md](projects/db-builder/SCHEMA.md) for all tables, indexes, and example queries.
+See [projects/capell/SCHEMA.md](projects/capell/SCHEMA.md) for all tables, indexes, and example queries.
 
 ## Documentation
 

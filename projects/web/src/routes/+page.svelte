@@ -3,10 +3,10 @@
 </script>
 
 <svelte:head>
-	<title>Heminge</title>
+	<title>Variorum</title>
 </svelte:head>
 
-<h1>Heminge</h1>
+<h1>Variorum</h1>
 
 <section class="stats">
 	<div class="stat">

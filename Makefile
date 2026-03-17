@@ -1,26 +1,26 @@
-# Shakespeare DB — Monorepo Root Makefile
+# Bardbase — Monorepo Root Makefile
 #
 # Delegates all actions to per-project Makefiles under projects/.
 #
 # Usage:
-#   make db-builder test       → runs tests for the Go pipeline
-#   make db-builder build      → compiles the builder binary
+#   make capell test           → runs tests for the Go pipeline
+#   make capell build          → compiles the builder binary
 #   make web dev               → starts the SvelteKit dev server (future)
 #   make sources verify        → checksums original source files
 #   make data validate         → validates reference JSON files
 #   make test-all              → runs tests across all projects
 #   make clean-all             → cleans build artifacts in all projects
 
-.PHONY: db-builder web sources data test-all clean-all help
+.PHONY: capell web sources data test-all clean-all help
 
 # All project directories that have their own Makefile
-PROJECTS := db-builder web sources data
+PROJECTS := capell web sources data
 
 # ─── Namespace Delegation ─────────────────────────────────────────────
 # Captures `make <project> <action>` and forwards to projects/<project>/Makefile.
-# Example: `make db-builder test` → `make -C projects/db-builder test`
-db-builder:
-	@$(MAKE) -C projects/db-builder $(filter-out $@,$(MAKECMDGOALS))
+# Example: `make capell test` → `make -C projects/capell test`
+capell:
+	@$(MAKE) -C projects/capell $(filter-out $@,$(MAKECMDGOALS))
 
 web:
 	@$(MAKE) -C projects/web $(filter-out $@,$(MAKECMDGOALS))
@@ -32,7 +32,7 @@ data:
 	@$(MAKE) -C projects/data $(filter-out $@,$(MAKECMDGOALS))
 
 # Swallow extra goal arguments so make doesn't complain about missing targets.
-# Without this, `make db-builder test` would error on "test" as a root target.
+# Without this, `make capell test` would error on "test" as a root target.
 %:
 	@:
 
@@ -58,12 +58,12 @@ clean-all:
 
 # Show available commands
 help:
-	@echo "Shakespeare DB Monorepo"
+	@echo "Bardbase Monorepo"
 	@echo ""
 	@echo "Usage: make <project> <action>"
 	@echo ""
 	@echo "Projects:"
-	@echo "  db-builder  Go pipeline (build, test, run, run-cached, lint, clean)"
+	@echo "  capell      Go pipeline (build, test, run, run-cached, lint, clean)"
 	@echo "  web         SvelteKit app (dev, build, test, preview, clean)"
 	@echo "  sources     Original texts — READ ONLY (verify, list, stats)"
 	@echo "  data        Reference JSON mappings (validate, list, clean)"

@@ -1,6 +1,6 @@
 # Cross-Edition Line Alignment
 
-**Source file**: `projects/db-builder/internal/importer/mappings.go`
+**Source file**: `projects/capell/internal/importer/mappings.go`
 **Output table**: `line_mappings`
 
 The pipeline aligns every pair of editions for each work, scene by scene, so that the web UI can show two editions side-by-side with lines matched up even when one edition inserts or omits content relative to the other.

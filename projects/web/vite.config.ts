@@ -10,8 +10,8 @@ export default defineConfig({
 			strategies: 'generateSW',
 			registerType: 'autoUpdate',
 			manifest: {
-				name: 'Heminge',
-				short_name: 'Heminge',
+				name: 'Variorum',
+				short_name: 'Variorum',
 				description:
 					'Complete works of Shakespeare with multi-edition texts, lexicon, and full-text search',
 				theme_color: '#1a1a2e',
@@ -46,7 +46,7 @@ export default defineConfig({
 						urlPattern: /\.db$/,
 						handler: 'CacheFirst',
 						options: {
-							cacheName: 'heminge',
+							cacheName: 'variorum',
 							expiration: {
 								maxEntries: 1,
 								maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days

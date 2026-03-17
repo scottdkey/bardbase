@@ -1,6 +1,6 @@
 # Citation Resolution
 
-**Source file**: `projects/db-builder/internal/importer/citations.go`
+**Source file**: `projects/capell/internal/importer/citations.go`
 **Output table**: `citation_matches`
 
 Schmidt's *Shakespeare Lexicon* contains ~200,000 citations in the form `Ham. III, 2, 47` — a work abbreviation, act, scene, and line number. The citation resolution phase links each of these to an actual `text_lines` row so that users can jump from a lexicon definition directly to the passage in the play.

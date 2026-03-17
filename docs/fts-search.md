@@ -1,6 +1,6 @@
 # Full-Text Search (FTS5)
 
-**Source file**: `projects/db-builder/internal/importer/fts.go`
+**Source file**: `projects/capell/internal/importer/fts.go`
 **Output tables**: `lexicon_fts`, `text_fts`
 
 The database ships two FTS5 virtual tables that provide fast, ranked full-text search over lexicon definitions and play text respectively.

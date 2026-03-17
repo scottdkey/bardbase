@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Works — Heminge</title>
+	<title>Works — Variorum</title>
 </svelte:head>
 
 <h1>Works</h1>

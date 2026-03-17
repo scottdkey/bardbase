@@ -11,7 +11,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = resolve(__dirname, '../../../build/heminge.db');
+const DB_PATH = resolve(__dirname, '../../../build/bardbase.db');
 const OUT_PATH = resolve(__dirname, '../src/lib/generated/db.ts');
 
 // ─── Type mapping helpers ────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ const tables = db
 const lines = [
 	'// AUTO-GENERATED — do not edit manually.',
 	'// Regenerate with: npm run generate:types',
-	'// Source: sqlite schema introspected from build/heminge.db',
+	'// Source: sqlite schema introspected from build/bardbase.db',
 	'',
 	"import { z } from 'zod';",
 	''
