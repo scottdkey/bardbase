@@ -582,5 +582,37 @@
     "best_edition_id": 2,
     "confidence": 0.3,
     "notes": "Wrong in H4A I,1,161 with quote 'comforts false, worse than true wrongs'. H4A I,1 max 109 lines. Closest match is I,3,153 'Whose wrongs in us God pardon!' Different scene."
+  },
+  {
+    "citation_id": 2192,
+    "reason": "work_id mismatch; parser assigned II,3,21 to R2 but belongs to H4B",
+    "best_line_id": 58453,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Act1 entry cites R2 II,3,21 but R2 II,3,21 = 'Than your good words. But who comes here?' (no 'act'). Schmidt raw text: 'R2 IV, 138. H4B Chor. R2 IV, 138 II, 3, 21'. Parser consumed H4B abbreviation into prior citation. H4B II,3,22 (ed2 58453) = 'To do brave acts' (Lady Percy). Globe line 21-22 off-by-one."
+  },
+  {
+    "citation_id": 3985,
+    "reason": "work_id mismatch; Cymb IV,4 has ~40 lines, line 293 impossible",
+    "best_line_id": 102756,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "After-hours cited as Cymb IV,4,293 but Cymb IV,4 has only ~40 lines. R3 IV,4,302 (ed2 102756) = 'Which after hours give leisure to repent' (King Richard). Act/scene IV,4 matches, line 293 vs 302 plausible Globe numbering drift. First Folio (ed4 314377) has 'Which after-houres giues leysure to repent'."
+  },
+  {
+    "citation_id": 78770,
+    "reason": "parser misattributed Ven. Dedic. as Per. V Prol; godfather is in Venus and Adonis dedication",
+    "best_line_id": 34616,
+    "best_edition_id": 1,
+    "confidence": 0.5,
+    "notes": "Schmidt raw text: 'Ven. Dedic. Per. V Prol. LLL I, 1, 88'. Parser split 'Ven. Dedic.' and created spurious 'Per. V Prol.' citation. No 'godfather' in Pericles. Ven. dedication (ed1 34616) = 'sorry it had so noble a god-father'. Hyphenated spelling explains fuzzy match failure."
+  },
+  {
+    "citation_id": 229277,
+    "reason": "work_id mismatch and headword error; parser assigned Per. II Prol. 4 to Mcb",
+    "best_line_id": 95116,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Entry key 'Wood' but full_text defines 'Word, subst.' (headword parse error). Schmidt raw text: 'Mcb. II, 1, 61. Per. II Prol. 4.' Parser assigned 'II Prol. 4' to Mcb instead of Per. Mcb has no prologues. Per. II Prol. line 4 (ed2 95116) = 'That will prove awful both in deed and word' (Gower)."
   }
 ]

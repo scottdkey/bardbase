@@ -66,12 +66,31 @@ func ParseFirstFolioTEI(xmlData []byte) ([]FolioLine, error) {
 
 // parsePlay extracts the play title and delegates to act/scene parsing.
 func parsePlay(playDiv *XMLNode) []FolioLine {
-	// Extract and normalize play title from the first <head> child
+	// Extract and normalize play title from the first <head> child.
+	// Troilus and Cressida is a special case: the play div has no <head>,
+	// only a <div type="prologue"> followed by <div type="act">. The actual
+	// title ("THE TRAGEDIE OF Troylus and Cressida.") is a <head> inside the
+	// first act div. When no direct <head> is found, fall back to the first
+	// <head> in the first act div whose type is not "sub" (which holds
+	// "Actus Primus." etc.).
 	title := ""
 	for _, child := range playDiv.Children {
 		if child.Name == "head" {
 			title = normalizeFolioHead(child.GetText())
 			break
+		}
+	}
+	if title == "" {
+		for _, child := range playDiv.Children {
+			if child.Name == "div" && child.Attr("type") == "act" {
+				for _, ac := range child.Children {
+					if ac.Name == "head" && ac.Attr("type") != "sub" {
+						title = normalizeFolioHead(ac.GetText())
+						break
+					}
+				}
+				break
+			}
 		}
 	}
 
@@ -86,16 +105,25 @@ func parsePlay(playDiv *XMLNode) []FolioLine {
 	return lines
 }
 
-// parseAct walks the act div for scene children.
+// parseAct walks the act div for scene children. Some Folio plays
+// (Midsummer, Love's Labour's Lost, Merchant of Venice) lack <div type="scene">
+// wrappers — their <stage> and <sp> elements sit directly inside the act div.
+// When no scene divs are found, treat the act div itself as scene 1.
 func parseAct(actDiv *XMLNode, playTitle string, act int) []FolioLine {
 	var lines []FolioLine
+	hasSceneDivs := false
 	for _, child := range actDiv.Children {
 		if child.Name == "div" && child.Attr("type") == "scene" {
+			hasSceneDivs = true
 			scene := atoi(child.Attr("n"))
 			counter := 0
 			sceneLines := parseSceneFolio(child, playTitle, act, scene, &counter)
 			lines = append(lines, sceneLines...)
 		}
+	}
+	if !hasSceneDivs {
+		counter := 0
+		lines = parseSceneFolio(actDiv, playTitle, act, 1, &counter)
 	}
 	return lines
 }
