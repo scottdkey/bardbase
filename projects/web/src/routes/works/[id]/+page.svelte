@@ -15,7 +15,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.work.title} — Shakespeare Database</title>
+	<title>{data.work.title} — Heminge</title>
 </svelte:head>
 
 <h1>{data.work.title}</h1>

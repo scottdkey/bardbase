@@ -1,4 +1,4 @@
-module github.com/scottdkey/shakespeare_db/projects/db-builder
+module github.com/scottdkey/heminge/projects/db-builder
 
 go 1.22
 

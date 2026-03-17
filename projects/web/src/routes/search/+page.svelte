@@ -24,7 +24,7 @@
 </script>
 
 <svelte:head>
-	<title>Search — Shakespeare Database</title>
+	<title>Search — Heminge</title>
 </svelte:head>
 
 <h1>Search</h1>

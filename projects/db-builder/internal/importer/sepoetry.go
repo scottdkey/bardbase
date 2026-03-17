@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/fetch"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/fetch"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // ImportSEPoetry imports Standard Ebooks poetry, sonnets, and Folger URLs.

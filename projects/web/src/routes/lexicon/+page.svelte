@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Lexicon — Shakespeare Database</title>
+	<title>Lexicon — Heminge</title>
 </svelte:head>
 
 <h1>Shakespeare Lexicon</h1>

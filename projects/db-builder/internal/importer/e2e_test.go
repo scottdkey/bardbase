@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // seedE2EData populates a minimal but realistic dataset that exercises the full pipeline chain:

@@ -4,7 +4,7 @@
 // Command build constructs the Shakespeare database from source data.
 //
 // This is the main entry point for the db-builder project within the
-// shakespeare_db monorepo. It reads original source files from
+// heminge monorepo. It reads original source files from
 // projects/sources/ and produces a SQLite database.
 //
 // Usage:
@@ -29,8 +29,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/importer"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/importer"
 )
 
 func main() {
@@ -44,13 +44,13 @@ func main() {
 	repoRoot := findRepoRoot()
 	sourcesDir := filepath.Join(repoRoot, "projects", "sources")
 	outputDir := filepath.Join(repoRoot, *output)
-	dbPath := filepath.Join(outputDir, "shakespeare.db")
+	dbPath := filepath.Join(outputDir, "heminge.db")
 	cacheDir := filepath.Join(sourcesDir, "se")
 
 	ossSQLPath := filepath.Join(sourcesDir, "oss", "oss-db-full.sql")
 	lexiconDir := filepath.Join(sourcesDir, "lexicon", "entries")
 
-	fmt.Println("Shakespeare Database Builder")
+	fmt.Println("Heminge Database Builder")
 	fmt.Printf("  Repo:    %s\n", repoRoot)
 	fmt.Printf("  Output:  %s\n", dbPath)
 	fmt.Printf("  Sources: %s\n", sourcesDir)

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // ImportLexicon imports Schmidt lexicon XML entries from the given directory.

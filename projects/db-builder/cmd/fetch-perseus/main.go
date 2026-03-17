@@ -30,7 +30,7 @@ import (
 
 const (
 	perseusBaseURL = "http://www.perseus.tufts.edu/hopper/dltext"
-	userAgent      = "Shakespeare-DB-Builder/2.0 (academic research; scottdkey/shakespeare_db)"
+	userAgent      = "Heminge-Builder/2.0 (academic research; scottdkey/heminge)"
 	rateLimit      = 1 * time.Second
 	httpTimeout    = 30 * time.Second
 	maxRetries     = 3

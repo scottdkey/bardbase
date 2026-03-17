@@ -11,8 +11,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // ImportPerseusPlays parses Perseus TEI XML play texts and inserts them into the

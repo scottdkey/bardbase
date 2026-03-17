@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // stepBanner prints a formatted step header for pipeline progress output.
@@ -55,6 +55,31 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ─── Character / text helpers ────────────────────────────────────────────────
+
+// lookupCharacter resolves a character name (or abbreviation) to its DB id
+// for the given work. Returns nil when not found.
+func lookupCharacter(database *sql.DB, workID int64, charName string) interface{} {
+	var id int64
+	err := database.QueryRow(
+		"SELECT id FROM characters WHERE work_id = ? AND UPPER(name) = UPPER(?)",
+		workID, charName).Scan(&id)
+	if err != nil {
+		err = database.QueryRow(
+			"SELECT id FROM characters WHERE work_id = ? AND UPPER(abbrev) = UPPER(?)",
+			workID, charName).Scan(&id)
+	}
+	if err != nil || id == 0 {
+		return nil
+	}
+	return id
+}
+
+// countWords returns the number of whitespace-delimited words in s.
+func countWords(s string) int {
+	return len(strings.Fields(s))
 }
 
 // ─── Works helpers ───────────────────────────────────────────────────────────
@@ -125,6 +150,31 @@ func queryAlignableLines(database *sql.DB, where string, args ...interface{}) []
 		lines = append(lines, l)
 	}
 	return lines
+}
+
+// loadTextLinesAll is like loadTextLines but does NOT filter out rows with
+// NULL line_number. Used for headword search in prologue/chorus scenes where
+// Perseus stores content without Globe line numbers.
+func loadTextLinesAll(database *sql.DB, where string, args ...interface{}) ([]textLineRow, error) {
+	query := fmt.Sprintf(
+		`SELECT id, content, COALESCE(line_number, 0), edition_id
+		 FROM text_lines
+		 WHERE %s
+		 ORDER BY edition_id, line_number, id`, where)
+
+	rows, err := database.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lines []textLineRow
+	for rows.Next() {
+		var tl textLineRow
+		rows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID)
+		lines = append(lines, tl)
+	}
+	return lines, nil
 }
 
 // loadTextLines queries text_lines with a parameterized WHERE clause.

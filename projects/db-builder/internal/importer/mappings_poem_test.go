@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 func TestPoemAlignment_IdenticalLines(t *testing.T) {

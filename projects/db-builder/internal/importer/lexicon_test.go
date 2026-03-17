@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // setupLexiconTestDB creates a temp DB with schema and prerequisite data.

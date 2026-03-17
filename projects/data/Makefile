@@ -1,4 +1,4 @@
-# data — Shared reference data for the Shakespeare DB monorepo
+# data — Shared reference data for the Heminge monorepo
 #
 # Contains JSON mapping files that both db-builder and web read from.
 # These are NOT original sources — they are derived/curated reference data

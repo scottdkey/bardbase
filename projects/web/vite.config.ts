@@ -10,8 +10,8 @@ export default defineConfig({
 			strategies: 'generateSW',
 			registerType: 'autoUpdate',
 			manifest: {
-				name: 'Shakespeare Database',
-				short_name: 'ShakespeareDB',
+				name: 'Heminge',
+				short_name: 'Heminge',
 				description:
 					'Complete works of Shakespeare with multi-edition texts, lexicon, and full-text search',
 				theme_color: '#1a1a2e',
@@ -46,7 +46,7 @@ export default defineConfig({
 						urlPattern: /\.db$/,
 						handler: 'CacheFirst',
 						options: {
-							cacheName: 'shakespeare-db',
+							cacheName: 'heminge',
 							expiration: {
 								maxEntries: 1,
 								maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days

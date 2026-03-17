@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // PrintSummary prints the final database build summary.

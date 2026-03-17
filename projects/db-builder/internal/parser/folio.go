@@ -48,16 +48,14 @@ func ParseFirstFolioTEI(xmlData []byte) ([]FolioLine, error) {
 
 	var lines []FolioLine
 
-	// Find <body> — TEI P5 path: root > TEI > text > body
-	body := root.Find("body")
-	if body == nil {
-		return nil, nil
-	}
-
-	// Walk all play divs in the body
-	for _, node := range body.Children {
-		if node.Name == "div" && node.Attr("type") == "play" {
-			playLines := parsePlay(node)
+	// The First Folio XML has two <body> elements: one inside <front> (front matter,
+	// no plays) and one sibling of <front> that contains all 36 plays. Using
+	// root.Find("body") returns the first one via DFS, which is the wrong body.
+	// Instead, collect all <div type="play"> anywhere in the document — they only
+	// appear at the top level of the main body, so this is unambiguous.
+	for _, div := range root.FindAll("div") {
+		if div.Attr("type") == "play" {
+			playLines := parsePlay(div)
 			lines = append(lines, playLines...)
 		}
 	}

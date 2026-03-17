@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // editionPair holds the two editions being aligned.

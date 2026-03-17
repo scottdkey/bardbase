@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // setupFullPipelineDB creates a DB, seeds data, and runs the full pipeline.

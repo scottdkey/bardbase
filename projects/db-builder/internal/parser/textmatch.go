@@ -94,6 +94,23 @@ func ContainsNormalized(text, substring string) bool {
 	return strings.Contains(NormalizeForMatch(text), NormalizeForMatch(substring))
 }
 
+// ContainsWordPrefix checks if any word in text starts with the given prefix
+// (after normalization). Requires the prefix to be at least 4 characters to
+// avoid false positives. This handles inflected forms like baby→babies,
+// dance→dancing, mercury→mercuries.
+func ContainsWordPrefix(text, prefix string) bool {
+	prefix = NormalizeForMatch(prefix)
+	if len(prefix) < 4 {
+		return false
+	}
+	for _, word := range strings.Fields(NormalizeForMatch(text)) {
+		if strings.HasPrefix(word, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // AlignableLine represents a text line for sequence alignment.
 type AlignableLine struct {
 	ID         int64
@@ -178,7 +195,11 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 
 	for i := 1; i <= n; i++ {
 		for j := 1; j <= m; j++ {
-			matchScore := dp[i-1][j-1] + sim[i-1][j-1]
+			// Subtract gapPenalty magnitude so that 0-similarity pairs score the
+		// same as a gap rather than always winning the diagonal. Lines with
+		// Jaccard > |gapPenalty| (0.1) are preferred for alignment; lines below
+		// that threshold are treated no better than a gap insertion.
+		matchScore := dp[i-1][j-1] + sim[i-1][j-1] + gapPenalty
 			gapA := dp[i-1][j] + gapPenalty
 			gapB := dp[i][j-1] + gapPenalty
 

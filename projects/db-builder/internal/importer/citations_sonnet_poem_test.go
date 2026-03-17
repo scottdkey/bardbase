@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // setupSonnetDB creates a test DB with sonnet text lines and a lexicon entry.
@@ -291,8 +291,9 @@ func TestResolveCitations_PoemFuzzyMatch(t *testing.T) {
 	database.QueryRow("SELECT match_type, confidence FROM citation_matches WHERE citation_id = 1").
 		Scan(&matchType, &confidence)
 
-	if matchType != "fuzzy_text" {
-		t.Errorf("expected fuzzy_text, got %s", matchType)
+	// word-set containment (1e) may now fire before fuzzy — both are valid outcomes
+	if matchType != "fuzzy_text" && matchType != "exact_quote" {
+		t.Errorf("expected fuzzy_text or exact_quote, got %s", matchType)
 	}
 	if confidence <= 0.25 {
 		t.Errorf("expected confidence > 0.25, got %f", confidence)

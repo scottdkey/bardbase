@@ -216,13 +216,21 @@ func TestFindBestMatch_LineNumberNearby_OutOfRange(t *testing.T) {
 		{ID: 1, Content: "some line", LineNumber: 1, EditionID: 1},
 		{ID: 2, Content: "another line", LineNumber: 100, EditionID: 1},
 	}
-	// Line 50 — nothing within ±3
+	// Line 50 — nothing within ±20, but fallback returns closest line at confidence 0.1.
+	// This handles plays like Troilus where Schmidt's line numbers exceed Perseus's
+	// scene-relative numbering by large fixed offsets.
 	cit := makeCitation("", intPtr(50))
 
-	line, _, _ := findBestMatch(lines, cit)
+	line, matchType, confidence := findBestMatch(lines, cit)
 
-	if line != nil {
-		t.Error("expected no match — nothing within ±3 lines")
+	if line == nil {
+		t.Fatal("expected closest-line fallback match")
+	}
+	if matchType != "line_number" {
+		t.Errorf("expected line_number, got %s", matchType)
+	}
+	if confidence != 0.1 {
+		t.Errorf("expected confidence 0.1 (fallback), got %f", confidence)
 	}
 }
 
@@ -244,8 +252,9 @@ func TestFindBestMatch_FuzzyMatch_AboveThreshold(t *testing.T) {
 	if line.ID != 1 {
 		t.Errorf("expected line ID 1, got %d", line.ID)
 	}
-	if matchType != "fuzzy_text" {
-		t.Errorf("expected fuzzy_text, got %s", matchType)
+	// word-set containment (1e) may now fire before fuzzy — both are valid outcomes
+	if matchType != "fuzzy_text" && matchType != "exact_quote" {
+		t.Errorf("expected fuzzy_text or exact_quote, got %s", matchType)
 	}
 	if confidence <= 0.25 {
 		t.Errorf("expected confidence > 0.25, got %f", confidence)
@@ -282,8 +291,9 @@ func TestFindBestMatch_FuzzyPicksBestCandidate(t *testing.T) {
 	if line.ID != 2 {
 		t.Errorf("expected line ID 2 (best fuzzy match), got %d", line.ID)
 	}
-	if matchType != "fuzzy_text" {
-		t.Errorf("expected fuzzy_text, got %s", matchType)
+	// word-set containment (1e) may now fire before fuzzy — both are valid outcomes
+	if matchType != "fuzzy_text" && matchType != "exact_quote" {
+		t.Errorf("expected fuzzy_text or exact_quote, got %s", matchType)
 	}
 }
 

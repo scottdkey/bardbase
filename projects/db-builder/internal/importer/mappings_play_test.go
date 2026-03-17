@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // seedPlayMappingDB creates a minimal database with two editions and shared play text lines.

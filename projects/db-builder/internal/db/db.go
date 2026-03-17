@@ -6,14 +6,18 @@ package db
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
+	"sort"
 
 	_ "modernc.org/sqlite"
 )
+
+//go:embed schema/*.sql
+var schemaFS embed.FS
 
 // Open creates or opens a SQLite database at the given path.
 // It sets optimal pragmas for bulk import performance.
@@ -82,11 +86,24 @@ func Optimize(db *sql.DB) error {
 	return nil
 }
 
-// CreateSchema executes the full DDL schema against the database.
+// CreateSchema executes the DDL schema files against the database in order.
+// Schema files are embedded from the schema/ directory and executed
+// in lexicographic order (001_sources.sql, 002_works.sql, ...).
 func CreateSchema(db *sql.DB) error {
-	_, err := db.Exec(constants.SchemaSQL)
+	files, err := fs.Glob(schemaFS, "schema/*.sql")
 	if err != nil {
-		return fmt.Errorf("creating schema: %w", err)
+		return fmt.Errorf("reading schema files: %w", err)
+	}
+	sort.Strings(files)
+
+	for _, f := range files {
+		content, err := fs.ReadFile(schemaFS, f)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", f, err)
+		}
+		if _, err := db.Exec(string(content)); err != nil {
+			return fmt.Errorf("executing %s: %w", f, err)
+		}
 	}
 	return nil
 }

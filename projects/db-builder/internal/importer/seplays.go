@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/fetch"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/fetch"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // ImportSEPlays imports Standard Ebooks play text from GitHub.
@@ -195,26 +195,6 @@ func loadOrDownloadPlay(cacheFile, repoName string, forceDownload bool, title st
 	os.WriteFile(cacheFile, cacheData, 0644)
 
 	return acts, nil
-}
-
-func lookupCharacter(database *sql.DB, workID int64, charName string) interface{} {
-	var id int64
-	err := database.QueryRow(
-		"SELECT id FROM characters WHERE work_id = ? AND UPPER(name) = UPPER(?)",
-		workID, charName).Scan(&id)
-	if err != nil {
-		err = database.QueryRow(
-			"SELECT id FROM characters WHERE work_id = ? AND UPPER(abbrev) = UPPER(?)",
-			workID, charName).Scan(&id)
-	}
-	if err != nil || id == 0 {
-		return nil
-	}
-	return id
-}
-
-func countWords(s string) int {
-	return len(strings.Fields(s))
 }
 
 func sortedKeys(m map[string]string) []string {

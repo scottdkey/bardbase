@@ -3,10 +3,10 @@
 </script>
 
 <svelte:head>
-	<title>Shakespeare Database</title>
+	<title>Heminge</title>
 </svelte:head>
 
-<h1>Shakespeare Database</h1>
+<h1>Heminge</h1>
 
 <section class="stats">
 	<div class="stat">

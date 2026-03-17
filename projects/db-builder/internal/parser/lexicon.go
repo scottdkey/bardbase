@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/constants"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
 )
 
 // LexiconEntry represents a parsed Schmidt lexicon XML entry.

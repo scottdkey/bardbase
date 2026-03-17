@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Works — Shakespeare Database</title>
+	<title>Works — Heminge</title>
 </svelte:head>
 
 <h1>Works</h1>

@@ -1,22 +1,22 @@
-# Shakespeare Database
+# Heminge
 
-[![Build](https://github.com/scottdkey/shakespeare_db/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/shakespeare_db/actions/workflows/build.yml)
-[![Latest Release](https://img.shields.io/github/v/release/scottdkey/shakespeare_db)](https://github.com/scottdkey/shakespeare_db/releases/latest)
-[![Download](https://img.shields.io/github/downloads/scottdkey/shakespeare_db/total)](https://github.com/scottdkey/shakespeare_db/releases/latest)
+[![Build](https://github.com/scottdkey/heminge/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/heminge/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/scottdkey/heminge)](https://github.com/scottdkey/heminge/releases/latest)
+[![Download](https://img.shields.io/github/downloads/scottdkey/heminge/total)](https://github.com/scottdkey/heminge/releases/latest)
 
 A SQLite database of Shakespeare's complete works — multiple editions, full-text search, and a complete Shakespeare lexicon.
 
 ## Quick Start
 
-**Download the pre-built database** from the [latest release](https://github.com/scottdkey/shakespeare_db/releases/latest).
+**Download the pre-built database** from the [latest release](https://github.com/scottdkey/heminge/releases/latest).
 
 **Build from source** (requires Go 1.22+):
 
 ```bash
-git clone https://github.com/scottdkey/shakespeare_db.git
-cd shakespeare_db
+git clone https://github.com/scottdkey/heminge.git
+cd heminge
 make db-builder test   # run tests
-make db-builder run    # build → build/shakespeare.db
+make db-builder run    # build → build/heminge.db
 ```
 
 ## Make Commands
@@ -57,7 +57,7 @@ make help                      # show all commands
 ## Structure
 
 ```
-shakespeare_db/
+heminge/
 ├── projects/
 │   ├── sources/       source texts — committed, read-only
 │   ├── data/          reference JSON (work mappings, attributions)
@@ -70,6 +70,15 @@ shakespeare_db/
 ## Schema
 
 See [projects/db-builder/SCHEMA.md](projects/db-builder/SCHEMA.md) for all tables, indexes, and example queries.
+
+## Documentation
+
+| Doc | What it covers |
+|-----|---------------|
+| [docs/pipeline-overview.md](docs/pipeline-overview.md) | How all 9 build phases connect — OSS → SE plays → SE poetry → lexicon → Perseus → First Folio → alignments → citations → FTS |
+| [docs/line-alignment.md](docs/line-alignment.md) | Deep dive on Needleman-Wunsch sequence alignment used to produce cross-edition `line_mappings` |
+| [docs/citation-resolution.md](docs/citation-resolution.md) | Deep dive on the 5-strategy cascade that links ~200K Schmidt citations to actual `text_lines` rows |
+| [docs/fts-search.md](docs/fts-search.md) | FTS5 setup, Porter stemming, and query examples for `lexicon_fts` and `text_fts` |
 
 ## Sources & Attribution
 

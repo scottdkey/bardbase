@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 )
 
 // seedEdgeMappingDB creates a minimal database — sources and editions only (no works or lines).

@@ -10,8 +10,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/db"
-	"github.com/scottdkey/shakespeare_db/projects/db-builder/internal/parser"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
+	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
 // citationRow holds a lexicon citation loaded for resolution.
@@ -52,6 +52,13 @@ func ResolveCitations(database *sql.DB) error {
 
 	// Clear existing matches for a clean rebuild
 	database.Exec("DELETE FROM citation_matches")
+
+	// === Pre-resolution data corrections ===
+	// Fix misattributed citations before matching begins.
+	fixedCount := fixMisattributedCitations(database)
+	if fixedCount > 0 {
+		fmt.Printf("  Data corrections: %d citations reassigned\n", fixedCount)
+	}
 
 	// Get all editions
 	type editionInfo struct {
@@ -333,8 +340,8 @@ func ResolveCitations(database *sql.DB) error {
 func propagateCrossEdition(database *sql.DB) int {
 	totalPropagated := 0
 
-	// Run 2 rounds to handle transitive propagation (A→B, then B→C)
-	for round := 0; round < 2; round++ {
+	// Run 3 rounds to handle transitive propagation across 4 editions (A→B→C→D)
+	for round := 0; round < 3; round++ {
 		roundCount := 0
 
 		// Forward: match is on line_a_id → propagate to line_b_id
@@ -420,7 +427,7 @@ func matchByHeadword(database *sql.DB) int {
 		JOIN lexicon_entries le ON le.id = lc.entry_id
 		WHERE lc.work_id IS NOT NULL
 		  AND lc.act IS NOT NULL AND lc.scene IS NOT NULL
-		  AND lc.line IS NULL AND lc.quote_text IS NULL
+		  AND lc.line IS NULL AND (lc.quote_text IS NULL OR lc.quote_text = '')
 		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`)
 	if err != nil {
 		return 0
@@ -473,10 +480,22 @@ func matchByHeadword(database *sql.DB) int {
 
 	matched := 0
 	for key, groupCits := range sceneGroups {
-		lines, err := loadTextLines(database, "work_id = ? AND act = ? AND scene = ?",
+		// Use loadTextLinesAll (no line_number IS NOT NULL filter) so that
+		// chorus/prologue lines without Globe line numbers are searchable.
+		lines, err := loadTextLinesAll(database, "work_id = ? AND act = ? AND scene = ?",
 			key.WorkID, key.Act, key.Scene)
-		if err != nil || len(lines) == 0 {
+		if err != nil {
 			continue
+		}
+		// Fall back to whole-act search when the specific scene has no text lines.
+		// This handles Schmidt citations that reference non-existent prologue/chorus
+		// scenes (e.g. "Cymb. IV Prol." when Cymbeline has no act-4 prologue).
+		if len(lines) == 0 {
+			lines, err = loadTextLinesAll(database, "work_id = ? AND act = ?",
+				key.WorkID, key.Act)
+			if err != nil || len(lines) == 0 {
+				continue
+			}
 		}
 
 		// Group lines by edition once for all citations in this scene
@@ -497,11 +516,24 @@ func matchByHeadword(database *sql.DB) int {
 			}
 
 			for editionID, edLines := range linesByEdition {
+				found := false
 				for _, line := range edLines {
 					if parser.ContainsNormalized(line.Content, cleanKey) {
 						stmt.Exec(cit.ID, line.ID, editionID, line.Content)
 						matched++
+						found = true
 						break // one match per edition
+					}
+				}
+				// Fallback: try word-prefix matching for inflected forms
+				// (e.g., "dance" matches "dancing", "baby" matches "babies")
+				if !found {
+					for _, line := range edLines {
+						if parser.ContainsWordPrefix(line.Content, cleanKey) {
+							stmt.Exec(cit.ID, line.ID, editionID, line.Content)
+							matched++
+							break
+						}
 					}
 				}
 			}
@@ -515,6 +547,23 @@ func matchByHeadword(database *sql.DB) int {
 	return matched
 }
 
+// splitOnEllipsis splits a Schmidt quote on ellipsis markers ("..." or "…").
+// Schmidt frequently elides text mid-quote (e.g. "to be ... not to be"),
+// making the full string unmatchable as a substring. Each non-empty fragment
+// can be tried independently as a shorter, matchable substring.
+func splitOnEllipsis(s string) []string {
+	s = strings.ReplaceAll(s, "…", "...")
+	parts := strings.Split(s, "...")
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // stripSenseNumber removes trailing digit suffixes from lexicon headword keys.
 // Schmidt's keys like "Bend2", "Act1", "Quick1" have sense numbers that prevent
 // substring matching against text. "Bend2" → "Bend", "A1" → "A", "Go" → "Go".
@@ -524,6 +573,183 @@ func stripSenseNumber(key string) string {
 		return key // all digits — keep as-is
 	}
 	return s
+}
+
+// fixMisattributedCitations corrects known data errors in the Schmidt TEI XML
+// where citations are assigned to the wrong play. Returns the number of corrections.
+//
+// Two classes of error are fixed:
+//
+//  1. Shr. Ind. citations: Schmidt's raw_bibl says "Shr. Ind. X, Y" (Taming of the
+//     Shrew, Induction scene X, line Y) but the TEI bibl ref points to the wrong play.
+//     These are reassigned to Shr. with act=0 (the Induction act).
+//
+//  2. Phantom prologue citations: Schmidt cites "III Prol. Y" for plays like Antony,
+//     Cymbeline, Hamlet etc. that have no act-level prologues. These are actually
+//     Pericles Gower choruses, H5 choruses, or Romeo prologues. The work_id is
+//     reassigned to whichever chorus play has text at that act+scene=0.
+func fixMisattributedCitations(database *sql.DB) int {
+	fixed := 0
+
+	// --- Fix 1: Shr. Ind. citations ---
+	// Find the Shr. work_id
+	var shrID int64
+	err := database.QueryRow("SELECT id FROM works WHERE schmidt_abbrev = 'Shr.'").Scan(&shrID)
+	if err == nil {
+		res, err := database.Exec(`
+			UPDATE lexicon_citations
+			SET work_id = ?, act = 0
+			WHERE raw_bibl LIKE 'Shr. Ind%'
+			  AND work_id != ?`, shrID, shrID)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				fmt.Printf("    Shr. Ind.: reassigned %d citations to Shrew Induction\n", n)
+				fixed += int(n)
+			}
+		}
+	}
+
+	// --- Fix 2: Phantom prologue citations ---
+	// Find plays that actually have scene=0 text (choruses/prologues).
+	chorusPlays, err := database.Query(`
+		SELECT DISTINCT w.id, tl.act
+		FROM text_lines tl
+		JOIN works w ON w.id = tl.work_id
+		WHERE tl.scene = 0
+		GROUP BY w.id, tl.act
+		HAVING COUNT(*) > 5`)
+	if err != nil {
+		return fixed
+	}
+	type chorusKey struct {
+		WorkID int64
+		Act    int
+	}
+	var chorusScenes []chorusKey
+	for chorusPlays.Next() {
+		var ck chorusKey
+		chorusPlays.Scan(&ck.WorkID, &ck.Act)
+		chorusScenes = append(chorusScenes, ck)
+	}
+	chorusPlays.Close()
+
+	// For each unmatched scene=0 citation where the play has NO scene=0 text,
+	// try to reassign to a chorus play that does.
+	rows, err := database.Query(`
+		SELECT lc.id, lc.work_id, lc.act, lc.line, lc.quote_text, le.key
+		FROM lexicon_citations lc
+		JOIN lexicon_entries le ON le.id = lc.entry_id
+		WHERE lc.scene = 0
+		  AND NOT EXISTS (
+			SELECT 1 FROM text_lines tl
+			WHERE tl.work_id = lc.work_id AND tl.act = lc.act AND tl.scene = 0
+		  )`)
+	if err != nil {
+		return fixed
+	}
+
+	type prologueCit struct {
+		ID       int64
+		WorkID   int64
+		Act      int
+		Line     *int
+		Quote    string
+		Headword string
+	}
+	var pCits []prologueCit
+	for rows.Next() {
+		var pc prologueCit
+		var line sql.NullInt64
+		var quote sql.NullString
+		rows.Scan(&pc.ID, &pc.WorkID, &pc.Act, &line, &quote, &pc.Headword)
+		if line.Valid {
+			v := int(line.Int64)
+			pc.Line = &v
+		}
+		if quote.Valid {
+			pc.Quote = quote.String
+		}
+		pCits = append(pCits, pc)
+	}
+	rows.Close()
+
+	if len(pCits) == 0 {
+		return fixed
+	}
+
+	// For each phantom prologue citation, find the correct chorus play.
+	// Strategy: try each chorus play that has the same act+scene=0.
+	// Pick the one where the headword appears in the text (or line number exists).
+	stmt, err := database.Prepare("UPDATE lexicon_citations SET work_id = ? WHERE id = ?")
+	if err != nil {
+		return fixed
+	}
+	defer stmt.Close()
+
+	for _, pc := range pCits {
+		// Find candidate chorus plays for this act
+		var candidates []int64
+		for _, ck := range chorusScenes {
+			if ck.Act == pc.Act {
+				candidates = append(candidates, ck.WorkID)
+			}
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+
+		bestWork := int64(0)
+
+		// Try matching by headword in each candidate's chorus text
+		cleanKey := stripSenseNumber(pc.Headword)
+		for _, workID := range candidates {
+			lines, err := loadTextLinesAll(database, "work_id = ? AND act = ? AND scene = 0",
+				workID, pc.Act)
+			if err != nil || len(lines) == 0 {
+				continue
+			}
+
+			// Check headword match
+			for _, line := range lines {
+				if parser.ContainsNormalized(line.Content, cleanKey) {
+					bestWork = workID
+					break
+				}
+			}
+			if bestWork != 0 {
+				break
+			}
+
+			// Check line number match
+			if pc.Line != nil {
+				for _, line := range lines {
+					if line.LineNumber == *pc.Line {
+						bestWork = workID
+						break
+					}
+				}
+			}
+			if bestWork != 0 {
+				break
+			}
+		}
+
+		// If only one candidate, assign even without text confirmation
+		if bestWork == 0 && len(candidates) == 1 {
+			bestWork = candidates[0]
+		}
+
+		if bestWork != 0 && bestWork != pc.WorkID {
+			stmt.Exec(bestWork, pc.ID)
+			fixed++
+		}
+	}
+
+	if fixed > 0 {
+		fmt.Printf("    Phantom prologues: reassigned %d citations to correct chorus plays\n", fixed)
+	}
+
+	return fixed
 }
 
 // expandQuoteAbbreviation expands Schmidt's abbreviated headword in citation quotes.
@@ -634,6 +860,42 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 					}
 				}
 			}
+
+			// 1d: Ellipsis split — Schmidt uses "..." to elide text within quotes.
+			// Try each fragment independently as a substring match.
+			fragments := splitOnEllipsis(cleanQuote)
+			if len(fragments) > 1 {
+				for _, frag := range fragments {
+					if len(frag) <= 3 {
+						continue
+					}
+					for i, line := range lines {
+						if parser.ContainsNormalized(line.Content, frag) {
+							return &lines[i], "exact_quote", 0.85
+						}
+					}
+				}
+			}
+
+			// 1e: Word-set containment — for short quotes (2–6 words), check whether
+			// every word in the quote appears somewhere in the line (any order).
+			// Catches cases where the quote is not a contiguous substring.
+			quoteWords := strings.Fields(parser.NormalizeForMatch(cleanQuote))
+			if len(quoteWords) >= 2 && len(quoteWords) <= 6 {
+				for i, line := range lines {
+					lineNorm := parser.NormalizeForMatch(line.Content)
+					allFound := true
+					for _, w := range quoteWords {
+						if !strings.Contains(lineNorm, w) {
+							allFound = false
+							break
+						}
+					}
+					if allFound {
+						return &lines[i], "exact_quote", 0.80
+					}
+				}
+			}
 		}
 	}
 
@@ -677,7 +939,7 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				return &lines[bestIdx], "line_number", 0.7
 			}
 		} else {
-			for delta := 1; delta <= 10; delta++ {
+			for delta := 1; delta <= 20; delta++ {
 				for i, line := range lines {
 					if line.LineNumber == *cit.Line+delta || line.LineNumber == *cit.Line-delta {
 						conf := 0.6 - float64(delta)*0.1
@@ -687,6 +949,27 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 						return &lines[i], "line_number", conf
 					}
 				}
+			}
+
+			// Final fallback: when Schmidt's line number exceeds the scene's range
+			// (e.g., citing Troilus line 268 in a scene that only has 168 lines),
+			// return the line with the smallest absolute distance from the target.
+			// This handles plays where Schmidt uses continuous line numbering across
+			// scenes while Perseus resets per scene. Confidence is very low (0.1).
+			closestIdx := -1
+			closestDelta := -1
+			for i, line := range lines {
+				d := line.LineNumber - *cit.Line
+				if d < 0 {
+					d = -d
+				}
+				if closestIdx == -1 || d < closestDelta {
+					closestDelta = d
+					closestIdx = i
+				}
+			}
+			if closestIdx >= 0 {
+				return &lines[closestIdx], "line_number", 0.1
 			}
 		}
 	}
@@ -702,7 +985,7 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				bestIdx = i
 			}
 		}
-		if bestScore > 0.20 && bestIdx >= 0 {
+		if bestScore > 0.15 && bestIdx >= 0 {
 			return &lines[bestIdx], "fuzzy_text", bestScore
 		}
 	}
