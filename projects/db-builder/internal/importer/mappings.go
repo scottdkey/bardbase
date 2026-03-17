@@ -57,7 +57,7 @@ func (s *mappingStats) add(other mappingStats) {
 //   - Sonnets: aligns individual sonnets (scene = sonnet number) across editions
 //   - Poems: aligns entire poems (by work_id) across editions
 func BuildLineMappings(database *sql.DB) error {
-	stepBanner("STEP 7: Build Cross-Edition Line Mappings")
+	stepBanner("STEP 8: Build Cross-Edition Line Mappings")
 
 	start := time.Now()
 
