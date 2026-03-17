@@ -17,6 +17,7 @@ type FolioLine struct {
 	Character        string // Speaker label (e.g., "Ham.", "Pros."), normalized
 	Text             string // Line content, original spelling preserved, long-s normalized
 	IsStageDirection bool
+	IsVerse          bool
 	LineInScene      int // Sequential line number within the scene (1-based)
 }
 

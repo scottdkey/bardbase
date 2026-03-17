@@ -1,0 +1,34 @@
+[
+  {
+    "citation_id": 2192,
+    "reason": "headword 'Act' not found in the referenced line; line has no 'act' word",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Act in R2 II,3,21. Ed2 line 21 = 'Than your good words. But who comes here?' No 'act' in line or nearby lines."
+  },
+  {
+    "citation_id": 3985,
+    "reason": "work_id mismatch; 'after-hours' not in Cymb but in R3 IV,4",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "After-hours cited as Cymb IV,4,293 but Cymb IV,4 has only ~40 lines. 'After hours' found in R3 IV,4,302 (ed2 102756) and Rom II,6,3 (ed2 104804). Likely work_id mismatch in source data."
+  },
+  {
+    "citation_id": 78770,
+    "reason": "Per V Prol; no 'godfather' found in prologue text",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Godfather in Per V Prol. No 'godfather' in Per V Prol text. The prologue discusses Marina's talents."
+  },
+  {
+    "citation_id": 229277,
+    "reason": "Mcb has no prologues; phantom prologue reference",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Wood in Mcb II Prol 4. Mcb has no prologues (scene=0 count=0)."
+  }
+]

@@ -18,6 +18,7 @@ type PerseusLine struct {
 	CharID           string // Character ID from cast list (e.g., "ant-33")
 	Text             string
 	IsStageDirection bool
+	IsVerse          bool
 	LineInScene      int // Sequential line number within the scene (1-based)
 	GlobeLine        int // Globe edition line number (0 if not on a numbered boundary)
 }

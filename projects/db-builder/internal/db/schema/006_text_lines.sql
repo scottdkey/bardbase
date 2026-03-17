@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS text_lines (
     word_count INTEGER DEFAULT 0,
     oss_paragraph_id INTEGER,
     sonnet_number INTEGER,
-    stanza INTEGER
+    stanza INTEGER,
+    line_type TEXT -- 'verse', 'prose', or NULL (unknown)
 );
 CREATE INDEX IF NOT EXISTS idx_text_work_edition ON text_lines(work_id, edition_id);
 CREATE INDEX IF NOT EXISTS idx_text_location ON text_lines(work_id, act, scene);

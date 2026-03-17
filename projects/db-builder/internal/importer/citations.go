@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
 	"github.com/scottdkey/heminge/projects/db-builder/internal/db"
 	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
@@ -366,13 +367,18 @@ func ResolveCitations(database *sql.DB) error {
 	fallbackMatches := matchByHeadwordFallback(database)
 	totalMatches += fallbackMatches
 
+	// === Phase 7: Apply manual corrections from citation_corrections.json ===
+	manualMatches := applyManualCorrections(database)
+	totalMatches += manualMatches
+
 	// Final stats from database
-	var finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalTotal int
+	var finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalManual, finalTotal int
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'exact_quote'").Scan(&finalExact)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'line_number'").Scan(&finalLine)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'fuzzy_text'").Scan(&finalFuzzy)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'propagated'").Scan(&finalPropagated)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'headword'").Scan(&finalHeadword)
+	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'manual'").Scan(&finalManual)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches").Scan(&finalTotal)
 
 	var finalUnmatched int
@@ -384,13 +390,13 @@ func ResolveCitations(database *sql.DB) error {
 
 	elapsed := time.Since(start).Seconds()
 	db.LogImport(database, "citations", "resolve_complete",
-		fmt.Sprintf("%d matches (exact=%d, line=%d, fuzzy=%d, propagated=%d, headword=%d, unmatched_citations=%d)",
-			finalTotal, finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalUnmatched),
+		fmt.Sprintf("%d matches (exact=%d, line=%d, fuzzy=%d, propagated=%d, headword=%d, manual=%d, unmatched_citations=%d)",
+			finalTotal, finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalManual, finalUnmatched),
 		finalTotal, elapsed)
 
 	fmt.Printf("  ✓ %d total matches in %.1fs\n", finalTotal, elapsed)
 	fmt.Printf("    exact_quote: %d, line_number: %d, fuzzy_text: %d\n", finalExact, finalLine, finalFuzzy)
-	fmt.Printf("    propagated: %d, headword: %d\n", finalPropagated, finalHeadword)
+	fmt.Printf("    propagated: %d, headword: %d, manual: %d\n", finalPropagated, finalHeadword, finalManual)
 	fmt.Printf("    unmatched citations: %d of %d (%.1f%%)\n",
 		finalUnmatched, len(citations), 100.0*float64(finalUnmatched)/float64(len(citations)))
 	return nil
@@ -848,6 +854,53 @@ func matchByHeadwordFallback(database *sql.DB) int {
 // Schmidt frequently elides text mid-quote (e.g. "to be ... not to be"),
 // making the full string unmatchable as a substring. Each non-empty fragment
 // can be tried independently as a shorter, matchable substring.
+// applyManualCorrections inserts citation matches from the manually curated
+// corrections file (projects/data/citation_corrections.json). These handle
+// citations that can't be matched automatically due to spelling variants,
+// line number mismatches, or missing text in all editions.
+func applyManualCorrections(database *sql.DB) int {
+	corrections := constants.CitationCorrections
+	if len(corrections) == 0 {
+		return 0
+	}
+
+	tx, err := database.Begin()
+	if err != nil {
+		return 0
+	}
+	stmt, err := tx.Prepare(`
+		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+		SELECT ?, tl.id, ?, 'manual', ?, tl.content
+		FROM text_lines tl WHERE tl.id = ?
+		  AND NOT EXISTS (
+			SELECT 1 FROM citation_matches cm
+			WHERE cm.citation_id = ? AND cm.edition_id = ?
+		  )`)
+	if err != nil {
+		tx.Rollback()
+		return 0
+	}
+
+	matched := 0
+	for _, c := range corrections {
+		if c.BestLineID == nil || c.BestEditionID == nil {
+			continue
+		}
+		res, err := stmt.Exec(c.CitationID, *c.BestEditionID, c.Confidence, *c.BestLineID, c.CitationID, *c.BestEditionID)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				matched++
+			}
+		}
+	}
+
+	stmt.Close()
+	tx.Commit()
+
+	fmt.Printf("  Manual corrections: %d matches\n", matched)
+	return matched
+}
+
 func splitOnEllipsis(s string) []string {
 	s = strings.ReplaceAll(s, "…", "...")
 	parts := strings.Split(s, "...")
@@ -906,39 +959,27 @@ func fixMisattributedCitations(database *sql.DB) int {
 		}
 	}
 
-	// --- Fix 2: Raw-bibl-based reassignment for misattributed chorus/prologue citations ---
-	// Schmidt's TEI XML sometimes assigns chorus citations to the wrong play.
-	// The raw_bibl field preserves what Schmidt actually wrote, allowing correction.
-	//
-	// "Rom. I Chor." / "Rom. I Prol." → Romeo prologue (act=0)
-	// "H5 I Chor." → Henry V opening chorus (act=0)
-	// These get misassigned to Pericles because Pericles has act=1 scene=0 Gower text.
-	type rawBiblFix struct {
-		pattern    string // SQL LIKE pattern for raw_bibl
-		targetPlay string // schmidt_abbrev to reassign to
-		newAct     int    // act to set (0 = prologue)
+	// --- Fix 2: Correct act/scene for "I Chor." / "I Prol." citations ---
+	// The parser correctly assigns these to Romeo/H5 but with act=1, scene=0
+	// (literal parse of "I Chor."). The actual text lives at act=0, scene=1
+	// (the prologue before act 1). Without this fix, Fix 3 (phantom prologue)
+	// sees "no text at act=1 scene=0" and reassigns them to Pericles.
+	actSceneFixes := []struct {
+		sql   string
+		label string
+	}{
+		{`UPDATE lexicon_citations SET act = 0, scene = 1 WHERE raw_bibl = 'Rom. I Chor.' AND act = 1 AND scene = 0`, "Rom. I Chor."},
+		{`UPDATE lexicon_citations SET act = 0, scene = 1 WHERE raw_bibl = 'Rom. I Prol.' AND act = 1 AND scene = 0`, "Rom. I Prol."},
+		{`UPDATE lexicon_citations SET act = 0, scene = 1 WHERE raw_bibl = 'H5 I Chor.' AND act = 1 AND scene = 0`, "H5 I Chor."},
 	}
-	rawFixes := []rawBiblFix{
-		{"Rom. I Chor%", "Rom.", 0},
-		{"Rom. I Prol%", "Rom.", 0},
-		{"H5 I Chor%", "H5", 0},
-	}
-	for _, rf := range rawFixes {
-		var targetID int64
-		err := database.QueryRow("SELECT id FROM works WHERE schmidt_abbrev = ?", rf.targetPlay).Scan(&targetID)
+	for _, af := range actSceneFixes {
+		res, err := database.Exec(af.sql)
 		if err != nil {
 			continue
 		}
-		res, err := database.Exec(`
-			UPDATE lexicon_citations
-			SET work_id = ?, act = ?, scene = 0
-			WHERE raw_bibl LIKE ?
-			  AND work_id != ?`, targetID, rf.newAct, rf.pattern, targetID)
-		if err == nil {
-			if n, _ := res.RowsAffected(); n > 0 {
-				fmt.Printf("    %s: reassigned %d citations to %s act=%d\n", rf.pattern, n, rf.targetPlay, rf.newAct)
-				fixed += int(n)
-			}
+		if n, _ := res.RowsAffected(); n > 0 {
+			fmt.Printf("    %s: corrected act/scene for %d citations\n", af.label, n)
+			fixed += int(n)
 		}
 	}
 

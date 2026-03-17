@@ -27,3 +27,18 @@ var FolioPlayTitles map[string]string
 // GenreMap maps OSS single-letter genre codes to full work type names.
 // Loaded from projects/data/genre_map.json.
 var GenreMap map[string]string
+
+// CitationCorrection is a manual correction for an unmatched lexicon citation.
+// Loaded from projects/data/citation_corrections.json.
+type CitationCorrection struct {
+	CitationID    int64   `json:"citation_id"`
+	Reason        string  `json:"reason"`
+	BestLineID    *int64  `json:"best_line_id"`
+	BestEditionID *int64  `json:"best_edition_id"`
+	Confidence    float64 `json:"confidence"`
+	Notes         string  `json:"notes"`
+}
+
+// CitationCorrections holds manual corrections for citations that can't be
+// matched automatically. Loaded from projects/data/citation_corrections.json.
+var CitationCorrections []CitationCorrection

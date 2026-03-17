@@ -17,6 +17,7 @@ type PlayLine struct {
 	Character        string
 	Text             string
 	IsStageDirection bool
+	IsVerse          bool
 	LineInScene      int
 }
 
@@ -189,6 +190,7 @@ func (p *playParser) handleEnd(tag string) {
 						Character:        charName,
 						Text:             vl.text,
 						IsStageDirection: vl.isStageDirection,
+						IsVerse:          !vl.isStageDirection,
 						LineInScene:      p.sceneLineCounter,
 					})
 				}

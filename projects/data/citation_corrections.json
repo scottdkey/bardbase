@@ -1,0 +1,586 @@
+[
+  {
+    "citation_id": 1258,
+    "reason": "line number mismatch between Schmidt numbering and edition text",
+    "best_line_id": 77175,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Absey-book in John I,1. Ed2 line 200 'And then comes answer like an Absey book'. Schmidt cites line 196."
+  },
+  {
+    "citation_id": 1635,
+    "reason": "scene=0 chorus reference; edition 1 packs chorus into single line",
+    "best_line_id": 61507,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Accomplish in H5 IV Chor. Ed2 line 13 'The armourers, accomplishing the knights'."
+  },
+  {
+    "citation_id": 1716,
+    "reason": "scene numbering mismatch; Schmidt I,0,24 maps to our I,6 in Cymbeline",
+    "best_line_id": 184130,
+    "best_edition_id": 3,
+    "confidence": 0.4,
+    "notes": "Accordingly in Cymb. Ed3 I,6,26 'Reflect upon him accordingly'. Schmidt's scene 0 is our scene 6 (letter-reading)."
+  },
+  {
+    "citation_id": 1725,
+    "reason": "line number mismatch; headword as archaic 'accompt'",
+    "best_line_id": 67467,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Account1: 'cast accompt' in H6B IV,2,45. Schmidt cites line 93"
+  },
+  {
+    "citation_id": 1963,
+    "reason": "line number mismatch; Acheron referenced via 'burning lake' in spirit scene",
+    "best_line_id": 65896,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Acheron in H6B I,4,42. Ed2 line 32 'Descend to darkness and the burning lake!' The burning lake = Acheron (river of the underworld). Schmidt line 42 vs ed2 line 32."
+  },
+  {
+    "citation_id": 1964,
+    "reason": "Acheron referenced as 'lake of darkness' in Lr III,6",
+    "best_line_id": 81363,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Acheron in Lr III,6,8. Ed2 line 6 'Nero is an angler in the lake of darkness.' Lake of darkness = Acheron."
+  },
+  {
+    "citation_id": 2192,
+    "reason": "headword 'Act' not found in the referenced line; line has no 'act' word",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Act in R2 II,3,21. Ed2 line 21 = 'Than your good words. But who comes here?' No 'act' in line or nearby lines."
+  },
+  {
+    "citation_id": 2617,
+    "reason": "Passionate Pilgrim edition mapping issue",
+    "best_line_id": 133115,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Addict in Pilgr. Ed2 line 416 'If he be addict to vice'. Matches quote 'a. to vice'."
+  },
+  {
+    "citation_id": 2832,
+    "reason": "scene=0 Per V Prol; headword 'Admire' found as 'admired'",
+    "best_line_id": 96459,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Admire in Per V Prol. Ed2 line 5 'As goddess-like to her admired lays'."
+  },
+  {
+    "citation_id": 2833,
+    "reason": "duplicate of citation 2832; same Per V Prol reference",
+    "best_line_id": 96459,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Admire in Per V Prol. Ed2 line 5 'As goddess-like to her admired lays'. Same as 2832."
+  },
+  {
+    "citation_id": 2935,
+    "reason": "Shr Induction mapped to act=0; only edition 1 has this text",
+    "best_line_id": 29214,
+    "best_edition_id": 1,
+    "confidence": 0.4,
+    "notes": "Adonis in Shr Ind.2,52. Ed1 act=0,scene=2,line 13 'Adonis painted by a running brook'. Only ed1 has Induction as act 0. Ed4 has it at I,1,175."
+  },
+  {
+    "citation_id": 2938,
+    "reason": "headword 'Adoor' found as 'o door' in Err II,1",
+    "best_line_id": 106777,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Adoor in Err II,1,11. Ed2 line 12 'Because their business still lies out o' door.' A-door = at/to door."
+  },
+  {
+    "citation_id": 2939,
+    "reason": "headword 'Adoor' found as 'o door' in Cor I,3",
+    "best_line_id": 141271,
+    "best_edition_id": 3,
+    "confidence": 0.4,
+    "notes": "Adoor in Cor I,3,120. Ed3 line 122 'Virgilia, turn thy solemness out o' door'."
+  },
+  {
+    "citation_id": 2942,
+    "reason": "headword 'Adoors' found as 'o doors' in Hml II,1",
+    "best_line_id": 53144,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Adoors in Hml II,1,99. Ed2 line 109 'For out o' doors he went without their helps'. Schmidt line 99 vs ed2 line 109."
+  },
+  {
+    "citation_id": 3022,
+    "reason": "line number mismatch; 'adultress' found nearby in Lr II,4",
+    "best_line_id": 80836,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Adulteress in Lr II,4,134. Ed2 line 125 'Sepulchring an adultress.' Schmidt line 134 vs ed2 line 125."
+  },
+  {
+    "citation_id": 3091,
+    "reason": "line number mismatch in Lr V,3",
+    "best_line_id": 82422,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Advancement in Lr V,3,68. Ed2 line 33 'One step I have advanced thee; if thou dost'. Schmidt line 68 vs ed2 line 33."
+  },
+  {
+    "citation_id": 3427,
+    "reason": "line number mismatch in H6B I,4",
+    "best_line_id": 65920,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Aeacides in H6B I,4,65. Ed2 line 56 'Aio te, Aeacida, Romanos vincere posse.' Schmidt line 65 vs ed2 line 56."
+  },
+  {
+    "citation_id": 3740,
+    "reason": "line number mismatch in Mcb IV,3",
+    "best_line_id": 86851,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Affeered in Mcb IV,3,34. Ed2 line 40 'The title is affeer'd!' Schmidt line 34 vs ed2 line 40."
+  },
+  {
+    "citation_id": 3924,
+    "reason": "Passionate Pilgrim line numbering",
+    "best_line_id": 132973,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Afraid in Pilgr 274. Ed2 line 274 'Plays not at all, but seems afraid'."
+  },
+  {
+    "citation_id": 3985,
+    "reason": "work_id mismatch; 'after-hours' not in Cymb but in R3 IV,4",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "After-hours cited as Cymb IV,4,293 but Cymb IV,4 has only ~40 lines. 'After hours' found in R3 IV,4,302 (ed2 102756) and Rom II,6,3 (ed2 104804). Likely work_id mismatch in source data."
+  },
+  {
+    "citation_id": 3987,
+    "reason": "scene numbering mismatch; Cymb V,4 in our mapping has this text",
+    "best_line_id": 186751,
+    "best_edition_id": 3,
+    "confidence": 0.4,
+    "notes": "After-inquiry in Cymb V,4,189. Ed3 line 192 'the after inquiry on your own peril'. Schmidt V,4 = our V,4 (Jailer scene)."
+  },
+  {
+    "citation_id": 4022,
+    "reason": "line number mismatch in Ant V,2",
+    "best_line_id": 43262,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "After-wrath in Ant V,2,290. Ed2 line 325 'To excuse their after wrath: husband, I come'. Schmidt line 290 vs ed2 line 325."
+  },
+  {
+    "citation_id": 11639,
+    "reason": "Sonnet act/scene mapping to sonnet number; found via content",
+    "best_line_id": 135842,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Autumn in Sonn 104,5. Ed2 sonnet 104 line 5 'Three beauteous springs to yellow autumn turn'd'."
+  },
+  {
+    "citation_id": 17236,
+    "reason": "work_id mismatch; 'Berown' is in LLL not Hml. Moon quote found in LLL IV,3",
+    "best_line_id": 83973,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Berown/Biron in LLL IV,3,230 (work 20). Ed2 line 230 'My love, her mistress, is a gracious moon'. Citation says Hml (work 8) but text is in LLL."
+  },
+  {
+    "citation_id": 18240,
+    "reason": "Rom II Chor exists; 'bewitch' found as 'betwitched'",
+    "best_line_id": 104254,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Bewitch in Rom II Chor. Ed2 line 7 'Alike betwitched by the charm of looks'."
+  },
+  {
+    "citation_id": 18241,
+    "reason": "duplicate of 18240; same Rom II Chor reference",
+    "best_line_id": 104254,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Bewitch in Rom II Chor. Ed2 line 7 'Alike betwitched by the charm of looks'. Same as 18240."
+  },
+  {
+    "citation_id": 20423,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95115,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Bnign (=Benign): 'A better prince and benign lord' in Per. II,0 line 4"
+  },
+  {
+    "citation_id": 23225,
+    "reason": "wrong play; H6A should be H6B",
+    "best_line_id": 67108,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Breathe: 'He shall not breathe infection in this air' in H6B III,2,296"
+  },
+  {
+    "citation_id": 24308,
+    "reason": "H5 V Chor contains 'brethren' not 'brother'",
+    "best_line_id": 62284,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Brother in H5 V Chor. Ed2 line 26 'The mayor and all his brethren in best sort'. Brethren = plural of brother."
+  },
+  {
+    "citation_id": 27291,
+    "reason": "work_id mismatch; 'John de la Car' is in H8 not Tw",
+    "best_line_id": 71468,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Car in H8 I,1,258 (work 15). Ed2 line 258 'Of the duke's confessor, John de la Car'. Citation says Tw (work 1) I,1,218."
+  },
+  {
+    "citation_id": 44801,
+    "reason": "H5 V Chor has 'deep-mouth'd' in the text",
+    "best_line_id": 62270,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Deep-mouthed in H5 V Chor. Ed2 line 12 'Whose shouts and claps out-voice the deep-mouth'd sea'."
+  },
+  {
+    "citation_id": 47992,
+    "reason": "headword in H5 II Chorus, not IV",
+    "best_line_id": 60567,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Die2: 'this grace of kings must die' in H5 II,0 line 29"
+  },
+  {
+    "citation_id": 47993,
+    "reason": "headword in H5 II Chorus, not IV (duplicate)",
+    "best_line_id": 60567,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Die2: duplicate of 47992"
+  },
+  {
+    "citation_id": 50948,
+    "reason": "scene numbering mismatch; John IV,4 in Schmidt maps to IV,3 in ed2",
+    "best_line_id": 79110,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Dogged in John. Ed2 IV,3,160 'Doth dogged war bristle his angry crest'. Matches quote exactly. Schmidt IV,4,149 vs ed2 IV,3,160."
+  },
+  {
+    "citation_id": 51168,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95141,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Doing1: 'He, doing so, put forth to seas' in Per. II,0 line 30"
+  },
+  {
+    "citation_id": 51169,
+    "reason": "phantom prologue; actually Per. II Gower chorus (duplicate)",
+    "best_line_id": 95141,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Doing1: duplicate of 51168"
+  },
+  {
+    "citation_id": 51526,
+    "reason": "wrong play; Lr. should be Per.",
+    "best_line_id": 95652,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Doom1: 'He, obedient to their dooms' in Per. III,0,35"
+  },
+  {
+    "citation_id": 52161,
+    "reason": "wrong play; H5 III Chor should be John V,1",
+    "best_line_id": 79154,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Dover: 'But Dover castle' in John V,1,34"
+  },
+  {
+    "citation_id": 53284,
+    "reason": "wrong play; Tw. should be Per.",
+    "best_line_id": 95846,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Drive: 'If e'er this coffin drive a-land' in Per. III,2,84"
+  },
+  {
+    "citation_id": 55668,
+    "reason": "H5 III Chor; 'eche' found as 'eke' in last line",
+    "best_line_id": 195534,
+    "best_edition_id": 3,
+    "confidence": 0.5,
+    "notes": "Eche in H5 III Chor. Ed3 line 35 'And eke out our performance with your mind.' Schmidt says line 13 but this is the last line of the chorus."
+  },
+  {
+    "citation_id": 58395,
+    "reason": "Lucrece mapping; 'In' prefix in bibl means Lucrece internal poem section",
+    "best_line_id": 131440,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Entertain in Lucrece. Ed2 line 596 'In Tarquin's likeness I did entertain thee'. Raw bibl 'In II, 3, 64' refers to stanza numbering."
+  },
+  {
+    "citation_id": 58396,
+    "reason": "same Lucrece reference as 58395 with quote text",
+    "best_line_id": 131440,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Entertain in Lucrece. Ed2 line 596 'In Tarquin's likeness I did entertain thee'. Quote matches exactly."
+  },
+  {
+    "citation_id": 58397,
+    "reason": "duplicate of 58395; same Lucrece reference",
+    "best_line_id": 131440,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Entertain in Lucrece. Same as 58395/58396."
+  },
+  {
+    "citation_id": 61893,
+    "reason": "Shr Induction line numbering issue; text found in Folio edition",
+    "best_line_id": 281565,
+    "best_edition_id": 4,
+    "confidence": 0.4,
+    "notes": "Extreme in Shr Ind.1,138. Folio ed4 I,1,138 'May well abate the ouer-merrie spleene'. Quote 'overmerry spleen' matches. Induction mapped differently across editions."
+  },
+  {
+    "citation_id": 64032,
+    "reason": "work_id mismatch; Ant has no prologues; 'fancy' in H5 III Chor",
+    "best_line_id": 61049,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Fancy cited as Ant III Prol 13 but Ant has no prologues. H5 III Chor line 8 'Play with your fancies'. Raw bibl says 'III Prol. 13' which is H5 not Ant."
+  },
+  {
+    "citation_id": 78770,
+    "reason": "Per V Prol; no 'godfather' found in prologue text",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Godfather in Per V Prol. No 'godfather' in Per V Prol text. The prologue discusses Marina's talents."
+  },
+  {
+    "citation_id": 89341,
+    "reason": "wrong play; As should be All's (All's Well)",
+    "best_line_id": 38236,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "High3: 'If thou proceed' in All's II,1,212. Schmidt confused As/All's"
+  },
+  {
+    "citation_id": 89752,
+    "reason": "H5 V Chor; 'history' found as 'story' in line 2",
+    "best_line_id": 62260,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "History in H5 V Chor. Ed2 line 2 'Vouchsafe to those that have not read the story'. Schmidt may equate 'story' with 'history'."
+  },
+  {
+    "citation_id": 91331,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95132,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Honey1: 'Not to eat honey like a drone' in Per. II,0 line 21"
+  },
+  {
+    "citation_id": 94125,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95114,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "I-wis: 'His child, I wis, to incest bring' in Per. II,0 line 3"
+  },
+  {
+    "citation_id": 108585,
+    "reason": "Shr Induction; only edition 1 has act=0 mapping",
+    "best_line_id": 29222,
+    "best_edition_id": 1,
+    "confidence": 0.4,
+    "notes": "Lie in Shr Ind.2,86. Ed1 act=0,scene=2,line 21 'For though you lay here in this goodly chamber'. Quote 'lay here in this chamber' matches."
+  },
+  {
+    "citation_id": 108868,
+    "reason": "work_id mismatch; text is in H6B not H6C",
+    "best_line_id": 66331,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Life in H6C II,4,18 but 'stir not, for your lives' found in H6B (work 13) II,5,21 (ed2 66331). Citation says H6C (work 14) but text is H6B."
+  },
+  {
+    "citation_id": 119721,
+    "reason": "headword-only citation; 'meet' found in opening line of scene",
+    "best_line_id": 77259,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Meet in John II,1. Ed2 line 2 'Before Angiers well met, brave Austria.' Schmidt cites the whole scene."
+  },
+  {
+    "citation_id": 127356,
+    "reason": "scene numbering mismatch; Ant II,4 in Schmidt = II,3 in ed2",
+    "best_line_id": 40735,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Natural in Ant II,3,33 (ed2). 'Thou art sure to lose; and, of that natural luck'. Schmidt II,4,26 vs ed2 II,3,33."
+  },
+  {
+    "citation_id": 128511,
+    "reason": "phantom prologue; actually Per. IV Gower chorus",
+    "best_line_id": 95987,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Neeld (=needle): 'with sharp needle wound' in Per. IV,0 line 24"
+  },
+  {
+    "citation_id": 128512,
+    "reason": "Per V Prol; 'needle' found in prologue text",
+    "best_line_id": 96460,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Neeld in Per V Prol. Ed2 line 6 'Deep clerks she dumbs; and with her needle composes'. Neeld = needle."
+  },
+  {
+    "citation_id": 131745,
+    "reason": "wrong play; Per. should be All's Well",
+    "best_line_id": 38439,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Now-born: 'on the now-born brief' in All's II,3,168. Only occurrence in Shakespeare"
+  },
+  {
+    "citation_id": 137163,
+    "reason": "H5 V Chor; 'ostent' found in chorus text",
+    "best_line_id": 62280,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Ostentation in H5 V Chor. Ed2 line 22 'Giving full trophy, signal and ostent'. Ostent = ostentation."
+  },
+  {
+    "citation_id": 152586,
+    "reason": "scene/line mismatch; Mcb II,4 only has 53 lines; 'pronounce' in II,2",
+    "best_line_id": 85762,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Pronounce in Mcb. Ed2 II,2,40 'But wherefore could not I pronounce Amen?' Schmidt cites II,4,115 but that scene is too short. Different scene numbering."
+  },
+  {
+    "citation_id": 171106,
+    "reason": "H5 V Chor; 'self-glorious' found in chorus text",
+    "best_line_id": 62279,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Self-gracious in H5 V Chor. Ed2 line 21 'Being free from vainness and self-glorious pride'. Schmidt's 'self-gracious' may be a variant reading or error for 'self-glorious'."
+  },
+  {
+    "citation_id": 171561,
+    "reason": "R3 III,3 text does not contain 'allegiance'; found in I,3",
+    "best_line_id": 100399,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Send in R3 III,3,37 with quote 'sends allegiance to his royal person'. 'Allegiance' found in I,3,175 not III,3. Scene numbering or work section mismatch."
+  },
+  {
+    "citation_id": 183318,
+    "reason": "scene numbering mismatch; Tim V,2 in Schmidt maps differently",
+    "best_line_id": 123321,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Sour in Tim V,1,221 (ed2). 'Lips, let sour words go by and language end'. Quote matches. Schmidt V,2,223 vs ed2 V,1,221."
+  },
+  {
+    "citation_id": 196147,
+    "reason": "wrong play; Lr. should be Shr.",
+    "best_line_id": 113208,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Take: 'as he stoop'd again to take it up' in Shr. III,2,139"
+  },
+  {
+    "citation_id": 198779,
+    "reason": "Per II Prol; 'Tarsus' found (Schmidt spells 'Tharsus')",
+    "best_line_id": 95123,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Tharsus in Per II Prol. Ed2 line 12 'Is still at Tarsus, where each man'. Tharsus = Tarsus spelling variant."
+  },
+  {
+    "citation_id": 202970,
+    "reason": "Cymb V scene numbering; thunder reference in Jupiter vision scene",
+    "best_line_id": 51458,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Thunder in Cymb V,4. Ed2 line 99 'Accuse the thunderer, whose bolt, you know'. The 'beds of eels' reference is at line 158 (Jailer's speech). Schmidt's V,1,201 maps to our V,4."
+  },
+  {
+    "citation_id": 203373,
+    "reason": "work_id mismatch; text is in Troilus (Tro) not Cymbeline",
+    "best_line_id": 128598,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Tickle in Tro V,2,67 (work 40). Ed2 'How the devil Luxury, with his fat rump and potato-finger, tickles these together!' Citation says Cymb V,2,56 but text is in Troilus."
+  },
+  {
+    "citation_id": 206164,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95148,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Toss: 'coast to coast is tost' in Per. II,0 line 37"
+  },
+  {
+    "citation_id": 207180,
+    "reason": "scene numbering mismatch; As IV,2 in Schmidt = IV,1 in ed2",
+    "best_line_id": 44675,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Travail in As IV,1,9 (ed2). 'A traveller! By my faith, you have great reason to be sad'. Schmidt IV,2,73 vs ed2 IV,1,9. Different scene numbering."
+  },
+  {
+    "citation_id": 215296,
+    "reason": "phantom prologue; actually Per. III Gower chorus",
+    "best_line_id": 95667,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Vary2: 'Varies again; the grisly north' in Per. III,0 line 50"
+  },
+  {
+    "citation_id": 215948,
+    "reason": "wrong play; Merch. should be Gent.",
+    "best_line_id": 117840,
+    "best_edition_id": 2,
+    "confidence": 0.5,
+    "notes": "Very1: 'he grieves my very heart-strings' in Gent. IV,2,60"
+  },
+  {
+    "citation_id": 229277,
+    "reason": "Mcb has no prologues; phantom prologue reference",
+    "best_line_id": null,
+    "best_edition_id": null,
+    "confidence": 0.1,
+    "notes": "Wood in Mcb II Prol 4. Mcb has no prologues (scene=0 count=0)."
+  },
+  {
+    "citation_id": 230826,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "best_line_id": 95146,
+    "best_edition_id": 2,
+    "confidence": 0.4,
+    "notes": "Wrack2: 'is wreck'd and split' in Per. II,0 line 35"
+  },
+  {
+    "citation_id": 231560,
+    "reason": "H4A I,1 has only 109 lines; line 161 does not exist",
+    "best_line_id": 55955,
+    "best_edition_id": 2,
+    "confidence": 0.3,
+    "notes": "Wrong in H4A I,1,161 with quote 'comforts false, worse than true wrongs'. H4A I,1 max 109 lines. Closest match is I,3,153 'Whose wrongs in us God pardon!' Different scene."
+  }
+]

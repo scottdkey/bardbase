@@ -109,6 +109,9 @@ func loadAllData(dir string) error {
 	if err := loadAttributions(filepath.Join(dir, "attributions.json")); err != nil {
 		return fmt.Errorf("attributions.json: %w", err)
 	}
+	if err := loadCitationCorrections(filepath.Join(dir, "citation_corrections.json")); err != nil {
+		return fmt.Errorf("citation_corrections.json: %w", err)
+	}
 	return nil
 }
 
@@ -175,6 +178,20 @@ type AttributionDef struct {
 	CommercialAllowed     bool   `json:"commercial_allowed"`
 	ModificationAllowed   bool   `json:"modification_allowed"`
 	Notes                 string `json:"notes"`
+}
+
+// loadCitationCorrections reads citation_corrections.json and populates the CitationCorrections slice.
+func loadCitationCorrections(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var corrections []CitationCorrection
+	if err := json.Unmarshal(data, &corrections); err != nil {
+		return err
+	}
+	CitationCorrections = corrections
+	return nil
 }
 
 // loadAttributions reads attributions.json and populates the Attributions slice.
