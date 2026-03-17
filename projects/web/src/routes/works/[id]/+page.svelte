@@ -19,7 +19,7 @@
 </svelte:head>
 
 <h1>{data.work.title}</h1>
-<p class="meta">{data.work.work_type} &middot; {data.work.year}</p>
+<p class="meta">{data.work.work_type}{#if data.work.date_composed} &middot; c. {data.work.date_composed}{/if}</p>
 
 {#if data.characters.length > 0}
 	<details>
@@ -44,11 +44,11 @@
 
 <section class="text">
 	{#each data.lines as line}
-		{#if line.act !== currentAct || line.scene !== currentScene}
-			{@const _ = (() => { currentAct = line.act; currentScene = line.scene; })()}
+		{#if (line.act ?? 0) !== currentAct || (line.scene ?? 0) !== currentScene}
+			{@const _ = (() => { currentAct = line.act ?? 0; currentScene = line.scene ?? 0; })()}
 			<h3>Act {line.act}, Scene {line.scene}</h3>
 		{/if}
-		<div class="line" class:stage-direction={line.is_stage_direction}>
+		<div class="line" class:stage-direction={line.content_type === 'stage_direction'}>
 			{#if line.character_name}
 				<span class="speaker">{line.character_name}</span>
 			{/if}

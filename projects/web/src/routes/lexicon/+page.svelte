@@ -21,7 +21,7 @@
 			{#if entry.orthography}
 				<span class="orth">({entry.orthography})</span>
 			{/if}
-			<p class="definition">{entry.full_text.slice(0, 200)}{entry.full_text.length > 200 ? '...' : ''}</p>
+			<p class="definition">{(entry.full_text ?? '').slice(0, 200)}{(entry.full_text ?? '').length > 200 ? '...' : ''}</p>
 		</li>
 	{/each}
 </ul>
