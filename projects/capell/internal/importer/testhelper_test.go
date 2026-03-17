@@ -130,8 +130,9 @@ func (td *testDB) insertCitation(t *testing.T, entryID int64, senseID *int64, wo
 	return id
 }
 
-// newAttributionTestDB creates a test database with the 3 sources that
-// PopulateAttributions expects (oss_moby, perseus_schmidt, standard_ebooks).
+// newAttributionTestDB creates a test database with all 6 sources that
+// PopulateAttributions expects (oss_moby, perseus_schmidt, standard_ebooks,
+// perseus, eebo_tcp, folger).
 func newAttributionTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -152,6 +153,9 @@ func newAttributionTestDB(t *testing.T) *sql.DB {
 		{"Open Source Shakespeare", "oss_moby", "https://www.opensourceshakespeare.org/", "Public Domain"},
 		{"Perseus Schmidt Lexicon", "perseus_schmidt", "http://www.perseus.tufts.edu", "CC BY-SA 3.0"},
 		{"Standard Ebooks", "standard_ebooks", "https://standardebooks.org", "CC0 1.0"},
+		{"Perseus Digital Library", "perseus", "https://www.perseus.tufts.edu", "CC BY-SA 3.0"},
+		{"EEBO-TCP (Text Creation Partnership)", "eebo_tcp", "https://textcreationpartnership.org/", "CC0 1.0 Universal"},
+		{"Folger Shakespeare Library", "folger", "https://shakespeare.folger.edu/", "CC BY-NC 3.0"},
 	}
 	for _, s := range sources {
 		if _, err := db.GetSourceID(database, s.name, s.code, s.url, s.license, "", "", false, ""); err != nil {

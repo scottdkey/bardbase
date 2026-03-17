@@ -123,7 +123,15 @@ func BuildLineMappings(database *sql.DB) error {
 		}
 	}
 
-	fmt.Printf("  Edition pairs: %d\n", len(pairs))
+	// Count distinct works that have at least one text line in any edition.
+	var totalWorks int
+	database.QueryRow(`
+		SELECT COUNT(DISTINCT work_id) FROM text_lines
+		WHERE act IS NOT NULL AND act > 0`).Scan(&totalWorks)
+
+	fmt.Printf("  Editions: %d  →  %d edition pairs (C(%d,2))\n",
+		len(editions), len(pairs), len(editions))
+	fmt.Printf("  Works with play text: %d\n", totalWorks)
 
 	// Phase 1: Load all alignment tasks from DB (sequential — SQLite reads).
 	var tasks []alignTask
@@ -244,21 +252,20 @@ func loadAlignTasks(database *sql.DB, pair editionPair) []alignTask {
 	var tasks []alignTask
 
 	// === 1. Play scenes (act > 0) ===
+	// Use UNION to find scenes present in EITHER edition (not just both).
+	// This ensures plays missing from one edition (e.g. Pericles absent from
+	// the First Folio) still get mapping entries — with the missing side empty
+	// and match_type="only_a" or "only_b".
 	type sceneRef struct {
 		WorkID     int64
 		Act, Scene int
 	}
 
 	sceneRows, err := database.Query(`
-		SELECT DISTINCT t1.work_id, t1.act, t1.scene
-		FROM text_lines t1
-		WHERE t1.edition_id = ? AND t1.act IS NOT NULL AND t1.act > 0 AND t1.scene IS NOT NULL
-		  AND EXISTS (
-			SELECT 1 FROM text_lines t2
-			WHERE t2.work_id = t1.work_id AND t2.act = t1.act AND t2.scene = t1.scene
-			  AND t2.edition_id = ?
-		  )
-		ORDER BY t1.work_id, t1.act, t1.scene`, pair.AID, pair.BID)
+		SELECT DISTINCT work_id, act, scene
+		FROM text_lines
+		WHERE edition_id IN (?, ?) AND act IS NOT NULL AND act > 0 AND scene IS NOT NULL
+		ORDER BY work_id, act, scene`, pair.AID, pair.BID)
 	if err == nil {
 		var scenes []sceneRef
 		for sceneRows.Next() {
@@ -287,14 +294,9 @@ func loadAlignTasks(database *sql.DB, pair editionPair) []alignTask {
 		SELECT DISTINCT t1.work_id, t1.scene
 		FROM text_lines t1
 		JOIN works w ON t1.work_id = w.id
-		WHERE t1.edition_id = ? AND (t1.act IS NULL OR t1.act = 0) AND t1.scene IS NOT NULL AND t1.scene > 0
+		WHERE t1.edition_id IN (?, ?) AND (t1.act IS NULL OR t1.act = 0)
+		  AND t1.scene IS NOT NULL AND t1.scene > 0
 		  AND w.work_type = 'sonnet_sequence'
-		  AND EXISTS (
-			SELECT 1 FROM text_lines t2
-			WHERE t2.work_id = t1.work_id AND t2.scene = t1.scene
-			  AND (t2.act IS NULL OR t2.act = 0)
-			  AND t2.edition_id = ?
-		  )
 		ORDER BY t1.work_id, t1.scene`, pair.AID, pair.BID)
 	if err == nil {
 		var sonnetScenes []sceneRef
@@ -324,14 +326,9 @@ func loadAlignTasks(database *sql.DB, pair editionPair) []alignTask {
 		SELECT DISTINCT t1.work_id
 		FROM text_lines t1
 		JOIN works w ON t1.work_id = w.id
-		WHERE t1.edition_id = ? AND (t1.act IS NULL OR t1.act = 0) AND (t1.scene IS NULL OR t1.scene = 0)
+		WHERE t1.edition_id IN (?, ?) AND (t1.act IS NULL OR t1.act = 0)
+		  AND (t1.scene IS NULL OR t1.scene = 0)
 		  AND w.work_type = 'poem'
-		  AND EXISTS (
-			SELECT 1 FROM text_lines t2
-			WHERE t2.work_id = t1.work_id
-			  AND (t2.act IS NULL OR t2.act = 0) AND (t2.scene IS NULL OR t2.scene = 0)
-			  AND t2.edition_id = ?
-		  )
 		ORDER BY t1.work_id`, pair.AID, pair.BID)
 	if err == nil {
 		var poemWorks []int64

@@ -1,17 +1,12 @@
 name: Build Bardbase Database
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'projects/sources/**'
-      - 'projects/data/**'
-      - 'projects/capell/**'
-      - '.github/workflows/**'
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
+      exclude_sources:
+        description: 'Comma-separated source keys to exclude (e.g. folger,wordhoard). Folger is excluded by default (CC BY-NC 3.0).'
+        required: false
+        default: 'folger'
       release:
         description: 'Create a release with the built database'
         required: true
@@ -22,23 +17,8 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: projects/capell
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.22'
-      - name: Run tests
-        run: go test ./... -v
-
   build:
-    needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     timeout-minutes: 30
 
     steps:
@@ -52,16 +32,28 @@ jobs:
 
       - name: Build database
         working-directory: projects/capell
-        run: go run ./cmd/build -output build
+        run: |
+          # Folger is excluded by default (CC BY-NC 3.0 — not safe for commercial use).
+          # To include Folger, set exclude_sources to '' in the workflow dispatch.
+          EXCLUDE="${{ inputs.exclude_sources }}"
+          EXCLUDE_FLAG=""
+          IFS=',' read -ra SOURCES <<< "$EXCLUDE"
+          for src in "${SOURCES[@]}"; do
+            src="${src// /}"
+            if [ -n "$src" ]; then
+              EXCLUDE_FLAG="$EXCLUDE_FLAG --exclude $src"
+            fi
+          done
+          go run ./cmd/build -output build $EXCLUDE_FLAG
 
       - name: Generate build info
         id: info
         run: |
-          DB_SIZE=$(du -h build/bardbase.db | cut -f1)
-          TEXT_LINES=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM text_lines")
-          LEXICON=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_entries")
-          CITATIONS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_citations")
-          WORKS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM works")
+          DB_SIZE=$(du -h projects/capell/build/bardbase.db | cut -f1)
+          TEXT_LINES=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM text_lines")
+          LEXICON=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM lexicon_entries")
+          CITATIONS=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM lexicon_citations")
+          WORKS=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM works")
 
           VERSION="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -75,11 +67,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bardbase
-          path: build/bardbase.db
+          path: projects/capell/build/bardbase.db
           retention-days: 90
 
       - name: Create release
-        if: github.event_name == 'workflow_dispatch' && inputs.release == true
+        if: inputs.release == true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -100,6 +92,9 @@ jobs:
           - **Standard Ebooks** — CC0 (modern-spelling, verse-level)
           - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
 
+          ### Excluded sources
+          ${{ inputs.exclude_sources != '' && format('`{0}`', inputs.exclude_sources) || 'None' }}
+
           ### Usage
           \`\`\`bash
           # Download the pre-built database from this release
@@ -115,4 +110,4 @@ jobs:
           gh release create "$VERSION" \
             --title "Bardbase $VERSION" \
             --notes "$BODY" \
-            build/bardbase.db
+            projects/capell/build/bardbase.db

@@ -67,18 +67,86 @@ Comprehensive catalog of every known openly-licensed, machine-readable Shakespea
 
 ---
 
-## Reference Only (NO Download)
+## New Sources (Downloaded, Import Pending)
 
-### 6. Folger Shakespeare Library
-- **URL**: https://www.folger.edu/explore/shakespeares-works/
-- **License**: Proprietary — free to view on their website
-- **Attribution**: N/A (reference links only)
-- **Format**: N/A
-- **Content**: Authoritative modern scholarly editions of all plays
-- **What we store**: URLs only — link to specific acts/scenes/lines on folger.edu
-- **RULE**: Content must NEVER be downloaded or stored locally. Only store reference URLs.
-- **Import priority**: P1 (just URLs, minimal work)
-- **Status**: ⚠️ Partial — `folger_url` column exists on `works` table, some URLs populated
+### 6. Folger Shakespeare Library Digital Texts
+- **URL**: https://www.folgerdigitaltexts.org/
+- **Download**: https://www.folger.edu/explore/shakespeares-works/download/
+- **License**: CC BY-NC 3.0 — free for non-commercial use with attribution
+- **Attribution**: **REQUIRED** — credit Folger Shakespeare Library
+- **Format**: TEI XML (`projects/sources/folger/XML/`) and TEI Simple XML with POS tagging (`projects/sources/folger/TEIsimple/`)
+- **Content**: All 37 plays in two formats. TEI XML is the standard scholarly encoding; TEIsimple has MorphAdorner part-of-speech annotation on every word.
+- **Edition type**: Modern scholarly (Folger editorial team)
+- **Source key**: `folger`
+- **License tier**: `cc-by-nc`
+- **Import priority**: P2
+- **Status**: ✅ Files downloaded — import pipeline pending
+- **⚠️ NC clause**: Folger must be excluded from production builds until licensing resolved. Use `--exclude folger` flag. See `docs/possible-additions.md` for options.
+
+### 7. Bowdler's "Family Shakespeare" (1847 one-volume edition)
+- **URL**: https://archive.org/details/familyshakespear00shakuoft
+- **License**: Public Domain
+- **Attribution**: Courtesy only
+- **Format**: Plain OCR text (`projects/sources/bowdler/family-shakespeare-1847.txt`)
+- **Content**: Thomas Bowdler's censored edition removing "everything unfit to be read by a gentleman in the company of ladies." Historically significant; the word "bowdlerize" derives from this.
+- **Edition type**: Victorian censored edition (1807 original by Henrietta Bowdler; this 1847 printing)
+- **Source key**: `bowdler`
+- **License tier**: `public-domain`
+- **Import priority**: P4 — historical curiosity, low priority
+- **Status**: ✅ File downloaded — OCR quality may need review; import pipeline pending
+
+### 8. Abbott's Shakespearian Grammar (1877 edition)
+- **URL**: https://archive.org/details/grammarshakesp00abbouoft
+- **License**: Public Domain
+- **Attribution**: Courtesy only
+- **Format**: Plain OCR text (`projects/sources/abbott/shakespearian-grammar-1877.txt`)
+- **Content**: Systematic grammar of Shakespeare's English organized by numbered sections. Covers constructions, syntax, and word-formation patterns Schmidt's Lexicon doesn't address.
+- **Source key**: `abbott`
+- **License tier**: `public-domain`
+- **Import priority**: P3 — complements Schmidt well
+- **Status**: ✅ File downloaded — OCR quality needs review; import pipeline pending
+
+### 9. Bartlett's Concordance to Shakespeare (1896 edition)
+- **URL**: https://archive.org/details/newandcompleteco00bartuoft
+- **License**: Public Domain
+- **Attribution**: Courtesy only
+- **Format**: Plain OCR text (`projects/sources/bartlett/concordance-1896.txt`)
+- **Content**: Every word in Shakespeare indexed to every occurrence with surrounding context. ~1,000 pages dense with short entries and page references.
+- **Source key**: `bartlett`
+- **License tier**: `public-domain`
+- **Import priority**: P4 — OCR on dense concordance may be poor; verify before investing parse effort
+- **Status**: ✅ File downloaded — OCR quality needs review; import pipeline pending
+
+### 10. Onions' Shakespeare Glossary (1911 edition)
+- **URL**: https://archive.org/details/shakespearegloss00oniouoft
+- **License**: Public Domain (1911 first edition — note: 1986 revised Oxford edition is still under copyright)
+- **Attribution**: Courtesy only
+- **Format**: Plain OCR text (`projects/sources/onions/shakespeare-glossary-1911.txt`)
+- **Content**: ~10,000-entry glossary focused on words whose meaning has shifted since Shakespeare's time. Shorter and more accessible than Schmidt.
+- **Source key**: `onions`
+- **License tier**: `public-domain`
+- **Import priority**: P3 — good for quick-definition layer in reader popover
+- **Status**: ✅ File downloaded — OCR quality needs review; import pipeline pending
+
+### 11. Henley & Farmer's Slang and Its Analogues (1890, 7 volumes)
+- **URL**: https://archive.org/details/slangitsanalogue01farmuoft (pattern: 01–07)
+- **License**: Public Domain
+- **Attribution**: Courtesy only
+- **Format**: Plain OCR text (`projects/sources/henley-farmer/slang-vol01.txt` through `slang-vol07.txt`)
+- **Content**: Dictionary of Elizabethan slang, cant, and colloquial language. Fills gaps where Schmidt is euphemistic about bawdy and street language.
+- **Source key**: `henley-farmer`
+- **License tier**: `public-domain`
+- **Import priority**: P4 — niche but distinctive
+- **Status**: ✅ Files downloaded (7 vols) — OCR quality needs review; import pipeline pending
+
+### 12. Shakespeare Census (bibliographic data)
+- **URL**: https://shakespearecensus.org/
+- **License**: No explicit license — factual/bibliographic data, likely not copyrightable in the US. Contact project before commercial use.
+- **Format**: CSV (`projects/sources/shakespeare-census/library-copy-counts.csv`, `sc-bartlett-index.csv`)
+- **Content**: Surviving early printed edition locations and cross-index with Bartlett numbers. Reference/metadata only.
+- **Source key**: `shakespeare-census`
+- **Import priority**: P5 — metadata enrichment only
+- **Status**: ✅ CSVs downloaded — use for edition metadata enrichment, not text import
 
 ---
 

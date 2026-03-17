@@ -7,5 +7,7 @@ CREATE TABLE IF NOT EXISTS editions (
     year INTEGER,
     editors TEXT,
     description TEXT,
-    notes TEXT
+    notes TEXT,
+    source_key TEXT,    -- e.g. 'folger', 'ise', 'eebo' — used by --exclude flag
+    license_tier TEXT   -- 'cc0', 'cc-by-sa', 'cc-by-nc'
 );

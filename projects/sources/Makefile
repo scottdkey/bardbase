@@ -38,9 +38,18 @@ list:
 # Show file counts per source directory
 stats:
 	@echo "Source file statistics:"
-	@echo "  oss:     $$(find oss -type f 2>/dev/null | wc -l) files"
-	@echo "  lexicon: $$(find lexicon -type f 2>/dev/null | wc -l) files"
-	@echo "  se:      $$(find se -type f 2>/dev/null | wc -l) files"
+	@echo "  oss:               $$(find oss -type f 2>/dev/null | wc -l) files"
+	@echo "  lexicon:           $$(find lexicon -type f 2>/dev/null | wc -l) files"
+	@echo "  se:                $$(find se -type f 2>/dev/null | wc -l) files"
+	@echo "  perseus-plays:     $$(find perseus-plays -type f 2>/dev/null | wc -l) files"
+	@echo "  eebo-tcp:          $$(find eebo-tcp -type f 2>/dev/null | wc -l) files"
+	@echo "  folger:            $$(find folger -type f 2>/dev/null | wc -l) files"
+	@echo "  bowdler:           $$(find bowdler -type f 2>/dev/null | wc -l) files"
+	@echo "  abbott:            $$(find abbott -type f 2>/dev/null | wc -l) files"
+	@echo "  bartlett:          $$(find bartlett -type f 2>/dev/null | wc -l) files"
+	@echo "  onions:            $$(find onions -type f 2>/dev/null | wc -l) files"
+	@echo "  henley-farmer:     $$(find henley-farmer -type f 2>/dev/null | wc -l) files"
+	@echo "  shakespeare-census:$$(find shakespeare-census -type f 2>/dev/null | wc -l) files"
 
 # Alias for verify (so test-all works)
 test: verify

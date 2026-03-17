@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/scottdkey/bardbase/projects/capell/internal/db"
 	"github.com/scottdkey/bardbase/projects/capell/internal/importer"
@@ -36,8 +37,17 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
 	forceDownload := flag.Bool("force-download", false, "Re-download Standard Ebooks source files (ignores cache)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, attributions, citations, mappings, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, attributions, citations, mappings, fts")
+	excludeStr := flag.String("exclude", "", "Comma-separated source keys to skip (e.g. folger,wordhoard)")
 	flag.Parse()
+
+	// Build exclusion set from --exclude flag.
+	excludeSet := make(map[string]bool)
+	if *excludeStr != "" {
+		for _, k := range strings.Split(*excludeStr, ",") {
+			excludeSet[strings.TrimSpace(k)] = true
+		}
+	}
 
 	// Resolve paths relative to the monorepo root.
 	// Sources live at projects/sources/, output goes to build/ at repo root.
@@ -89,7 +99,9 @@ func main() {
 	//   4. poetry      — Import Standard Ebooks poetry (sonnets, poems)
 	//   5. perseus     — Import Perseus Globe edition plays (37 plays from TEI XML)
 	//   6. folio       — Import First Folio 1623 (EEBO-TCP A11954, 35 plays, original spelling)
-	//   7. attributions — Populate attribution records for all sources
+	//   7. folger      — Import Folger Shakespeare TEIsimple (37 plays, CC BY-NC 3.0)
+	//   8. eebo-quartos — Import EEBO-TCP early quartos (Q1 Hamlet, Q1 1H4, etc.)
+	//   9. attributions — Populate attribution records for all sources
 	//   8. mappings    — Build cross-edition line alignments (needed by citation propagation)
 	//   9. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
 	//  10. fts         — Build full-text search index
@@ -105,6 +117,8 @@ func main() {
 		{"poetry", func() error { return importer.ImportSEPoetry(database, cacheDir, *forceDownload) }},
 		{"perseus", func() error { return importer.ImportPerseusPlays(database, sourcesDir) }},
 		{"folio", func() error { return importer.ImportFirstFolio(database, sourcesDir) }},
+		{"folger", func() error { return importer.ImportFolger(database, sourcesDir) }},
+		{"eebo-quartos", func() error { return importer.ImportEEBOQuartos(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},
@@ -137,6 +151,10 @@ func main() {
 	} else {
 		// Run the full pipeline in order
 		for _, s := range steps {
+			if excludeSet[s.name] {
+				fmt.Printf("  [excluded] %s\n", s.name)
+				continue
+			}
 			if err := s.fn(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error in step %s: %v\n", s.name, err)
 				os.Exit(1)
