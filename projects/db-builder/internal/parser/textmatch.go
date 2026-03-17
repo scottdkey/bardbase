@@ -111,6 +111,29 @@ func ContainsWordPrefix(text, prefix string) bool {
 	return false
 }
 
+// ContainsStemPrefix checks if any word in text starts with a shortened stem
+// of the given word (all but the last character, after normalization).
+// This catches English inflection patterns where the stem changes:
+//   - "mercury" → "mercur" matches "mercuries" (y→ies)
+//   - "baby" → "bab" matches "babies" (y→ies)
+//   - "gape" → "gap" matches "gaping" (e→ing)
+//   - "dance" → "danc" matches "dancing" (e→ing)
+//
+// Requires the shortened stem to be at least 3 characters.
+func ContainsStemPrefix(text, word string) bool {
+	word = NormalizeForMatch(word)
+	if len(word) < 4 {
+		return false // need at least 4 chars to produce a 3-char stem
+	}
+	stem := word[:len(word)-1]
+	for _, w := range strings.Fields(NormalizeForMatch(text)) {
+		if strings.HasPrefix(w, stem) && w != stem {
+			return true
+		}
+	}
+	return false
+}
+
 // AlignableLine represents a text line for sequence alignment.
 type AlignableLine struct {
 	ID         int64

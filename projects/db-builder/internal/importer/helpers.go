@@ -84,6 +84,12 @@ func countWords(s string) int {
 
 // ─── Works helpers ───────────────────────────────────────────────────────────
 
+// workInfo holds minimal work metadata for import lookups.
+type workInfo struct {
+	ID    int64
+	Title string
+}
+
 // buildWorksMap queries the works table and returns a map from oss_id → workInfo.
 // Used by multiple importers that need to match source records to DB works by oss_id.
 func buildWorksMap(database *sql.DB) (map[string]workInfo, error) {

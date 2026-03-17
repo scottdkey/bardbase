@@ -6,7 +6,9 @@ package importer
 import (
 	"database/sql"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -35,6 +37,22 @@ type textLineRow struct {
 	EditionID  int64
 }
 
+// citMatchTask bundles a citation with the text lines it should be matched against.
+type citMatchTask struct {
+	cit   citationRow
+	lines []textLineRow // already split by edition
+}
+
+// citMatchResult holds the output of one citation matching task per edition.
+type citMatchResult struct {
+	citID      int64
+	lineID     int64
+	editionID  int64
+	matchType  string
+	confidence float64
+	content    string
+}
+
 // ResolveCitations matches lexicon citations to actual text_lines rows.
 //
 // Handles three reference types:
@@ -45,6 +63,9 @@ type textLineRow struct {
 // For each citation with a valid work reference, it searches for matching
 // text lines in each edition using line numbers and/or quote text.
 // Results are stored in the citation_matches table.
+//
+// Phase 1 (load + classify) and Phase 3 (insert) are sequential;
+// Phase 2 (findBestMatch) is parallelized across goroutines.
 func ResolveCitations(database *sql.DB) error {
 	stepBanner("STEP 9: Resolve Lexicon Citations → Text Lines")
 
@@ -175,53 +196,10 @@ func ResolveCitations(database *sql.DB) error {
 	fmt.Printf("    Sonnet citations: %d groups\n", len(sonnetCitations))
 	fmt.Printf("    Poem citations: %d groups\n", len(poemCitations))
 
-	// Process all types
-	tx, err := database.Begin()
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	insertStmt, err := tx.Prepare(`
-		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
-		VALUES (?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("preparing insert: %w", err)
-	}
+	// === Phase 1: Load text lines and build match tasks (sequential DB reads) ===
+	var tasks []citMatchTask
 
-	totalMatches := 0
-	exactMatches := 0
-	lineMatches := 0
-	fuzzyMatches := 0
-	noMatches := 0
-
-	matchCitation := func(cit citationRow, lines []textLineRow) {
-		linesByEdition := make(map[int64][]textLineRow)
-		for _, tl := range lines {
-			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
-		}
-
-		for editionID, edLines := range linesByEdition {
-			matchLine, matchType, confidence := findBestMatch(edLines, cit)
-			if matchLine == nil {
-				noMatches++
-				continue
-			}
-
-			insertStmt.Exec(cit.ID, matchLine.ID, editionID, matchType, confidence, matchLine.Content)
-			totalMatches++
-
-			switch matchType {
-			case "exact_quote":
-				exactMatches++
-			case "line_number":
-				lineMatches++
-			case "fuzzy_text":
-				fuzzyMatches++
-			}
-		}
-	}
-
-	// === Resolve play citations (unified via loadTextLines) ===
+	// Play citations
 	for key, sceneCitations := range playCitations {
 		var lines []textLineRow
 		var err error
@@ -245,7 +223,6 @@ func ResolveCitations(database *sql.DB) error {
 			if err != nil {
 				continue
 			}
-			// Rewrite each citation in this group: scene was actually the line number.
 			for i := range sceneCitations {
 				if sceneCitations[i].Line == nil {
 					lineNum := key.Scene
@@ -255,11 +232,11 @@ func ResolveCitations(database *sql.DB) error {
 		}
 
 		for _, cit := range sceneCitations {
-			matchCitation(cit, lines)
+			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
 		}
 	}
 
-	// === Resolve sonnet citations (unified via loadTextLines) ===
+	// Sonnet citations
 	for key, sCitations := range sonnetCitations {
 		lines, err := loadTextLines(database, "work_id = ? AND scene = ?",
 			key.WorkID, key.Scene)
@@ -267,39 +244,127 @@ func ResolveCitations(database *sql.DB) error {
 			continue
 		}
 		for _, cit := range sCitations {
-			matchCitation(cit, lines)
+			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
 		}
 	}
 
-	// === Resolve poem citations (unified via loadTextLines) ===
+	// Poem citations
 	for key, pCitations := range poemCitations {
 		lines, err := loadTextLines(database, "work_id = ?", key.WorkID)
 		if err != nil {
 			continue
 		}
 		for _, cit := range pCitations {
-			matchCitation(cit, lines)
+			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
+		}
+	}
+
+	fmt.Printf("  Match tasks: %d (loaded in %.1fs)\n", len(tasks), time.Since(start).Seconds())
+
+	// === Phase 2: Run findBestMatch in parallel (CPU-bound, no DB access) ===
+	workers := min(runtime.NumCPU(), 8)
+	if workers < 1 {
+		workers = 1
+	}
+
+	taskCh := make(chan citMatchTask, 256)
+	resultCh := make(chan citMatchResult, 256)
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskCh {
+				// Split lines by edition and match in each
+				linesByEdition := make(map[int64][]textLineRow)
+				for _, tl := range task.lines {
+					linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
+				}
+				for editionID, edLines := range linesByEdition {
+					matchLine, matchType, confidence := findBestMatch(edLines, task.cit)
+					if matchLine != nil {
+						resultCh <- citMatchResult{
+							citID:      task.cit.ID,
+							lineID:     matchLine.ID,
+							editionID:  editionID,
+							matchType:  matchType,
+							confidence: confidence,
+							content:    matchLine.Content,
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// Feed tasks
+	go func() {
+		for _, t := range tasks {
+			taskCh <- t
+		}
+		close(taskCh)
+	}()
+
+	// Close resultCh once all workers finish
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// === Phase 3: Insert results (sequential — single SQLite transaction) ===
+	tx, err := database.Begin()
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	insertStmt, err := tx.Prepare(`
+		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+		VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("preparing insert: %w", err)
+	}
+
+	totalMatches := 0
+	exactMatches := 0
+	lineMatches := 0
+	fuzzyMatches := 0
+
+	for result := range resultCh {
+		insertStmt.Exec(result.citID, result.lineID, result.editionID,
+			result.matchType, result.confidence, result.content)
+		totalMatches++
+		switch result.matchType {
+		case "exact_quote":
+			exactMatches++
+		case "line_number":
+			lineMatches++
+		case "fuzzy_text":
+			fuzzyMatches++
 		}
 	}
 
 	insertStmt.Close()
 	tx.Commit()
 
-	fmt.Printf("  Direct matching: %d matches (exact=%d, line=%d, fuzzy=%d, unmatched=%d)\n",
-		totalMatches, exactMatches, lineMatches, fuzzyMatches, noMatches)
+	fmt.Printf("  Direct matching: %d matches (exact=%d, line=%d, fuzzy=%d) [%d workers]\n",
+		totalMatches, exactMatches, lineMatches, fuzzyMatches, workers)
 
-	// === Phase 2: Cross-edition propagation via line_mappings ===
-	// Uses pre-built line_mappings to propagate matches from one edition to another.
-	// If a citation matched line X in edition A, and line_mappings says X corresponds
-	// to line Y in edition B, create a match for edition B too.
+	// === Phase 4: Cross-edition propagation via line_mappings ===
 	propagated := propagateCrossEdition(database)
 	totalMatches += propagated
 
-	// === Phase 3: Headword search for truly unmatched citations ===
-	// For citations with only act+scene (no line/quote), search for the lexicon
-	// entry's headword within the scene text.
+	// === Phase 5: Headword search for citations with only act+scene ===
 	headwordMatches := matchByHeadword(database)
 	totalMatches += headwordMatches
+
+	// === Phase 6: Headword fallback for ALL remaining unmatched citations ===
+	// Catches citations where quote/line matching failed (e.g., Shrew Induction
+	// where Globe line numbers don't exist in the OSS edition, or archaic spelling
+	// prevents quote matching). Uses the same headword search but without the
+	// "no line, no quote" restriction.
+	fallbackMatches := matchByHeadwordFallback(database)
+	totalMatches += fallbackMatches
 
 	// Final stats from database
 	var finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalTotal int
@@ -418,7 +483,10 @@ func propagateCrossEdition(database *sql.DB) int {
 
 // matchByHeadword resolves citations that have act+scene but no line number or quote text.
 // For each, it searches the scene's text lines for occurrences of the lexicon entry's headword.
-// Returns the number of new matches created.
+//
+// Phase 1 loads all candidate citations and their scene text (sequential DB reads).
+// Phase 2 runs headword search in parallel (CPU-bound).
+// Phase 3 inserts results sequentially.
 func matchByHeadword(database *sql.DB) int {
 	// Load unmatched citations that have only act+scene
 	rows, err := database.Query(`
@@ -434,11 +502,11 @@ func matchByHeadword(database *sql.DB) int {
 	}
 
 	type headwordCit struct {
-		ID       int64
-		WorkID   int64
-		Act      int
-		Scene    int
-		Key string
+		ID     int64
+		WorkID int64
+		Act    int
+		Scene  int
+		Key    string
 	}
 	var cits []headwordCit
 	for rows.Next() {
@@ -466,6 +534,115 @@ func matchByHeadword(database *sql.DB) int {
 		sceneGroups[key] = append(sceneGroups[key], c)
 	}
 
+	// Phase 1: Pre-load all scene text lines (sequential DB reads)
+	type headwordTask struct {
+		cit            headwordCit
+		linesByEdition map[int64][]textLineRow
+	}
+	var tasks []headwordTask
+
+	for key, groupCits := range sceneGroups {
+		lines, err := loadTextLinesAll(database, "work_id = ? AND act = ? AND scene = ?",
+			key.WorkID, key.Act, key.Scene)
+		if err != nil {
+			continue
+		}
+		// Fall back to whole-act search when the specific scene has no text lines.
+		if len(lines) == 0 {
+			lines, err = loadTextLinesAll(database, "work_id = ? AND act = ?",
+				key.WorkID, key.Act)
+			if err != nil || len(lines) == 0 {
+				continue
+			}
+		}
+
+		linesByEdition := make(map[int64][]textLineRow)
+		for _, tl := range lines {
+			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
+		}
+
+		for _, cit := range groupCits {
+			tasks = append(tasks, headwordTask{cit: cit, linesByEdition: linesByEdition})
+		}
+	}
+
+	// Phase 2: Run headword search in parallel (CPU-bound)
+	type hwResult struct {
+		citID     int64
+		lineID    int64
+		editionID int64
+		content   string
+	}
+
+	workers := min(runtime.NumCPU(), 8)
+	if workers < 1 {
+		workers = 1
+	}
+
+	taskCh := make(chan headwordTask, 256)
+	resultCh := make(chan hwResult, 256)
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskCh {
+				if task.cit.Key == "" {
+					continue
+				}
+				cleanKey := stripSenseNumber(task.cit.Key)
+				if cleanKey == "" {
+					continue
+				}
+
+				for editionID, edLines := range task.linesByEdition {
+					found := false
+					// Try exact normalized substring
+					for _, line := range edLines {
+						if parser.ContainsNormalized(line.Content, cleanKey) {
+							resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+							found = true
+							break
+						}
+					}
+					// Fallback: word-prefix matching
+					if !found {
+						for _, line := range edLines {
+							if parser.ContainsWordPrefix(line.Content, cleanKey) {
+								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+								found = true
+								break
+							}
+						}
+					}
+					// Fallback: stem-prefix matching (handles y→ies, e→ing, etc.)
+					if !found {
+						for _, line := range edLines {
+							if parser.ContainsStemPrefix(line.Content, cleanKey) {
+								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+								break
+							}
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for _, t := range tasks {
+			taskCh <- t
+		}
+		close(taskCh)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// Phase 3: Insert results (sequential)
 	tx, err := database.Begin()
 	if err != nil {
 		return 0
@@ -479,17 +656,87 @@ func matchByHeadword(database *sql.DB) int {
 	}
 
 	matched := 0
+	for result := range resultCh {
+		stmt.Exec(result.citID, result.lineID, result.editionID, result.content)
+		matched++
+	}
+
+	stmt.Close()
+	tx.Commit()
+
+	fmt.Printf("  Headword matches: %d\n", matched)
+	return matched
+}
+
+// matchByHeadwordFallback is a last-resort pass for ALL remaining unmatched citations.
+// Unlike matchByHeadword, it does not require line IS NULL / quote_text IS NULL.
+// This catches citations where quote or line-number matching failed (e.g., Shrew
+// Induction where Globe line numbers don't exist, or archaic spelling differences).
+func matchByHeadwordFallback(database *sql.DB) int {
+	rows, err := database.Query(`
+		SELECT lc.id, lc.work_id, lc.act, lc.scene, le.key
+		FROM lexicon_citations lc
+		JOIN lexicon_entries le ON le.id = lc.entry_id
+		WHERE lc.work_id IS NOT NULL
+		  AND lc.act IS NOT NULL AND lc.scene IS NOT NULL
+		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`)
+	if err != nil {
+		return 0
+	}
+
+	type hwCit struct {
+		ID     int64
+		WorkID int64
+		Act    int
+		Scene  int
+		Key    string
+	}
+	var cits []hwCit
+	for rows.Next() {
+		var c hwCit
+		rows.Scan(&c.ID, &c.WorkID, &c.Act, &c.Scene, &c.Key)
+		cits = append(cits, c)
+	}
+	rows.Close()
+
+	if len(cits) == 0 {
+		return 0
+	}
+
+	fmt.Printf("  Headword fallback: %d remaining candidates\n", len(cits))
+
+	// Group by scene
+	type sceneKey struct {
+		WorkID int64
+		Act    int
+		Scene  int
+	}
+	sceneGroups := make(map[sceneKey][]hwCit)
+	for _, c := range cits {
+		key := sceneKey{c.WorkID, c.Act, c.Scene}
+		sceneGroups[key] = append(sceneGroups[key], c)
+	}
+
+	// Pre-load text and run headword search (reuses same 3-tier strategy)
+	type hwResult struct {
+		citID     int64
+		lineID    int64
+		editionID int64
+		content   string
+	}
+
+	type hwTask struct {
+		cit            hwCit
+		linesByEdition map[int64][]textLineRow
+	}
+	var tasks []hwTask
+
 	for key, groupCits := range sceneGroups {
-		// Use loadTextLinesAll (no line_number IS NOT NULL filter) so that
-		// chorus/prologue lines without Globe line numbers are searchable.
 		lines, err := loadTextLinesAll(database, "work_id = ? AND act = ? AND scene = ?",
 			key.WorkID, key.Act, key.Scene)
 		if err != nil {
 			continue
 		}
-		// Fall back to whole-act search when the specific scene has no text lines.
-		// This handles Schmidt citations that reference non-existent prologue/chorus
-		// scenes (e.g. "Cymb. IV Prol." when Cymbeline has no act-4 prologue).
 		if len(lines) == 0 {
 			lines, err = loadTextLinesAll(database, "work_id = ? AND act = ?",
 				key.WorkID, key.Act)
@@ -498,52 +745,102 @@ func matchByHeadword(database *sql.DB) int {
 			}
 		}
 
-		// Group lines by edition once for all citations in this scene
 		linesByEdition := make(map[int64][]textLineRow)
 		for _, tl := range lines {
 			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
 		}
-
 		for _, cit := range groupCits {
-			if cit.Key == "" {
-				continue
-			}
+			tasks = append(tasks, hwTask{cit: cit, linesByEdition: linesByEdition})
+		}
+	}
 
-			// Strip trailing sense number: "Bend2" → "Bend", "Quick1" → "Quick"
-			cleanKey := stripSenseNumber(cit.Key)
-			if cleanKey == "" {
-				continue
-			}
+	// Parallel headword search
+	workers := min(runtime.NumCPU(), 8)
+	if workers < 1 {
+		workers = 1
+	}
 
-			for editionID, edLines := range linesByEdition {
-				found := false
-				for _, line := range edLines {
-					if parser.ContainsNormalized(line.Content, cleanKey) {
-						stmt.Exec(cit.ID, line.ID, editionID, line.Content)
-						matched++
-						found = true
-						break // one match per edition
-					}
+	taskCh := make(chan hwTask, 256)
+	resultCh := make(chan hwResult, 256)
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskCh {
+				if task.cit.Key == "" {
+					continue
 				}
-				// Fallback: try word-prefix matching for inflected forms
-				// (e.g., "dance" matches "dancing", "baby" matches "babies")
-				if !found {
+				cleanKey := stripSenseNumber(task.cit.Key)
+				if cleanKey == "" {
+					continue
+				}
+
+				for editionID, edLines := range task.linesByEdition {
+					found := false
 					for _, line := range edLines {
-						if parser.ContainsWordPrefix(line.Content, cleanKey) {
-							stmt.Exec(cit.ID, line.ID, editionID, line.Content)
-							matched++
+						if parser.ContainsNormalized(line.Content, cleanKey) {
+							resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+							found = true
 							break
+						}
+					}
+					if !found {
+						for _, line := range edLines {
+							if parser.ContainsWordPrefix(line.Content, cleanKey) {
+								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+								found = true
+								break
+							}
+						}
+					}
+					if !found {
+						for _, line := range edLines {
+							if parser.ContainsStemPrefix(line.Content, cleanKey) {
+								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
+								break
+							}
 						}
 					}
 				}
 			}
+		}()
+	}
+
+	go func() {
+		for _, t := range tasks {
+			taskCh <- t
 		}
+		close(taskCh)
+	}()
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	tx, err := database.Begin()
+	if err != nil {
+		return 0
+	}
+	stmt, err := tx.Prepare(`
+		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+		VALUES (?, ?, ?, 'headword', 0.3, ?)`)
+	if err != nil {
+		tx.Rollback()
+		return 0
+	}
+
+	matched := 0
+	for result := range resultCh {
+		stmt.Exec(result.citID, result.lineID, result.editionID, result.content)
+		matched++
 	}
 
 	stmt.Close()
 	tx.Commit()
 
-	fmt.Printf("  Headword matches: %d\n", matched)
+	fmt.Printf("  Headword fallback matches: %d\n", matched)
 	return matched
 }
 
@@ -609,7 +906,43 @@ func fixMisattributedCitations(database *sql.DB) int {
 		}
 	}
 
-	// --- Fix 2: Phantom prologue citations ---
+	// --- Fix 2: Raw-bibl-based reassignment for misattributed chorus/prologue citations ---
+	// Schmidt's TEI XML sometimes assigns chorus citations to the wrong play.
+	// The raw_bibl field preserves what Schmidt actually wrote, allowing correction.
+	//
+	// "Rom. I Chor." / "Rom. I Prol." → Romeo prologue (act=0)
+	// "H5 I Chor." → Henry V opening chorus (act=0)
+	// These get misassigned to Pericles because Pericles has act=1 scene=0 Gower text.
+	type rawBiblFix struct {
+		pattern    string // SQL LIKE pattern for raw_bibl
+		targetPlay string // schmidt_abbrev to reassign to
+		newAct     int    // act to set (0 = prologue)
+	}
+	rawFixes := []rawBiblFix{
+		{"Rom. I Chor%", "Rom.", 0},
+		{"Rom. I Prol%", "Rom.", 0},
+		{"H5 I Chor%", "H5", 0},
+	}
+	for _, rf := range rawFixes {
+		var targetID int64
+		err := database.QueryRow("SELECT id FROM works WHERE schmidt_abbrev = ?", rf.targetPlay).Scan(&targetID)
+		if err != nil {
+			continue
+		}
+		res, err := database.Exec(`
+			UPDATE lexicon_citations
+			SET work_id = ?, act = ?, scene = 0
+			WHERE raw_bibl LIKE ?
+			  AND work_id != ?`, targetID, rf.newAct, rf.pattern, targetID)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				fmt.Printf("    %s: reassigned %d citations to %s act=%d\n", rf.pattern, n, rf.targetPlay, rf.newAct)
+				fixed += int(n)
+			}
+		}
+	}
+
+	// --- Fix 3: Phantom prologue citations ---
 	// Find plays that actually have scene=0 text (choruses/prologues).
 	chorusPlays, err := database.Query(`
 		SELECT DISTINCT w.id, tl.act
@@ -812,6 +1145,7 @@ func expandQuoteAbbreviation(quote, headword string) (string, bool) {
 
 // findBestMatch finds the best matching text line for a citation.
 // Returns the matched line, match type, and confidence score.
+// This function is safe for concurrent use — it has no side effects.
 func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, float64) {
 	if len(lines) == 0 {
 		return nil, "", 0

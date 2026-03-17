@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/scottdkey/heminge/projects/db-builder/internal/constants"
@@ -19,7 +20,18 @@ import (
 	"github.com/scottdkey/heminge/projects/db-builder/internal/parser"
 )
 
+// sePlayData holds the parsed result of downloading + parsing a single SE play.
+type sePlayData struct {
+	repoName string
+	ossID    string
+	lines    []parser.PlayLine
+	err      error
+}
+
 // ImportSEPlays imports Standard Ebooks play text from GitHub.
+//
+// When forceDownload is true, play downloads and parsing run in parallel
+// (network I/O + CPU), then DB inserts happen sequentially.
 func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error {
 	stepBanner("STEP 3: Import Standard Ebooks Plays")
 
@@ -52,9 +64,6 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 		return err
 	}
 
-	totalLines := 0
-	totalPlays := 0
-
 	// Sort repo names for deterministic ordering
 	repoNames := make([]string, 0, len(constants.SEPlayRepos))
 	for name := range constants.SEPlayRepos {
@@ -62,47 +71,125 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 	}
 	sort.Strings(repoNames)
 
-	for _, repoName := range repoNames {
-		ossID := constants.SEPlayRepos[repoName]
-		work, ok := worksMap[ossID]
-		if !ok {
-			continue
+	// Phase 1: Download + parse all plays (parallel when downloading, sequential from cache)
+	type playEntry struct {
+		repoName string
+		ossID    string
+		work     workInfo
+		lines    []parser.PlayLine
+	}
+	var plays []playEntry
+
+	if forceDownload {
+		// Parallel download + parse
+		var wg sync.WaitGroup
+		resultCh := make(chan sePlayData, len(repoNames))
+
+		// Limit concurrency to avoid GitHub rate limits
+		sem := make(chan struct{}, 4)
+
+		for _, repoName := range repoNames {
+			ossID := constants.SEPlayRepos[repoName]
+			work, ok := worksMap[ossID]
+			if !ok {
+				continue
+			}
+
+			wg.Add(1)
+			go func(repoName, ossID string, work workInfo) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				cacheFile := filepath.Join(cacheDir, repoName+".json")
+				actsData, err := downloadPlay(cacheFile, repoName, work.Title)
+				if err != nil || actsData == nil {
+					resultCh <- sePlayData{repoName: repoName, ossID: ossID, err: err}
+					return
+				}
+
+				var allLines []parser.PlayLine
+				actNames := sortedKeys(actsData)
+				for _, fname := range actNames {
+					content := actsData[fname]
+					lines := parser.ParseSEPlay(content)
+					allLines = append(allLines, lines...)
+				}
+
+				resultCh <- sePlayData{repoName: repoName, ossID: ossID, lines: allLines}
+			}(repoName, ossID, work)
 		}
+
+		go func() {
+			wg.Wait()
+			close(resultCh)
+		}()
+
+		// Collect results
+		resultMap := make(map[string]sePlayData)
+		for result := range resultCh {
+			resultMap[result.repoName] = result
+		}
+
+		// Assemble in deterministic order
+		for _, repoName := range repoNames {
+			ossID := constants.SEPlayRepos[repoName]
+			work, ok := worksMap[ossID]
+			if !ok {
+				continue
+			}
+			if result, ok := resultMap[repoName]; ok && result.err == nil && len(result.lines) > 0 {
+				plays = append(plays, playEntry{repoName: repoName, ossID: ossID, work: work, lines: result.lines})
+			}
+		}
+	} else {
+		// Sequential cache reads (fast, no parallelization needed)
+		for num, repoName := range repoNames {
+			ossID := constants.SEPlayRepos[repoName]
+			work, ok := worksMap[ossID]
+			if !ok {
+				continue
+			}
+
+			cacheFile := filepath.Join(cacheDir, repoName+".json")
+			actsData, err := loadFromCache(cacheFile, work.Title, num+1)
+			if err != nil || actsData == nil {
+				continue
+			}
+
+			var allLines []parser.PlayLine
+			actNames := sortedKeys(actsData)
+			for _, fname := range actNames {
+				content := actsData[fname]
+				lines := parser.ParseSEPlay(content)
+				allLines = append(allLines, lines...)
+			}
+
+			if len(allLines) > 0 {
+				plays = append(plays, playEntry{repoName: repoName, ossID: ossID, work: work, lines: allLines})
+			}
+		}
+	}
+
+	// Phase 2: Insert into DB (sequential — SQLite single writer)
+	totalLines := 0
+	totalPlays := 0
+
+	for _, play := range plays {
 		totalPlays++
 
-		cacheFile := filepath.Join(cacheDir, repoName+".json")
-		actsData, err := loadOrDownloadPlay(cacheFile, repoName, forceDownload, work.Title, totalPlays)
-		if err != nil || actsData == nil {
-			continue
-		}
+		clearWorkEditionData(database, play.work.ID, editionID)
 
-		// Parse all acts
-		var allLines []parser.PlayLine
-		actNames := sortedKeys(actsData)
-		for _, fname := range actNames {
-			content := actsData[fname]
-			lines := parser.ParseSEPlay(content)
-			allLines = append(allLines, lines...)
-		}
-
-		if len(allLines) == 0 {
-			continue
-		}
-
-		// Clear existing SE data for this work
-		clearWorkEditionData(database, work.ID, editionID)
-
-		// Insert lines with character matching
-		charCache := make(map[string]interface{}) // name → *int64 or nil
+		charCache := make(map[string]interface{})
 		tx, _ := database.Begin()
 		insertStmt, _ := tx.Prepare(`
 			INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num, line_number,
 				character_id, char_name, content, content_type, word_count)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
-		for _, line := range allLines {
+		for _, line := range play.lines {
 			charName := line.Character
-			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
+			charID := cachedLookupCharacter(database, play.work.ID, charName, charCache)
 
 			ct := "speech"
 			if line.IsStageDirection {
@@ -110,27 +197,26 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 				charName = ""
 			}
 
-			// LineInScene is the scene-relative line number — use as both paragraph_num and line_number
 			insertStmt.Exec(
-				work.ID, editionID, line.Act, line.Scene, line.LineInScene, line.LineInScene,
+				play.work.ID, editionID, line.Act, line.Scene, line.LineInScene, line.LineInScene,
 				charID, nilIfEmpty(charName), line.Text, ct, countWords(line.Text))
 		}
 		insertStmt.Close()
 
 		// Insert divisions
 		scenes := make(map[[2]int]int)
-		for _, line := range allLines {
+		for _, line := range play.lines {
 			key := [2]int{line.Act, line.Scene}
 			scenes[key]++
 		}
 		for key, count := range scenes {
 			tx.Exec("INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count) VALUES (?, ?, ?, ?, ?)",
-				work.ID, editionID, key[0], key[1], count)
+				play.work.ID, editionID, key[0], key[1], count)
 		}
 
 		tx.Commit()
-		totalLines += len(allLines)
-		fmt.Printf("  [%2d/37] %s: %d lines\n", totalPlays, work.Title, len(allLines))
+		totalLines += len(play.lines)
+		fmt.Printf("  [%2d/%d] %s: %d lines\n", totalPlays, len(plays), play.work.Title, len(play.lines))
 	}
 
 	elapsed := time.Since(start).Seconds()
@@ -141,25 +227,19 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 	return nil
 }
 
-type workInfo struct {
-	ID    int64
-	Title string
+func loadFromCache(cacheFile, title string, num int) (map[string]string, error) {
+	if data, err := os.ReadFile(cacheFile); err == nil {
+		var acts map[string]string
+		if json.Unmarshal(data, &acts) == nil {
+			return acts, nil
+		}
+	}
+	fmt.Printf("  [%2d/37] %s — SKIPPED (no cache; use -force-download to fetch)\n", num, title)
+	return nil, nil
 }
 
-func loadOrDownloadPlay(cacheFile, repoName string, forceDownload bool, title string, num int) (map[string]string, error) {
-	// Use cache unless force-download is requested
-	if !forceDownload {
-		if data, err := os.ReadFile(cacheFile); err == nil {
-			var acts map[string]string
-			if json.Unmarshal(data, &acts) == nil {
-				return acts, nil
-			}
-		}
-		fmt.Printf("  [%2d/37] %s — SKIPPED (no cache; use -force-download to fetch)\n", num, title)
-		return nil, nil
-	}
-
-	fmt.Printf("  [%2d/37] %s — downloading...\n", num, title)
+func downloadPlay(cacheFile, repoName, title string) (map[string]string, error) {
+	fmt.Printf("  %s — downloading...\n", title)
 	apiURL := fmt.Sprintf("https://api.github.com/repos/standardebooks/%s/contents/src/epub/text", repoName)
 	listing, err := fetch.URL(apiURL)
 	if err != nil {
@@ -186,7 +266,7 @@ func loadOrDownloadPlay(cacheFile, repoName string, forceDownload bool, title st
 			continue
 		}
 		acts[f.Name] = content
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond) // Rate limit per-file within a play
 	}
 
 	// Save cache
