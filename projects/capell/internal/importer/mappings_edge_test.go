@@ -115,32 +115,24 @@ func TestEdgeMapping_NoSharedWorks(t *testing.T) {
 	database, _ := db.Open(dbPath)
 	defer database.Close()
 
-	// Two different works — one per edition, no overlap.
-	// With outer-join semantics each work still gets a mapping entry
-	// (only_a for Hamlet, only_b for Othello) so neither is silently dropped.
+	// Two editions, each covering a completely different play.
+	// Editions that share no works are skipped — comparing Hamlet lines
+	// against Othello lines is semantically meaningless and produces only junk
+	// only_a/only_b entries. No line_mappings rows should be created.
 	database.Exec(`INSERT INTO works (id, title, work_type) VALUES (1, 'Hamlet', 'play')`)
 	database.Exec(`INSERT INTO works (id, title, work_type) VALUES (2, 'Othello', 'play')`)
-	database.Exec(`INSERT INTO text_lines (id, work_id, edition_id, act, scene, line_number, content) VALUES (1, 1, 1, 1, 1, 1, 'Who is there?')`)
-	database.Exec(`INSERT INTO text_lines (id, work_id, edition_id, act, scene, line_number, content) VALUES (2, 2, 2, 1, 1, 1, 'Never tell me')`)
+	database.Exec(`INSERT INTO text_lines (id, work_id, edition_id, act, scene, line_number, content, content_type) VALUES (1, 1, 1, 1, 1, 1, 'Who is there?', 'speech')`)
+	database.Exec(`INSERT INTO text_lines (id, work_id, edition_id, act, scene, line_number, content, content_type) VALUES (2, 2, 2, 1, 1, 1, 'Never tell me', 'speech')`)
 
 	err := BuildLineMappings(database)
 	if err != nil {
 		t.Fatalf("BuildLineMappings failed: %v", err)
 	}
 
-	// Expect 2 entries: one only_a (Hamlet in edition 1 only) and
-	// one only_b (Othello in edition 2 only).
 	var count int
 	database.QueryRow("SELECT COUNT(*) FROM line_mappings").Scan(&count)
-	if count != 2 {
-		t.Errorf("expected 2 only_a/only_b mappings for non-overlapping works, got %d", count)
-	}
-
-	var onlyA, onlyB int
-	database.QueryRow("SELECT COUNT(*) FROM line_mappings WHERE match_type = 'only_a'").Scan(&onlyA)
-	database.QueryRow("SELECT COUNT(*) FROM line_mappings WHERE match_type = 'only_b'").Scan(&onlyB)
-	if onlyA != 1 || onlyB != 1 {
-		t.Errorf("expected 1 only_a and 1 only_b, got only_a=%d only_b=%d", onlyA, onlyB)
+	if count != 0 {
+		t.Errorf("expected 0 mappings for editions with no shared works, got %d", count)
 	}
 }
 

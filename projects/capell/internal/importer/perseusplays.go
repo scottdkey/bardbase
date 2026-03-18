@@ -70,29 +70,40 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 	}
 	sort.Strings(xmlFiles)
 
+	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
+	type parsedPlay struct {
+		fname string
+		lines []parser.PerseusLine
+		err   error
+	}
+
+	results := parallelProcess(xmlFiles, func(fname string) parsedPlay {
+		data, err := os.ReadFile(filepath.Join(perseusDir, fname))
+		if err != nil {
+			return parsedPlay{fname: fname, err: err}
+		}
+		lines, err := parser.ParsePerseusTEI(data)
+		return parsedPlay{fname: fname, lines: lines, err: err}
+	})
+
+	parseResults := make(map[string]parsedPlay, len(results))
+	for _, r := range results {
+		parseResults[r.fname] = r
+	}
+
+	// === Phase 2: Insert each play sequentially (DB writes) ===
 	totalLines, totalPlays := 0, 0
 
 	for _, fname := range xmlFiles {
-		xmlPath := filepath.Join(perseusDir, fname)
-		data, err := os.ReadFile(xmlPath)
-		if err != nil {
-			fmt.Printf("  ERROR reading %s: %v\n", fname, err)
+		r := parseResults[fname]
+		if r.err != nil {
+			fmt.Printf("  ERROR reading/parsing %s: %v\n", fname, r.err)
 			continue
 		}
-
-		// Parse the TEI XML.
-		lines, err := parser.ParsePerseusTEI(data)
-		if err != nil {
-			fmt.Printf("  ERROR parsing %s: %v\n", fname, err)
-			continue
+		if len(r.lines) == 0 {
+			continue // poetry files return 0 lines from the play parser
 		}
 
-		// Skip poetry files (0 lines from play parser).
-		if len(lines) == 0 {
-			continue
-		}
-
-		// Match to a work by perseus_id (filename without .xml is the ID).
 		perseusID := fname[:len(fname)-4] // strip ".xml"
 		work, ok := worksMap[perseusID]
 		if !ok {
@@ -102,35 +113,28 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 
 		totalPlays++
 
-		// Clear existing Perseus data for this work (idempotent re-import).
 		clearWorkEditionData(database, work.ID, editionID)
 
-		// Insert lines in a transaction for speed.
 		tx, err := database.Begin()
 		if err != nil {
 			fmt.Printf("  ERROR starting tx for %s: %v\n", work.Title, err)
 			continue
 		}
 
-		insertStmt, err := tx.Prepare(`
-			INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
-				character_id, char_name, content, content_type, word_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		insertStmt, err := tx.Prepare(textLinesInsertSQL)
 		if err != nil {
 			tx.Rollback()
 			fmt.Printf("  ERROR preparing insert for %s: %v\n", work.Title, err)
 			continue
 		}
 
-		charCache := make(map[string]interface{}) // speaker → *int64 or nil
+		charCache := make(map[string]any)
 
-		// Compute Globe verse line numbers per scene.
-		// Schmidt's lexicon cites Globe verse lines which do NOT count stage directions.
-		// We use a verse-only counter as line_number so citations match directly.
 		type sceneKey struct{ act, scene int }
 		verseCounters := make(map[sceneKey]int)
+		actScenes := make([][2]int, 0, len(r.lines))
 
-		for _, line := range lines {
+		for _, line := range r.lines {
 			charName := line.Character
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
@@ -141,7 +145,6 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 			if line.IsStageDirection {
 				ct = "stage_direction"
 				charName = ""
-				// Stage directions get the current verse counter (sorts with preceding verse line).
 				lineNum = verseCounters[sk]
 			} else {
 				verseCounters[sk]++
@@ -153,35 +156,27 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 				line.Act, line.Scene, lineNum,
 				charID, nilIfEmpty(charName),
 				line.Text, ct, countWords(line.Text))
+
+			actScenes = append(actScenes, [2]int{line.Act, line.Scene})
 		}
 		insertStmt.Close()
 
-		// Insert text_divisions summary per scene.
-		scenes := make(map[[2]int]int)
-		for _, line := range lines {
-			key := [2]int{line.Act, line.Scene}
-			scenes[key]++
-		}
-		for key, count := range scenes {
-			tx.Exec(`INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count)
-				VALUES (?, ?, ?, ?, ?)`,
-				work.ID, editionID, key[0], key[1], count)
-		}
+		insertTextDivisions(tx, work.ID, editionID, actScenes)
 
 		if err := tx.Commit(); err != nil {
 			fmt.Printf("  ERROR committing %s: %v\n", work.Title, err)
 			continue
 		}
 
-		totalLines += len(lines)
+		totalLines += len(r.lines)
 		speeches := 0
-		for _, l := range lines {
+		for _, l := range r.lines {
 			if !l.IsStageDirection {
 				speeches++
 			}
 		}
 		fmt.Printf("  [%2d] %-35s %5d lines (%4d speeches)\n",
-			totalPlays, work.Title, len(lines), speeches)
+			totalPlays, work.Title, len(r.lines), speeches)
 	}
 
 	elapsed := time.Since(start).Seconds()

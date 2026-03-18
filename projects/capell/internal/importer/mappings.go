@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -66,6 +67,13 @@ type alignResult struct {
 	pairs []parser.AlignedPair
 }
 
+// lineKey uniquely identifies a (edition, work, act, scene) group.
+// act=0 means sonnet (scene = sonnet number) or poem (scene=0).
+type lineKey struct {
+	editionID, workID int64
+	act, scene        int
+}
+
 // BuildLineMappings creates cross-edition line alignments for all edition pairs.
 //
 // For each pair of editions that share works, it aligns lines using text similarity
@@ -75,6 +83,10 @@ type alignResult struct {
 //   - Plays: aligns scenes (act + scene) across editions
 //   - Sonnets: aligns individual sonnets (scene = sonnet number) across editions
 //   - Poems: aligns entire poems (by work_id) across editions
+//
+// Loading phase: ONE bulk DB query loads all alignable lines into an in-memory
+// cache keyed by (edition_id, work_id, act, scene). Alignment tasks are built
+// from this cache without any further DB access during loading.
 //
 // Alignment computation is parallelized across goroutines since it is CPU-bound,
 // while DB reads (loading lines) and writes (inserting mappings) remain sequential.
@@ -112,10 +124,17 @@ func BuildLineMappings(database *sql.DB) error {
 		return nil
 	}
 
-	// Build all edition pairs
+	// Build edition → work set from a quick DB query so we can skip pairs
+	// that share no works. This eliminates nonsensical comparisons like
+	// q1_titus_1594↔q1_henry6p2_1594 (completely different plays).
+	editionWorkSet := buildEditionWorkSet(database)
+
 	var pairs []editionPair
 	for i := 0; i < len(editions); i++ {
 		for j := i + 1; j < len(editions); j++ {
+			if !sharesWork(editionWorkSet, editions[i].ID, editions[j].ID) {
+				continue
+			}
 			pairs = append(pairs, editionPair{
 				AID: editions[i].ID, ACode: editions[i].Code,
 				BID: editions[j].ID, BCode: editions[j].Code,
@@ -129,14 +148,29 @@ func BuildLineMappings(database *sql.DB) error {
 		SELECT COUNT(DISTINCT work_id) FROM text_lines
 		WHERE act IS NOT NULL AND act > 0`).Scan(&totalWorks)
 
-	fmt.Printf("  Editions: %d  →  %d edition pairs (C(%d,2))\n",
-		len(editions), len(pairs), len(editions))
+	fmt.Printf("  Editions: %d  →  %d meaningful pairs (skipped editions with no shared works)\n",
+		len(editions), len(pairs))
 	fmt.Printf("  Works with play text: %d\n", totalWorks)
 
-	// Phase 1: Load all alignment tasks from DB (sequential — SQLite reads).
+	// === Phase 1: Bulk-load ALL alignable lines in ONE query ===
+	//
+	// Previous approach: loadAlignTasks made ~2 DB queries per scene per pair
+	// (one per edition), totalling ~50k queries for a full 9-edition build.
+	//
+	// New approach: one query loads everything into a map keyed by
+	// (edition_id, work_id, act, scene). loadAlignTasksFromCache then
+	// assembles tasks entirely from this in-memory map.
+	lineCache := buildLineCache(database)
+	// Also build a set of all (work_id, work_type) for poem/sonnet detection
+	workTypes := buildWorkTypes(database)
+
+	fmt.Printf("  Line cache: %d groups loaded in %.1fs\n",
+		len(lineCache), time.Since(start).Seconds())
+
+	// Phase 1b: Build alignment tasks from cache (no DB access)
 	var tasks []alignTask
 	for _, pair := range pairs {
-		tasks = append(tasks, loadAlignTasks(database, pair)...)
+		tasks = append(tasks, loadAlignTasksFromCache(lineCache, workTypes, pair)...)
 	}
 
 	fmt.Printf("  Alignment tasks: %d (loading done in %.1fs)\n",
@@ -202,7 +236,7 @@ func BuildLineMappings(database *sql.DB) error {
 		}
 
 		for i, p := range result.pairs {
-			var lineAID, lineBID interface{}
+			var lineAID, lineBID any
 			if p.LineA != nil {
 				lineAID = p.LineA.ID
 			}
@@ -245,134 +279,231 @@ func BuildLineMappings(database *sql.DB) error {
 	return nil
 }
 
-// loadAlignTasks queries the DB for all alignment units (scenes, sonnets, poems)
-// shared between a pair of editions, pre-loads their text lines, and returns them
-// as ready-to-align tasks. This keeps all DB I/O sequential.
-func loadAlignTasks(database *sql.DB, pair editionPair) []alignTask {
+// buildEditionWorkSet returns a map from edition_id → set of work_ids that
+// have at least one text line in that edition.
+func buildEditionWorkSet(database *sql.DB) map[int64]map[int64]bool {
+	m := make(map[int64]map[int64]bool)
+	rows, err := database.Query(`SELECT DISTINCT edition_id, work_id FROM text_lines`)
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var edID, wID int64
+		rows.Scan(&edID, &wID)
+		if m[edID] == nil {
+			m[edID] = make(map[int64]bool)
+		}
+		m[edID][wID] = true
+	}
+	return m
+}
+
+// sharesWork returns true if editions A and B have at least one work in common.
+func sharesWork(editionWorks map[int64]map[int64]bool, aID, bID int64) bool {
+	for wID := range editionWorks[aID] {
+		if editionWorks[bID][wID] {
+			return true
+		}
+	}
+	return false
+}
+
+// buildLineCache loads ALL text lines in a single DB query and indexes them by
+// (edition_id, work_id, act, scene). act and scene are stored as 0 when NULL.
+//
+// This replaces the previous per-scene DB queries in loadAlignTasks, reducing
+// ~50k individual queries (for a 9-edition build) to a single bulk read.
+func buildLineCache(database *sql.DB) map[lineKey][]parser.AlignableLine {
+	cache := make(map[lineKey][]parser.AlignableLine)
+
+	// Exclude 'scene' content_type rows (OSS scene-header lines such as
+	// "SCENE I. A forest." that exist only in the OSS edition and have no
+	// counterpart in other editions, inflating only_a counts).
+	rows, err := database.Query(`
+		SELECT id, content, COALESCE(line_number, 0), edition_id, work_id,
+		       COALESCE(act, 0), COALESCE(scene, 0)
+		FROM text_lines
+		WHERE content_type != 'scene' OR content_type IS NULL
+		ORDER BY edition_id, work_id, act, scene, line_number, id`)
+	if err != nil {
+		return cache
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var l parser.AlignableLine
+		var editionID, workID int64
+		var act, scene int
+		rows.Scan(&l.ID, &l.Content, &l.LineNumber, &editionID, &workID, &act, &scene)
+		l.Words = parser.WordSet(l.Content)
+		k := lineKey{editionID, workID, act, scene}
+		cache[k] = append(cache[k], l)
+	}
+	return cache
+}
+
+// buildWorkTypes returns a map from work_id → work type string.
+func buildWorkTypes(database *sql.DB) map[int64]string {
+	m := make(map[int64]string)
+	rows, err := database.Query("SELECT id, work_type FROM works")
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var wt string
+		rows.Scan(&id, &wt)
+		m[id] = wt
+	}
+	return m
+}
+
+// loadAlignTasksFromCache builds alignment tasks for a pair entirely from the
+// in-memory line cache — no DB access. Replaces loadAlignTasks.
+func loadAlignTasksFromCache(
+	lineCache map[lineKey][]parser.AlignableLine,
+	workTypes map[int64]string,
+	pair editionPair,
+) []alignTask {
+	// Collect all keys visible from this pair (present in either edition A or B)
+	// and group them by content type: plays, sonnets, poems.
+	type sceneRef struct {
+		workID     int64
+		act, scene int
+	}
+
+	playScenesSet := make(map[sceneRef]bool)
+	sonnetScenesSet := make(map[sceneRef]bool)
+	poemWorksSet := make(map[int64]bool)
+
+	for k := range lineCache {
+		if k.editionID != pair.AID && k.editionID != pair.BID {
+			continue
+		}
+		wt := workTypes[k.workID]
+		if k.act > 0 {
+			// Play scene
+			playScenesSet[sceneRef{k.workID, k.act, k.scene}] = true
+		} else if k.scene > 0 && wt == "sonnet_sequence" {
+			// Sonnet
+			sonnetScenesSet[sceneRef{k.workID, 0, k.scene}] = true
+		} else if k.scene == 0 && k.act == 0 && wt == "poem" {
+			// Poem
+			poemWorksSet[k.workID] = true
+		}
+	}
+
 	var tasks []alignTask
 
-	// === 1. Play scenes (act > 0) ===
-	// Use UNION to find scenes present in EITHER edition (not just both).
-	// This ensures plays missing from one edition (e.g. Pericles absent from
-	// the First Folio) still get mapping entries — with the missing side empty
-	// and match_type="only_a" or "only_b".
-	type sceneRef struct {
-		WorkID     int64
-		Act, Scene int
+	// === 1. Play scenes ===
+	// Group scenes by work so we can detect flat editions (e.g. EEBO-TCP quartos
+	// that store all lines in act=1, scene=1). When one edition is flat and the
+	// other is structured, aligning scene-by-scene yields 0 matches because the
+	// entire quarto sits in a single (1,1) bucket while the other edition spreads
+	// across 20+ scenes. In that case we merge all scenes of the structured edition
+	// into one work-level task so simpleAlign can do positional matching.
+	workToScenes := make(map[int64][]sceneRef)
+	for ref := range playScenesSet {
+		workToScenes[ref.workID] = append(workToScenes[ref.workID], ref)
 	}
 
-	sceneRows, err := database.Query(`
-		SELECT DISTINCT work_id, act, scene
-		FROM text_lines
-		WHERE edition_id IN (?, ?) AND act IS NOT NULL AND act > 0 AND scene IS NOT NULL
-		ORDER BY work_id, act, scene`, pair.AID, pair.BID)
-	if err == nil {
-		var scenes []sceneRef
-		for sceneRows.Next() {
-			var s sceneRef
-			sceneRows.Scan(&s.WorkID, &s.Act, &s.Scene)
-			scenes = append(scenes, s)
-		}
-		sceneRows.Close()
-
-		for _, scene := range scenes {
-			aLines := loadSceneLines(database, scene.WorkID, pair.AID, scene.Act, scene.Scene)
-			bLines := loadSceneLines(database, scene.WorkID, pair.BID, scene.Act, scene.Scene)
-			if len(aLines) == 0 && len(bLines) == 0 {
-				continue
+	for workID, refs := range workToScenes {
+		// Sort refs by (act, scene) so merged line slices are in narrative order.
+		sort.Slice(refs, func(i, j int) bool {
+			if refs[i].act != refs[j].act {
+				return refs[i].act < refs[j].act
 			}
-			tasks = append(tasks, alignTask{
-				pair: pair, workID: scene.WorkID,
-				act: scene.Act, scene: scene.Scene,
-				aLines: aLines, bLines: bLines,
-			})
+			return refs[i].scene < refs[j].scene
+		})
+
+		// Count how many distinct scenes each edition has for this work.
+		aScenes, bScenes := 0, 0
+		for _, ref := range refs {
+			if len(lineCache[lineKey{pair.AID, workID, ref.act, ref.scene}]) > 0 {
+				aScenes++
+			}
+			if len(lineCache[lineKey{pair.BID, workID, ref.act, ref.scene}]) > 0 {
+				bScenes++
+			}
+		}
+
+		aFlat := aScenes == 1
+		bFlat := bScenes == 1
+
+		// When exactly one edition is flat (all lines in a single scene, typical
+		// of EEBO-TCP quartos) and the other is structured (spread across many
+		// scenes), scene-by-scene alignment yields near-zero matches: the quarto's
+		// single (1,1) bucket is compared only to the structured edition's (1,1)
+		// scene, missing the rest of the play. Merge all scenes of the structured
+		// edition into one work-level task so simpleAlign can do positional
+		// matching across the full play text.
+		//
+		// NOTE: when one edition has no lines at all for this work (aScenes==0 or
+		// bScenes==0), we fall through to the per-scene path, which produces
+		// only_a/only_b entries for the present edition's lines. This is correct:
+		// a play present in OSS but absent from SE should appear as only_a rows in
+		// the comparison, allowing the front-end to render one side empty.
+		if aScenes > 0 && bScenes > 0 && (aFlat != bFlat) {
+			// One edition is flat: merge all lines for this work into one task
+			// (act=0, scene=0 as a work-level sentinel, same as poems).
+			var aAll, bAll []parser.AlignableLine
+			for _, ref := range refs {
+				aAll = append(aAll, lineCache[lineKey{pair.AID, workID, ref.act, ref.scene}]...)
+				bAll = append(bAll, lineCache[lineKey{pair.BID, workID, ref.act, ref.scene}]...)
+			}
+			if len(aAll) > 0 || len(bAll) > 0 {
+				tasks = append(tasks, alignTask{
+					pair: pair, workID: workID,
+					act: 0, scene: 0,
+					aLines: aAll, bLines: bAll,
+				})
+			}
+		} else {
+			// Both structured or both flat: align per scene as normal.
+			for _, ref := range refs {
+				aLines := lineCache[lineKey{pair.AID, workID, ref.act, ref.scene}]
+				bLines := lineCache[lineKey{pair.BID, workID, ref.act, ref.scene}]
+				if len(aLines) == 0 && len(bLines) == 0 {
+					continue
+				}
+				tasks = append(tasks, alignTask{
+					pair: pair, workID: workID,
+					act: ref.act, scene: ref.scene,
+					aLines: aLines, bLines: bLines,
+				})
+			}
 		}
 	}
 
-	// === 2. Sonnets (scene = sonnet number, act is null/0) ===
-	sonnetRows, err := database.Query(`
-		SELECT DISTINCT t1.work_id, t1.scene
-		FROM text_lines t1
-		JOIN works w ON t1.work_id = w.id
-		WHERE t1.edition_id IN (?, ?) AND (t1.act IS NULL OR t1.act = 0)
-		  AND t1.scene IS NOT NULL AND t1.scene > 0
-		  AND w.work_type = 'sonnet_sequence'
-		ORDER BY t1.work_id, t1.scene`, pair.AID, pair.BID)
-	if err == nil {
-		var sonnetScenes []sceneRef
-		for sonnetRows.Next() {
-			var s sceneRef
-			sonnetRows.Scan(&s.WorkID, &s.Scene)
-			sonnetScenes = append(sonnetScenes, s)
+	// === 2. Sonnets ===
+	for ref := range sonnetScenesSet {
+		aLines := lineCache[lineKey{pair.AID, ref.workID, 0, ref.scene}]
+		bLines := lineCache[lineKey{pair.BID, ref.workID, 0, ref.scene}]
+		if len(aLines) == 0 && len(bLines) == 0 {
+			continue
 		}
-		sonnetRows.Close()
-
-		for _, sn := range sonnetScenes {
-			aLines := loadSonnetLines(database, sn.WorkID, pair.AID, sn.Scene)
-			bLines := loadSonnetLines(database, sn.WorkID, pair.BID, sn.Scene)
-			if len(aLines) == 0 && len(bLines) == 0 {
-				continue
-			}
-			tasks = append(tasks, alignTask{
-				pair: pair, workID: sn.WorkID,
-				act: 0, scene: sn.Scene,
-				aLines: aLines, bLines: bLines,
-			})
-		}
+		tasks = append(tasks, alignTask{
+			pair: pair, workID: ref.workID,
+			act: 0, scene: ref.scene,
+			aLines: aLines, bLines: bLines,
+		})
 	}
 
-	// === 3. Poems (no act/scene structure, match by work_id) ===
-	poemRows, err := database.Query(`
-		SELECT DISTINCT t1.work_id
-		FROM text_lines t1
-		JOIN works w ON t1.work_id = w.id
-		WHERE t1.edition_id IN (?, ?) AND (t1.act IS NULL OR t1.act = 0)
-		  AND (t1.scene IS NULL OR t1.scene = 0)
-		  AND w.work_type = 'poem'
-		ORDER BY t1.work_id`, pair.AID, pair.BID)
-	if err == nil {
-		var poemWorks []int64
-		for poemRows.Next() {
-			var workID int64
-			poemRows.Scan(&workID)
-			poemWorks = append(poemWorks, workID)
+	// === 3. Poems ===
+	for workID := range poemWorksSet {
+		aLines := lineCache[lineKey{pair.AID, workID, 0, 0}]
+		bLines := lineCache[lineKey{pair.BID, workID, 0, 0}]
+		if len(aLines) == 0 && len(bLines) == 0 {
+			continue
 		}
-		poemRows.Close()
-
-		for _, workID := range poemWorks {
-			aLines := loadPoemLines(database, workID, pair.AID)
-			bLines := loadPoemLines(database, workID, pair.BID)
-			if len(aLines) == 0 && len(bLines) == 0 {
-				continue
-			}
-			tasks = append(tasks, alignTask{
-				pair: pair, workID: workID,
-				act: 0, scene: 0,
-				aLines: aLines, bLines: bLines,
-			})
-		}
+		tasks = append(tasks, alignTask{
+			pair: pair, workID: workID,
+			act: 0, scene: 0,
+			aLines: aLines, bLines: bLines,
+		})
 	}
 
 	return tasks
-}
-
-// loadSceneLines loads play text lines for a given scene into AlignableLine format.
-func loadSceneLines(database *sql.DB, workID, editionID int64, act, scene int) []parser.AlignableLine {
-	return queryAlignableLines(database,
-		"work_id = ? AND edition_id = ? AND act = ? AND scene = ?",
-		workID, editionID, act, scene)
-}
-
-// loadSonnetLines loads lines for a specific sonnet (scene = sonnet number).
-func loadSonnetLines(database *sql.DB, workID, editionID int64, sonnetNum int) []parser.AlignableLine {
-	return queryAlignableLines(database,
-		"work_id = ? AND edition_id = ? AND scene = ? AND (act IS NULL OR act = 0)",
-		workID, editionID, sonnetNum)
-}
-
-// loadPoemLines loads all lines for a poem (no act/scene structure).
-func loadPoemLines(database *sql.DB, workID, editionID int64) []parser.AlignableLine {
-	return queryAlignableLines(database,
-		"work_id = ? AND edition_id = ? AND (act IS NULL OR act = 0) AND (scene IS NULL OR scene = 0)",
-		workID, editionID)
 }

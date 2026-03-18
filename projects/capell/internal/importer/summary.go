@@ -24,6 +24,8 @@ func PrintSummary(database *sql.DB, dbPath string) {
 		{"characters", "Characters"},
 		{"text_lines", "Text lines"},
 		{"text_divisions", "Text divisions"},
+		{"reference_entries", "Reference entries"},
+		{"word_annotations", "Word annotations"},
 		{"lexicon_entries", "Lexicon entries"},
 		{"lexicon_senses", "Lexicon senses"},
 		{"lexicon_citations", "Lexicon citations"},

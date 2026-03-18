@@ -79,10 +79,11 @@ func TestAppQuery_ComparisonWithGapSides(t *testing.T) {
 	workID := td.insertWork(t, "Pericles", "Per.", "play")
 
 	// Pericles: 3 lines in OSS, 0 in SE (absent from SE edition).
-	// SE must have at least one text line (for any work) to appear in the editions
-	// list and form a comparison pair with OSS.
+	// Both editions must share at least one work for a pair to be created.
+	// Hamlet is present in both so the oss_globe↔se_modern pair is valid.
 	hamletID := td.insertWork(t, "Hamlet", "Ham.", "play")
 	td.insertTextLine(t, hamletID, td.EdSEID, 1, 1, 1, "HAMLET", "Who is there?")
+	td.insertTextLine(t, hamletID, td.EdOSSID, 1, 1, 1, "HAMLET", "Who is there?")
 
 	td.insertTextLine(t, workID, td.EdOSSID, 1, 1, 1, "HELICANUS", "Who makes the fairest show means most deceit")
 	td.insertTextLine(t, workID, td.EdOSSID, 1, 1, 2, "HELICANUS", "That man that hath a tongue")

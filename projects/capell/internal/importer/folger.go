@@ -74,8 +74,7 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 	}
 
 	// Build reverse slug map: folger-slug → ossID
-	// FolgerSlugs maps ossID → folger-slug; we need the reverse.
-	reverseSlugMap := make(map[string]string) // folger-slug → ossID
+	reverseSlugMap := make(map[string]string)
 	for ossID, slug := range constants.FolgerSlugs {
 		reverseSlugMap[slug] = ossID
 	}
@@ -89,13 +88,33 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 	}
 	sort.Strings(xmlFiles)
 
+	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
+	type parsedPlay struct {
+		fname string
+		lines []parser.FolgerLine
+		err   error
+	}
+
+	results := parallelProcess(xmlFiles, func(fname string) parsedPlay {
+		data, err := os.ReadFile(filepath.Join(teisimpleDir, fname))
+		if err != nil {
+			return parsedPlay{fname: fname, err: err}
+		}
+		lines, err := parser.ParseFolgerTEIsimple(data)
+		return parsedPlay{fname: fname, lines: lines, err: err}
+	})
+
+	parseResults := make(map[string]parsedPlay, len(results))
+	for _, r := range results {
+		parseResults[r.fname] = r
+	}
+
+	// === Phase 2: Insert each play sequentially (DB writes) ===
 	totalLines, totalPlays := 0, 0
 
 	for _, fname := range xmlFiles {
-		// Filename format: "{slug}_TEIsimple_FolgerShakespeare.xml"
 		slug := strings.TrimSuffix(fname, "_TEIsimple_FolgerShakespeare.xml")
 		if slug == fname {
-			// Unexpected filename format — skip
 			continue
 		}
 
@@ -111,27 +130,18 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		xmlPath := filepath.Join(teisimpleDir, fname)
-		data, err := os.ReadFile(xmlPath)
-		if err != nil {
-			fmt.Printf("  ERROR reading %s: %v\n", fname, err)
+		r := parseResults[fname]
+		if r.err != nil {
+			fmt.Printf("  ERROR reading/parsing %s: %v\n", fname, r.err)
 			continue
 		}
-
-		lines, err := parser.ParseFolgerTEIsimple(data)
-		if err != nil {
-			fmt.Printf("  ERROR parsing %s: %v\n", fname, err)
-			continue
-		}
-
-		if len(lines) == 0 {
+		if len(r.lines) == 0 {
 			fmt.Printf("  SKIP %s — 0 lines parsed\n", fname)
 			continue
 		}
 
 		totalPlays++
 
-		// Clear existing Folger data for this work (idempotent re-import).
 		clearWorkEditionData(database, work.ID, editionID)
 
 		tx, err := database.Begin()
@@ -140,35 +150,47 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		insertStmt, err := tx.Prepare(`
-			INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
-				character_id, char_name, content, content_type, word_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		// Folger-specific INSERT: includes stage_type and stage_who columns
+		// that are NULL in all other editions. We use LastInsertId to link
+		// word_annotations rows back to the text_lines row we just inserted.
+		const folgerLineInsertSQL = `
+			INSERT INTO text_lines
+				(work_id, edition_id, act, scene, line_number,
+				 character_id, char_name, content, content_type, word_count,
+				 stage_type, stage_who)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+		insertStmt, err := tx.Prepare(folgerLineInsertSQL)
 		if err != nil {
 			tx.Rollback()
 			fmt.Printf("  ERROR preparing insert for %s: %v\n", work.Title, err)
 			continue
 		}
 
-		charCache := make(map[string]interface{})
+		wordInsertStmt, err := tx.Prepare(`
+			INSERT OR IGNORE INTO word_annotations (line_id, position, word, lemma, pos)
+			VALUES (?, ?, ?, ?, ?)`)
+		if err != nil {
+			insertStmt.Close()
+			tx.Rollback()
+			fmt.Printf("  ERROR preparing word insert for %s: %v\n", work.Title, err)
+			continue
+		}
 
-		// Use a verse-only counter per scene for lines without a Folger line number
-		// (stage directions, some prose lines). Lines with explicit FTLNs use those.
+		charCache := make(map[string]any)
+
 		type sceneKey struct{ act, scene int }
 		verseCounters := make(map[sceneKey]int)
+		actScenes := make([][2]int, 0, len(r.lines))
 
-		for _, line := range lines {
+		for _, line := range r.lines {
 			sk := sceneKey{line.Act, line.Scene}
 
 			lineNum := line.LineNumber
 			if lineNum == 0 {
-				// No FTLN — use scene counter (stage directions and unnumbered lines)
 				lineNum = verseCounters[sk]
-			} else {
-				// Update counter to track highest seen FTLN for this scene
-				if line.LineNumber > verseCounters[sk] {
-					verseCounters[sk] = line.LineNumber
-				}
+			} else if line.LineNumber > verseCounters[sk] {
+				verseCounters[sk] = line.LineNumber
 			}
 
 			ct := "speech"
@@ -180,40 +202,46 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
-			insertStmt.Exec(
+			result, err := insertStmt.Exec(
 				work.ID, editionID,
 				line.Act, line.Scene, lineNum,
 				charID, nilIfEmpty(charName),
-				line.Text, ct, countWords(line.Text))
+				line.Text, ct, countWords(line.Text),
+				nilIfEmpty(line.StageType), nilIfEmpty(line.StageWho))
+			if err != nil {
+				actScenes = append(actScenes, [2]int{line.Act, line.Scene})
+				continue
+			}
+
+			// Insert word-level annotations keyed to this line's row ID.
+			if len(line.Words) > 0 {
+				lineID, _ := result.LastInsertId()
+				for pos, w := range line.Words {
+					wordInsertStmt.Exec(lineID, pos+1, w.Word, nilIfEmpty(w.Lemma), nilIfEmpty(w.POS))
+				}
+			}
+
+			actScenes = append(actScenes, [2]int{line.Act, line.Scene})
 		}
+		wordInsertStmt.Close()
 		insertStmt.Close()
 
-		// Insert text_divisions summary per scene.
-		scenes := make(map[[2]int]int)
-		for _, line := range lines {
-			key := [2]int{line.Act, line.Scene}
-			scenes[key]++
-		}
-		for key, count := range scenes {
-			tx.Exec(`INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count)
-				VALUES (?, ?, ?, ?, ?)`,
-				work.ID, editionID, key[0], key[1], count)
-		}
+		insertTextDivisions(tx, work.ID, editionID, actScenes)
 
 		if err := tx.Commit(); err != nil {
 			fmt.Printf("  ERROR committing %s: %v\n", work.Title, err)
 			continue
 		}
 
-		totalLines += len(lines)
+		totalLines += len(r.lines)
 		speeches := 0
-		for _, l := range lines {
+		for _, l := range r.lines {
 			if !l.IsStageDirection {
 				speeches++
 			}
 		}
 		fmt.Printf("  [%2d] %-35s %5d lines (%4d speeches)\n",
-			totalPlays, work.Title, len(lines), speeches)
+			totalPlays, work.Title, len(r.lines), speeches)
 	}
 
 	elapsed := time.Since(start).Seconds()

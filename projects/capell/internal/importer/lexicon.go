@@ -58,12 +58,7 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 	// Build work abbreviation → DB ID map
 	workMap := buildWorkMap(database)
 
-	totalEntries := 0
-	totalCitations := 0
-	totalSenses := 0
-	errors := 0
-
-	// Group by letter directory
+	// Group by letter directory (needed for per-letter transactions in insert phase)
 	letterDirs := make(map[string][]string)
 	for _, f := range xmlFiles {
 		dir := filepath.Dir(f)
@@ -76,30 +71,60 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 	}
 	sort.Strings(sortedDirs)
 
+	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
+	// File reads and ParseEntryXML are independent — safe to parallelize.
+	// No DB access in this phase.
+	type parsedEntry struct {
+		entry     *parser.LexiconEntry
+		letterDir string
+	}
+
+	parsed := parallelProcess(xmlFiles, func(xmlPath string) parsedEntry {
+		content, err := os.ReadFile(xmlPath)
+		if err != nil {
+			return parsedEntry{}
+		}
+		entry, err := parser.ParseEntryXML(content, filepath.Base(xmlPath))
+		if err != nil || entry == nil {
+			return parsedEntry{}
+		}
+		return parsedEntry{entry: entry, letterDir: filepath.Dir(xmlPath)}
+	})
+
+	// Collect parsed entries grouped by letter (preserves per-letter transaction structure)
+	letterEntries := make(map[string][]*parser.LexiconEntry)
+	errors := 0
+	for _, pf := range parsed {
+		if pf.entry == nil {
+			errors++
+			continue
+		}
+		letter := filepath.Base(pf.letterDir)
+		letterEntries[letter] = append(letterEntries[letter], pf.entry)
+	}
+
+	fmt.Printf("  Parsed in %.1fs (%d errors)\n",
+		time.Since(start).Seconds(), errors)
+
+	// === Phase 2: Insert all entries sequentially (DB writes, per-letter transactions) ===
+	totalEntries := 0
+	totalCitations := 0
+	totalSenses := 0
+
 	for _, letterDir := range sortedDirs {
 		letter := filepath.Base(letterDir)
-		files := letterDirs[letterDir]
-		letterEntries := 0
+		entries := letterEntries[letter]
+		if len(entries) == 0 {
+			continue
+		}
 
 		tx, err := database.Begin()
 		if err != nil {
 			return fmt.Errorf("starting transaction: %w", err)
 		}
 
-		for _, xmlPath := range files {
-			content, err := os.ReadFile(xmlPath)
-			if err != nil {
-				errors++
-				continue
-			}
-
-			entry, err := parser.ParseEntryXML(content, filepath.Base(xmlPath))
-			if err != nil || entry == nil {
-				errors++
-				continue
-			}
-
-			// Insert entry
+		letterCount := 0
+		for _, entry := range entries {
 			result, err := tx.Exec(`
 				INSERT OR IGNORE INTO lexicon_entries (key, letter, orthography, entry_type, full_text, raw_xml, source_file)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -111,14 +136,12 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 
 			entryID, err := result.LastInsertId()
 			if entryID == 0 {
-				// Already existed (OR IGNORE), look it up
 				tx.QueryRow("SELECT id FROM lexicon_entries WHERE key = ?", entry.Key).Scan(&entryID)
 			}
 			if entryID == 0 {
 				continue
 			}
 
-			// Insert senses and build sense_number → sense_id map
 			senseIDMap := make(map[int]int64)
 			for _, sense := range entry.Senses {
 				sResult, sErr := tx.Exec(`INSERT OR IGNORE INTO lexicon_senses (entry_id, sense_number, definition_text) VALUES (?, ?, ?)`,
@@ -136,7 +159,6 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 				totalSenses++
 			}
 
-			// Insert citations with sense_id linkage
 			for _, cit := range entry.Citations {
 				var workID interface{}
 				if cit.WorkAbbrev != "" {
@@ -145,7 +167,6 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 					}
 				}
 
-				// Resolve sense_id from the citation's assigned sense number
 				var senseID interface{}
 				if cit.SenseNumber > 0 {
 					if sid, ok := senseIDMap[cit.SenseNumber]; ok {
@@ -163,13 +184,13 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 				totalCitations++
 			}
 
-			letterEntries++
+			letterCount++
 		}
 
 		tx.Commit()
-		if letterEntries > 0 {
-			totalEntries += letterEntries
-			fmt.Printf("  %s: %d entries\n", letter, letterEntries)
+		if letterCount > 0 {
+			totalEntries += letterCount
+			fmt.Printf("  %s: %d entries\n", letter, letterCount)
 		}
 	}
 

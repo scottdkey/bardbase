@@ -7,17 +7,38 @@ import (
 	"strings"
 )
 
+// FolgerWord holds word-level linguistic data extracted from a single <w> element
+// in a Folger TEIsimple file. Every word token in the Folger edition is tagged by
+// MorphAdorner with a lemma and a POS tag.
+type FolgerWord struct {
+	Word  string // surface form (text content of <w>)
+	Lemma string // dictionary headword (lemma="" attribute)
+	POS   string // MorphAdorner tag (ana="" attribute, leading '#' stripped)
+}
+
 // FolgerLine represents a single parsed line from a Folger Shakespeare TEIsimple XML file.
 // Folger TEIsimple uses per-word XML tagging (<w>, <c>, <pc>) with Folger Through Line
 // Numbers (FTLNs) encoded in n="act.scene.line" attributes on <l> and <lb> elements.
 type FolgerLine struct {
 	Act              int
 	Scene            int
-	LineNumber       int    // Folger act.scene.line number (verse-based, from n attribute)
-	Character        string // From <speaker> text, uppercased in source
-	Text             string // Reconstructed text from <w>, <c>, <pc> children
+	LineNumber       int        // Folger act.scene.line number (verse-based, from n attribute)
+	Character        string     // From <speaker> text, uppercased in source
+	Text             string     // Reconstructed text from <w>, <c>, <pc> children
 	IsStageDirection bool
 	IsVerse          bool
+	// Stage direction metadata — non-empty only when IsStageDirection is true.
+	// StageType is the value of <stage type="…"> (e.g. "entrance", "exit").
+	// StageWho is the raw who="…" attribute: space-separated XML ID references
+	// like "#Theseus_MND #Hippolyta_MND". The leading '#' is preserved here;
+	// callers that need bare IDs should strip it.
+	StageType string
+	StageWho  string
+	// Words holds per-word annotations from <w lemma="…" ana="…"> elements.
+	// Populated for all line types (speech and stage directions). The slice
+	// is in document order and aligns with the words in Text.
+	// Words is nil when the line has no <w> elements (e.g. some stage directions).
+	Words []FolgerWord
 }
 
 // ParseFolgerTEIsimple parses a Folger Shakespeare TEIsimple XML file into a flat list
@@ -25,7 +46,7 @@ type FolgerLine struct {
 //
 //	<div type="act" n="1">
 //	  <div type="scene" n="1">
-//	    <stage>…word-tagged…</stage>
+//	    <stage type="entrance" who="#Theseus_MND #Hippolyta_MND">…word-tagged…</stage>
 //	    <sp who="#CharID_Play">
 //	      <speaker>…word-tagged…</speaker>
 //	      <l n="1.1.2">…word-tagged…</l>     — verse line
@@ -38,8 +59,7 @@ type FolgerLine struct {
 //
 // Text is reconstructed by concatenating the .Text field of <w>, <c>, and <pc>
 // child elements (ignoring element tails, which are only XML indentation whitespace).
-// This avoids the "Nay , answer me" spacing issue that occurs when using GetText()
-// on word-tagged content.
+// Word-level annotations (lemma, POS from MorphAdorner) are captured in FolgerLine.Words.
 func ParseFolgerTEIsimple(xmlData []byte) ([]FolgerLine, error) {
 	root, err := ParseXML(xmlData)
 	if err != nil {
@@ -88,6 +108,9 @@ func parseFolgerScene(sceneDiv *XMLNode, act, scene int) []FolgerLine {
 					Scene:            scene,
 					Text:             text,
 					IsStageDirection: true,
+					StageType:        child.Attr("type"),
+					StageWho:         child.Attr("who"),
+					Words:            extractFolgerWords(child),
 				})
 			}
 		case "sp":
@@ -125,6 +148,7 @@ func parseFolgerSpeech(sp *XMLNode, act, scene int) []FolgerLine {
 					Character:  character,
 					Text:       text,
 					IsVerse:    true,
+					Words:      extractFolgerWords(child),
 				})
 			}
 		case "p":
@@ -137,11 +161,12 @@ func parseFolgerSpeech(sp *XMLNode, act, scene int) []FolgerLine {
 			if text != "" {
 				lineNum := parseFolgerLineAttr(child.Attr("n"))
 				lines = append(lines, FolgerLine{
-					Act:       act,
-					Scene:     scene,
+					Act:        act,
+					Scene:      scene,
 					LineNumber: lineNum,
-					Character: character,
-					Text:      text,
+					Character:  character,
+					Text:       text,
+					Words:      extractFolgerWords(child),
 				})
 			}
 		case "stage":
@@ -153,6 +178,9 @@ func parseFolgerSpeech(sp *XMLNode, act, scene int) []FolgerLine {
 					Scene:            scene,
 					Text:             text,
 					IsStageDirection: true,
+					StageType:        child.Attr("type"),
+					StageWho:         child.Attr("who"),
+					Words:            extractFolgerWords(child),
 				})
 			}
 		}
@@ -163,23 +191,29 @@ func parseFolgerSpeech(sp *XMLNode, act, scene int) []FolgerLine {
 // parseFolgerProse splits a <p> element on <lb n="act.scene.line"/> markers.
 // Each <lb> begins a new line; text (from <w>, <c>, <pc> siblings) accumulates
 // until the next <lb> or end of <p>.
+//
+// Word annotations are accumulated per prose line: words between two <lb> markers
+// belong to the line started by the first <lb>.
 func parseFolgerProse(p *XMLNode, act, scene int, character string) []FolgerLine {
 	var lines []FolgerLine
 	currentLineNum := 0
-	var buf strings.Builder
+	var textBuf strings.Builder
+	var wordBuf []FolgerWord
 
 	flush := func() {
-		text := cleanText(buf.String())
+		text := cleanText(textBuf.String())
 		if text != "" && currentLineNum > 0 {
 			lines = append(lines, FolgerLine{
-				Act:       act,
-				Scene:     scene,
+				Act:        act,
+				Scene:      scene,
 				LineNumber: currentLineNum,
-				Character: character,
-				Text:      text,
+				Character:  character,
+				Text:       text,
+				Words:      wordBuf,
 			})
 		}
-		buf.Reset()
+		textBuf.Reset()
+		wordBuf = nil
 	}
 
 	for _, child := range p.Children {
@@ -187,8 +221,15 @@ func parseFolgerProse(p *XMLNode, act, scene int, character string) []FolgerLine
 		case "lb":
 			flush()
 			currentLineNum = parseFolgerLineAttr(child.Attr("n"))
-		case "w", "c", "pc":
-			buf.WriteString(child.Text)
+		case "w":
+			textBuf.WriteString(child.Text)
+			wordBuf = append(wordBuf, FolgerWord{
+				Word:  child.Text,
+				Lemma: child.Attr("lemma"),
+				POS:   strings.TrimPrefix(child.Attr("ana"), "#"),
+			})
+		case "c", "pc":
+			textBuf.WriteString(child.Text)
 		case "stage":
 			// Inline stage direction — flush current prose line first, emit stage dir
 			flush()
@@ -199,6 +240,9 @@ func parseFolgerProse(p *XMLNode, act, scene int, character string) []FolgerLine
 					Scene:            scene,
 					Text:             text,
 					IsStageDirection: true,
+					StageType:        child.Attr("type"),
+					StageWho:         child.Attr("who"),
+					Words:            extractFolgerWords(child),
 				})
 			}
 		}
@@ -221,6 +265,22 @@ func extractTEIsimpleText(node *XMLNode) string {
 		}
 	}
 	return b.String()
+}
+
+// extractFolgerWords extracts word-level annotations from all <w> child elements
+// of node. Returns nil if there are no <w> elements.
+func extractFolgerWords(node *XMLNode) []FolgerWord {
+	var words []FolgerWord
+	for _, child := range node.Children {
+		if child.Name == "w" {
+			words = append(words, FolgerWord{
+				Word:  child.Text,
+				Lemma: child.Attr("lemma"),
+				POS:   strings.TrimPrefix(child.Attr("ana"), "#"),
+			})
+		}
+	}
+	return words
 }
 
 // parseFolgerLineAttr parses a Folger n attribute of the form "act.scene.line"

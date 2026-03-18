@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS text_lines (
     oss_paragraph_id INTEGER,
     sonnet_number INTEGER,
     stanza INTEGER,
-    line_type TEXT -- 'verse', 'prose', or NULL (unknown)
+    line_type  TEXT,   -- 'verse', 'prose', or NULL (unknown)
+    -- Stage direction metadata (Folger TEIsimple only; NULL in all other editions)
+    stage_type TEXT,   -- value of <stage type="…"> attr (e.g. 'entrance', 'exit')
+    stage_who  TEXT    -- space-separated character IDs from <stage who="…"> attr
 );
 CREATE INDEX IF NOT EXISTS idx_text_work_edition ON text_lines(work_id, edition_id);
 CREATE INDEX IF NOT EXISTS idx_text_location ON text_lines(work_id, act, scene);

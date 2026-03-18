@@ -95,6 +95,25 @@
     "notes": "CC0 1.0 Universal — no rights reserved. Attribution is voluntary but appreciated. Covers both First Folio (A11954) and all early quartos."
   },
   {
+    "source_code": "onions",
+    "required": false,
+    "attribution_text": "C. T. Onions, A Shakespeare Glossary. Oxford: Clarendon Press, 1911. Public domain.",
+    "attribution_html": "C. T. Onions, <em>A Shakespeare Glossary</em>. Oxford: Clarendon Press, 1911. Public domain.",
+    "display_format": "footer",
+    "display_context": "on_export",
+    "display_priority": 15,
+    "requires_link_back": false,
+    "link_back_url": "https://archive.org/details/shakespearegloss00oniouoft",
+    "requires_license_notice": false,
+    "license_notice_text": "",
+    "requires_author_credit": false,
+    "author_credit_text": "C. T. Onions",
+    "share_alike_required": false,
+    "commercial_allowed": true,
+    "modification_allowed": true,
+    "notes": "1911 first edition is public domain. Attribution is voluntary. NOTE: the revised 1986 Oxford edition is still under copyright — do not use it."
+  },
+  {
     "source_code": "folger",
     "required": true,
     "attribution_text": "Barbara A. Mowat and Paul Werstine, eds. The Folger Shakespeare. Washington, DC: Folger Shakespeare Library. https://shakespeare.folger.edu/ Licensed under CC BY-NC 3.0.",

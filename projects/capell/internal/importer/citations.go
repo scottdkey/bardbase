@@ -488,204 +488,42 @@ func propagateCrossEdition(database *sql.DB) int {
 }
 
 // matchByHeadword resolves citations that have act+scene but no line number or quote text.
-// For each, it searches the scene's text lines for occurrences of the lexicon entry's headword.
-//
-// Phase 1 loads all candidate citations and their scene text (sequential DB reads).
-// Phase 2 runs headword search in parallel (CPU-bound).
-// Phase 3 inserts results sequentially.
 func matchByHeadword(database *sql.DB) int {
-	// Load unmatched citations that have only act+scene
-	rows, err := database.Query(`
+	return runHeadwordSearch(database, `
 		SELECT lc.id, lc.work_id, lc.act, lc.scene, le.key
 		FROM lexicon_citations lc
 		JOIN lexicon_entries le ON le.id = lc.entry_id
 		WHERE lc.work_id IS NOT NULL
 		  AND lc.act IS NOT NULL AND lc.scene IS NOT NULL
 		  AND lc.line IS NULL AND (lc.quote_text IS NULL OR lc.quote_text = '')
-		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`)
-	if err != nil {
-		return 0
-	}
-
-	type headwordCit struct {
-		ID     int64
-		WorkID int64
-		Act    int
-		Scene  int
-		Key    string
-	}
-	var cits []headwordCit
-	for rows.Next() {
-		var c headwordCit
-		rows.Scan(&c.ID, &c.WorkID, &c.Act, &c.Scene, &c.Key)
-		cits = append(cits, c)
-	}
-	rows.Close()
-
-	if len(cits) == 0 {
-		return 0
-	}
-
-	fmt.Printf("  Headword search: %d candidates\n", len(cits))
-
-	// Group by scene to avoid redundant queries
-	type sceneKey struct {
-		WorkID int64
-		Act    int
-		Scene  int
-	}
-	sceneGroups := make(map[sceneKey][]headwordCit)
-	for _, c := range cits {
-		key := sceneKey{c.WorkID, c.Act, c.Scene}
-		sceneGroups[key] = append(sceneGroups[key], c)
-	}
-
-	// Phase 1: Pre-load all scene text lines (sequential DB reads)
-	type headwordTask struct {
-		cit            headwordCit
-		linesByEdition map[int64][]textLineRow
-	}
-	var tasks []headwordTask
-
-	for key, groupCits := range sceneGroups {
-		lines, err := loadTextLinesAll(database, "work_id = ? AND act = ? AND scene = ?",
-			key.WorkID, key.Act, key.Scene)
-		if err != nil {
-			continue
-		}
-		// Fall back to whole-act search when the specific scene has no text lines.
-		if len(lines) == 0 {
-			lines, err = loadTextLinesAll(database, "work_id = ? AND act = ?",
-				key.WorkID, key.Act)
-			if err != nil || len(lines) == 0 {
-				continue
-			}
-		}
-
-		linesByEdition := make(map[int64][]textLineRow)
-		for _, tl := range lines {
-			linesByEdition[tl.EditionID] = append(linesByEdition[tl.EditionID], tl)
-		}
-
-		for _, cit := range groupCits {
-			tasks = append(tasks, headwordTask{cit: cit, linesByEdition: linesByEdition})
-		}
-	}
-
-	// Phase 2: Run headword search in parallel (CPU-bound)
-	type hwResult struct {
-		citID     int64
-		lineID    int64
-		editionID int64
-		content   string
-	}
-
-	workers := min(runtime.NumCPU(), 8)
-	if workers < 1 {
-		workers = 1
-	}
-
-	taskCh := make(chan headwordTask, 256)
-	resultCh := make(chan hwResult, 256)
-
-	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for task := range taskCh {
-				if task.cit.Key == "" {
-					continue
-				}
-				cleanKey := stripSenseNumber(task.cit.Key)
-				if cleanKey == "" {
-					continue
-				}
-
-				for editionID, edLines := range task.linesByEdition {
-					found := false
-					// Try exact normalized substring
-					for _, line := range edLines {
-						if parser.ContainsNormalized(line.Content, cleanKey) {
-							resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
-							found = true
-							break
-						}
-					}
-					// Fallback: word-prefix matching
-					if !found {
-						for _, line := range edLines {
-							if parser.ContainsWordPrefix(line.Content, cleanKey) {
-								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
-								found = true
-								break
-							}
-						}
-					}
-					// Fallback: stem-prefix matching (handles y→ies, e→ing, etc.)
-					if !found {
-						for _, line := range edLines {
-							if parser.ContainsStemPrefix(line.Content, cleanKey) {
-								resultCh <- hwResult{task.cit.ID, line.ID, editionID, line.Content}
-								break
-							}
-						}
-					}
-				}
-			}
-		}()
-	}
-
-	go func() {
-		for _, t := range tasks {
-			taskCh <- t
-		}
-		close(taskCh)
-	}()
-
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	// Phase 3: Insert results (sequential)
-	tx, err := database.Begin()
-	if err != nil {
-		return 0
-	}
-	stmt, err := tx.Prepare(`
-		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
-		VALUES (?, ?, ?, 'headword', 0.4, ?)`)
-	if err != nil {
-		tx.Rollback()
-		return 0
-	}
-
-	matched := 0
-	for result := range resultCh {
-		stmt.Exec(result.citID, result.lineID, result.editionID, result.content)
-		matched++
-	}
-
-	stmt.Close()
-	tx.Commit()
-
-	fmt.Printf("  Headword matches: %d\n", matched)
-	return matched
+		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`,
+		0.4, "Headword search", "Headword matches")
 }
 
 // matchByHeadwordFallback is a last-resort pass for ALL remaining unmatched citations.
 // Unlike matchByHeadword, it does not require line IS NULL / quote_text IS NULL.
-// This catches citations where quote or line-number matching failed (e.g., Shrew
-// Induction where Globe line numbers don't exist, or archaic spelling differences).
 func matchByHeadwordFallback(database *sql.DB) int {
-	rows, err := database.Query(`
+	return runHeadwordSearch(database, `
 		SELECT lc.id, lc.work_id, lc.act, lc.scene, le.key
 		FROM lexicon_citations lc
 		JOIN lexicon_entries le ON le.id = lc.entry_id
 		WHERE lc.work_id IS NOT NULL
 		  AND lc.act IS NOT NULL AND lc.scene IS NOT NULL
-		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`)
+		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`,
+		0.3, "Headword fallback", "Headword fallback matches")
+}
+
+// runHeadwordSearch is the shared implementation for matchByHeadword and
+// matchByHeadwordFallback. It runs a 3-tier headword search (exact substring →
+// word-prefix → stem-prefix) against scene text lines in parallel, then inserts
+// results with the given confidence score.
+//
+//   - citQuery: SELECT returning (id, work_id, act, scene, key)
+//   - confidence: inserted into citation_matches.confidence
+//   - candidateLabel: printed before the candidate count
+//   - matchLabel: printed after insertion ("X matches")
+func runHeadwordSearch(database *sql.DB, citQuery string, confidence float64, candidateLabel, matchLabel string) int {
+	rows, err := database.Query(citQuery)
 	if err != nil {
 		return 0
 	}
@@ -709,9 +547,9 @@ func matchByHeadwordFallback(database *sql.DB) int {
 		return 0
 	}
 
-	fmt.Printf("  Headword fallback: %d remaining candidates\n", len(cits))
+	fmt.Printf("  %s: %d candidates\n", candidateLabel, len(cits))
 
-	// Group by scene
+	// Group by scene to avoid redundant text-line loads.
 	type sceneKey struct {
 		WorkID int64
 		Act    int
@@ -719,18 +557,10 @@ func matchByHeadwordFallback(database *sql.DB) int {
 	}
 	sceneGroups := make(map[sceneKey][]hwCit)
 	for _, c := range cits {
-		key := sceneKey{c.WorkID, c.Act, c.Scene}
-		sceneGroups[key] = append(sceneGroups[key], c)
+		sceneGroups[sceneKey{c.WorkID, c.Act, c.Scene}] = append(sceneGroups[sceneKey{c.WorkID, c.Act, c.Scene}], c)
 	}
 
-	// Pre-load text and run headword search (reuses same 3-tier strategy)
-	type hwResult struct {
-		citID     int64
-		lineID    int64
-		editionID int64
-		content   string
-	}
-
+	// Phase 1: Pre-load all scene text lines (sequential DB reads).
 	type hwTask struct {
 		cit            hwCit
 		linesByEdition map[int64][]textLineRow
@@ -743,6 +573,7 @@ func matchByHeadwordFallback(database *sql.DB) int {
 		if err != nil {
 			continue
 		}
+		// Fall back to whole-act search when the specific scene has no text lines.
 		if len(lines) == 0 {
 			lines, err = loadTextLinesAll(database, "work_id = ? AND act = ?",
 				key.WorkID, key.Act)
@@ -760,29 +591,28 @@ func matchByHeadwordFallback(database *sql.DB) int {
 		}
 	}
 
-	// Parallel headword search
-	workers := min(runtime.NumCPU(), 8)
-	if workers < 1 {
-		workers = 1
+	// Phase 2: Run 3-tier headword search in parallel (CPU-bound).
+	type hwResult struct {
+		citID     int64
+		lineID    int64
+		editionID int64
+		content   string
 	}
 
+	workers := max(1, min(runtime.NumCPU(), 8))
 	taskCh := make(chan hwTask, 256)
 	resultCh := make(chan hwResult, 256)
 
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for task := range taskCh {
-				if task.cit.Key == "" {
-					continue
-				}
 				cleanKey := stripSenseNumber(task.cit.Key)
 				if cleanKey == "" {
 					continue
 				}
-
 				for editionID, edLines := range task.linesByEdition {
 					found := false
 					for _, line := range edLines {
@@ -820,18 +650,16 @@ func matchByHeadwordFallback(database *sql.DB) int {
 		}
 		close(taskCh)
 	}()
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
+	go func() { wg.Wait(); close(resultCh) }()
 
+	// Phase 3: Insert results (sequential).
 	tx, err := database.Begin()
 	if err != nil {
 		return 0
 	}
-	stmt, err := tx.Prepare(`
+	stmt, err := tx.Prepare(fmt.Sprintf(`
 		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
-		VALUES (?, ?, ?, 'headword', 0.3, ?)`)
+		VALUES (?, ?, ?, 'headword', %g, ?)`, confidence))
 	if err != nil {
 		tx.Rollback()
 		return 0
@@ -842,11 +670,10 @@ func matchByHeadwordFallback(database *sql.DB) int {
 		stmt.Exec(result.citID, result.lineID, result.editionID, result.content)
 		matched++
 	}
-
 	stmt.Close()
 	tx.Commit()
 
-	fmt.Printf("  Headword fallback matches: %d\n", matched)
+	fmt.Printf("  %s: %d\n", matchLabel, matched)
 	return matched
 }
 

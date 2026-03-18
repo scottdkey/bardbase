@@ -113,6 +113,68 @@ func TestContainsNormalized_EmptySubstring(t *testing.T) {
 	}
 }
 
+func TestNormalizeForMatch_EarlyModernUV(t *testing.T) {
+	// v→u normalization: both sides get the same form so FF and modern words match.
+	cases := []struct{ in, want string }{
+		{"haue", "haue"},          // FF 'haue' (v already absent, u stays u)
+		{"have", "haue"},          // modern 'have': v→u → haue  (matches FF haue)
+		{"vpon", "upon"},          // FF 'vpon': v→u → upon      (matches modern upon)
+		{"loue", "loue"},          // FF 'loue'
+		{"love", "loue"},          // modern 'love': v→u → loue
+		{"giue", "giue"},          // FF 'giue'
+		{"give", "giue"},          // modern 'give': v→u → giue
+		{"very", "uery"},          // v is consonant but still mapped; same on both sides
+		{"virtue", "uirtue"},      // same logic
+	}
+	for _, c := range cases {
+		got := NormalizeForMatch(c.in)
+		if got != c.want {
+			t.Errorf("NormalizeForMatch(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeForMatch_EarlyModernIeEndings(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"beautie", "beauty"},
+		{"mercie", "mercy"},
+		{"pittie", "pitty"},  // double-t stays; at least ie→y matches
+		{"trie", "try"},
+		{"crie", "cry"},
+		// short words (≤3 chars) not transformed: identical in both periods
+		{"die", "die"},
+		{"lie", "lie"},
+		{"pie", "pie"},
+	}
+	for _, c := range cases {
+		got := NormalizeForMatch(c.in)
+		if got != c.want {
+			t.Errorf("NormalizeForMatch(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestJaccardSimilarity_EarlyModernSpelling(t *testing.T) {
+	// FF spellings should produce high Jaccard vs modern equivalents.
+	cases := []struct {
+		a, b    string
+		wantMin float64
+	}{
+		// u/v interchange
+		{"haue patience and endure", "have patience and endure", 1.0},
+		{"loue and peace", "love and peace", 1.0},
+		{"vpon this ground", "upon this ground", 1.0},
+		// -ie endings
+		{"o beautie thou art sicke", "o beauty thou art sick", 0.6},
+	}
+	for _, c := range cases {
+		got := JaccardSimilarity(c.a, c.b)
+		if got < c.wantMin {
+			t.Errorf("JaccardSimilarity(%q, %q) = %.3f, want >= %.3f", c.a, c.b, got, c.wantMin)
+		}
+	}
+}
+
 func TestAlignSequences_BothEmpty(t *testing.T) {
 	pairs := AlignSequences(nil, nil)
 	if len(pairs) != 0 {

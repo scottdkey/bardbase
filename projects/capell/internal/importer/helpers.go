@@ -6,9 +6,9 @@ package importer
 import (
 	"database/sql"
 	"fmt"
+	"runtime"
 	"strings"
-
-	"github.com/scottdkey/bardbase/projects/capell/internal/parser"
+	"sync"
 )
 
 // stepBanner prints a formatted step header for pipeline progress output.
@@ -109,7 +109,65 @@ func buildWorksMap(database *sql.DB) (map[string]workInfo, error) {
 	return m, nil
 }
 
+// ─── Parallel helpers ────────────────────────────────────────────────────────
+
+// parallelProcess applies fn to each item using up to runtime.NumCPU() goroutines
+// (capped at len(items)). Results are returned in unspecified order; callers that
+// need ordered output should key results by a field in O.
+func parallelProcess[I, O any](items []I, fn func(I) O) []O {
+	if len(items) == 0 {
+		return nil
+	}
+	workers := max(1, min(runtime.NumCPU(), len(items)))
+
+	ch := make(chan I, len(items))
+	for _, item := range items {
+		ch <- item
+	}
+	close(ch)
+
+	resultCh := make(chan O, len(items))
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range ch {
+				resultCh <- fn(item)
+			}
+		}()
+	}
+	go func() { wg.Wait(); close(resultCh) }()
+
+	results := make([]O, 0, len(items))
+	for r := range resultCh {
+		results = append(results, r)
+	}
+	return results
+}
+
 // ─── Text-line helpers ───────────────────────────────────────────────────────
+
+// textLinesInsertSQL is the shared INSERT statement used by all play importers.
+const textLinesInsertSQL = `
+	INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
+		character_id, char_name, content, content_type, word_count)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+// insertTextDivisions tallies line counts per (act, scene) from actScenes and
+// inserts them into text_divisions within tx. Callers build actScenes from their
+// line slice: [][2]int{{line.Act, line.Scene}, ...}.
+func insertTextDivisions(tx *sql.Tx, workID, editionID int64, actScenes [][2]int) {
+	counts := make(map[[2]int]int, len(actScenes))
+	for _, as := range actScenes {
+		counts[as]++
+	}
+	for key, count := range counts {
+		tx.Exec(`INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count)
+			VALUES (?, ?, ?, ?, ?)`,
+			workID, editionID, key[0], key[1], count)
+	}
+}
 
 // clearWorkEditionData deletes all text_lines and text_divisions for a given
 // work+edition pair. Called before re-importing to keep imports idempotent.
@@ -131,31 +189,6 @@ func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cach
 	id := lookupCharacter(database, workID, charName)
 	cache[charName] = id
 	return id
-}
-
-// queryAlignableLines runs a SELECT against text_lines and returns the results
-// as []parser.AlignableLine. The where clause is appended directly; callers
-// supply all bind args. Used by the three load*Lines helpers in mappings.go.
-func queryAlignableLines(database *sql.DB, where string, args ...interface{}) []parser.AlignableLine {
-	query := fmt.Sprintf(
-		`SELECT id, content, COALESCE(line_number, 0)
-		 FROM text_lines
-		 WHERE %s
-		 ORDER BY line_number, id`, where)
-
-	rows, err := database.Query(query, args...)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	var lines []parser.AlignableLine
-	for rows.Next() {
-		var l parser.AlignableLine
-		rows.Scan(&l.ID, &l.Content, &l.LineNumber)
-		lines = append(lines, l)
-	}
-	return lines
 }
 
 // loadTextLinesAll is like loadTextLines but does NOT filter out rows with

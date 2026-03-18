@@ -37,6 +37,16 @@ func BuildFTS(database *sql.DB) error {
 		}
 	}
 
+	// Reference FTS
+	refCount, _ := db.TableCount(database, "reference_entries")
+	if refCount > 0 {
+		fmt.Printf("  Reference FTS: %d entries...\n", refCount)
+		_, err := database.Exec("INSERT INTO reference_fts(reference_fts) VALUES('rebuild')")
+		if err != nil {
+			return fmt.Errorf("rebuilding reference FTS: %w", err)
+		}
+	}
+
 	elapsed := time.Since(start).Seconds()
 	fmt.Printf("  ✓ FTS indexes built in %.1fs\n", elapsed)
 	return nil

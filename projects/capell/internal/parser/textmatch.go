@@ -33,20 +33,36 @@ func normalizeSpecialChars(s string) string {
 }
 
 // NormalizeForMatch lowercases text, removes punctuation, and normalizes whitespace.
-// Also normalises early-modern print variants (ligatures, long-s, etc.).
-// Used for fuzzy text comparison between editions and citation matching.
+// Also normalises early-modern print variants (ligatures, long-s, u/v interchange,
+// and -ie endings) so that First Folio and Q1 quarto spellings match modern editions.
+// Applied identically to both sides of a comparison, so normalized forms need not
+// be "correct" modern English — only consistent.
 func NormalizeForMatch(s string) string {
 	s = normalizeSpecialChars(s)
 	s = strings.ToLower(s)
 	// After lowercasing, map archaic letter variants used in early-modern printing.
 	s = strings.ReplaceAll(s, "vv", "w") // vv → w (rare but present in OCR)
+	// u/v interchange: early-modern printing used 'v' word-initially (even for vowel
+	// sound) and 'u' medially (even for consonant sound).  Normalise all 'v' to 'u'
+	// on both sides so that  have↔haue, give↔giue, upon↔vpon, love↔loue all match.
+	s = strings.ReplaceAll(s, "v", "u")
 	var result strings.Builder
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
 			result.WriteRune(r)
 		}
 	}
-	return strings.Join(strings.Fields(result.String()), " ")
+	// Word-final -ie → -y: early-modern '-ie' endings (beautie, mercie, pittie, trie)
+	// normalise to the modern '-y' form.  Applied to both sides, so modern 'mercy' and
+	// FF 'mercie' both produce 'mercy'.  Skip words ≤3 chars: 'die', 'lie', 'pie' are
+	// identical in both periods and should not be transformed.
+	words := strings.Fields(result.String())
+	for i, w := range words {
+		if len(w) > 3 && strings.HasSuffix(w, "ie") {
+			words[i] = w[:len(w)-2] + "y"
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // WordSet splits normalized text into a set of unique words.
@@ -135,10 +151,36 @@ func ContainsStemPrefix(text, word string) bool {
 }
 
 // AlignableLine represents a text line for sequence alignment.
+// Words is a pre-computed normalized word set used by AlignSequences to avoid
+// re-normalizing each line O(n×m) times when building the similarity matrix.
+// If Words is nil, JaccardSimilarity falls back to computing it on the fly.
 type AlignableLine struct {
 	ID         int64
 	Content    string
 	LineNumber int
+	Words      map[string]bool
+}
+
+// jaccardFromSets computes the Jaccard index from two pre-computed word sets.
+// Callers should use this instead of JaccardSimilarity when word sets are available.
+func jaccardFromSets(setA, setB map[string]bool) float64 {
+	if len(setA) == 0 && len(setB) == 0 {
+		return 1.0
+	}
+	if len(setA) == 0 || len(setB) == 0 {
+		return 0.0
+	}
+	intersection := 0
+	for w := range setA {
+		if setB[w] {
+			intersection++
+		}
+	}
+	union := len(setA) + len(setB) - intersection
+	if union == 0 {
+		return 0.0
+	}
+	return float64(intersection) / float64(union)
 }
 
 // AlignedPair represents a matched or unmatched line pair from two aligned sequences.
@@ -183,12 +225,18 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 
 	gapPenalty := -0.1
 
-	// Pre-compute similarity matrix
+	// Pre-compute similarity matrix.
+	// Use pre-computed word sets when available (set by buildLineCache) to avoid
+	// re-normalizing each line O(n×m) times — one normalize per line instead.
 	sim := make([][]float64, n)
 	for i := 0; i < n; i++ {
 		sim[i] = make([]float64, m)
 		for j := 0; j < m; j++ {
-			sim[i][j] = JaccardSimilarity(linesA[i].Content, linesB[j].Content)
+			if linesA[i].Words != nil && linesB[j].Words != nil {
+				sim[i][j] = jaccardFromSets(linesA[i].Words, linesB[j].Words)
+			} else {
+				sim[i][j] = JaccardSimilarity(linesA[i].Content, linesB[j].Content)
+			}
 		}
 	}
 
@@ -274,13 +322,12 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 }
 
 // simpleAlign performs 1:1 positional alignment for very large sequences.
+// Uses pre-computed word sets (AlignableLine.Words) when available to avoid
+// re-normalizing every line on each call.
 func simpleAlign(linesA, linesB []AlignableLine) []AlignedPair {
 	n := len(linesA)
 	m := len(linesB)
-	maxLen := n
-	if m > maxLen {
-		maxLen = m
-	}
+	maxLen := max(n, m)
 
 	pairs := make([]AlignedPair, 0, maxLen)
 	for k := 0; k < maxLen; k++ {
@@ -288,7 +335,12 @@ func simpleAlign(linesA, linesB []AlignableLine) []AlignedPair {
 		if k < n && k < m {
 			a := linesA[k]
 			b := linesB[k]
-			s := JaccardSimilarity(a.Content, b.Content)
+			var s float64
+			if a.Words != nil && b.Words != nil {
+				s = jaccardFromSets(a.Words, b.Words)
+			} else {
+				s = JaccardSimilarity(a.Content, b.Content)
+			}
 			mt := "aligned"
 			if s < 0.2 {
 				mt = "modified"

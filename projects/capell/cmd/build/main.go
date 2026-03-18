@@ -37,7 +37,7 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
 	forceDownload := flag.Bool("force-download", false, "Re-download Standard Ebooks source files (ignores cache)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, attributions, citations, mappings, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, onions, attributions, citations, mappings, fts")
 	excludeStr := flag.String("exclude", "", "Comma-separated source keys to skip (e.g. folger,wordhoard)")
 	flag.Parse()
 
@@ -101,7 +101,8 @@ func main() {
 	//   6. folio       — Import First Folio 1623 (EEBO-TCP A11954, 35 plays, original spelling)
 	//   7. folger      — Import Folger Shakespeare TEIsimple (37 plays, CC BY-NC 3.0)
 	//   8. eebo-quartos — Import EEBO-TCP early quartos (Q1 Hamlet, Q1 1H4, etc.)
-	//   9. attributions — Populate attribution records for all sources
+	//   9. onions       — Import Onions Shakespeare Glossary (1911, reference entries)
+	//  10. attributions — Populate attribution records for all sources
 	//   8. mappings    — Build cross-edition line alignments (needed by citation propagation)
 	//   9. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
 	//  10. fts         — Build full-text search index
@@ -119,6 +120,7 @@ func main() {
 		{"folio", func() error { return importer.ImportFirstFolio(database, sourcesDir) }},
 		{"folger", func() error { return importer.ImportFolger(database, sourcesDir) }},
 		{"eebo-quartos", func() error { return importer.ImportEEBOQuartos(database, sourcesDir) }},
+		{"onions", func() error { return importer.ImportOnions(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},

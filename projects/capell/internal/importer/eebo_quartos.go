@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/scottdkey/bardbase/projects/capell/internal/constants"
@@ -68,18 +69,62 @@ func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
 		return fmt.Errorf("building works map: %w", err)
 	}
 
+	// Collect and sort eebo IDs for deterministic output; filter to present files.
+	eeboIDs := make([]string, 0, len(quartos))
+	for id := range quartos {
+		eeboIDs = append(eeboIDs, id)
+	}
+	sort.Strings(eeboIDs)
+
+	var presentIDs []string
+	for _, id := range eeboIDs {
+		if _, err := os.Stat(filepath.Join(eeboDir, id+".xml")); err == nil {
+			presentIDs = append(presentIDs, id)
+		} else {
+			fmt.Printf("  SKIP %s — file not found\n", id)
+		}
+	}
+
+	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
+	type parsedQuarto struct {
+		eeboID string
+		lines  []parser.QuartoLine
+		err    error
+	}
+
+	results := parallelProcess(presentIDs, func(eeboID string) parsedQuarto {
+		data, err := os.ReadFile(filepath.Join(eeboDir, eeboID+".xml"))
+		if err != nil {
+			return parsedQuarto{eeboID: eeboID, err: err}
+		}
+		lines, err := parser.ParseEEBOQuartoTEI(data)
+		return parsedQuarto{eeboID: eeboID, lines: lines, err: err}
+	})
+
+	parseResults := make(map[string]parsedQuarto, len(results))
+	for _, r := range results {
+		parseResults[r.eeboID] = r
+	}
+
+	// === Phase 2: Insert each quarto sequentially (DB writes) ===
 	totalLines, totalPlays := 0, 0
 
-	for eeboID, meta := range quartos {
-		xmlPath := filepath.Join(eeboDir, eeboID+".xml")
-		if _, err := os.Stat(xmlPath); os.IsNotExist(err) {
-			fmt.Printf("  SKIP %s — file not found: %s\n", eeboID, xmlPath)
-			continue
-		}
+	for _, eeboID := range presentIDs {
+		meta := quartos[eeboID]
 
 		work, ok := worksMap[meta.OSSID]
 		if !ok {
 			fmt.Printf("  SKIP %s — no work for ossID=%s\n", eeboID, meta.OSSID)
+			continue
+		}
+
+		r := parseResults[eeboID]
+		if r.err != nil {
+			fmt.Printf("  ERROR reading/parsing %s: %v\n", eeboID, r.err)
+			continue
+		}
+		if len(r.lines) == 0 {
+			fmt.Printf("  SKIP %s — 0 lines parsed\n", eeboID)
 			continue
 		}
 
@@ -96,27 +141,9 @@ func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		// Tag with source_key and license_tier
 		_, _ = database.Exec(
 			`UPDATE editions SET source_key = 'eebo_tcp', license_tier = 'cc0' WHERE id = ?`,
 			editionID)
-
-		data, err := os.ReadFile(xmlPath)
-		if err != nil {
-			fmt.Printf("  ERROR reading %s: %v\n", xmlPath, err)
-			continue
-		}
-
-		lines, err := parser.ParseEEBOQuartoTEI(data)
-		if err != nil {
-			fmt.Printf("  ERROR parsing %s: %v\n", eeboID, err)
-			continue
-		}
-
-		if len(lines) == 0 {
-			fmt.Printf("  SKIP %s — 0 lines parsed\n", eeboID)
-			continue
-		}
 
 		totalPlays++
 
@@ -128,19 +155,16 @@ func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		insertStmt, err := tx.Prepare(`
-			INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
-				character_id, char_name, content, content_type, word_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		insertStmt, err := tx.Prepare(textLinesInsertSQL)
 		if err != nil {
 			tx.Rollback()
 			fmt.Printf("  ERROR preparing insert for %s: %v\n", meta.Title, err)
 			continue
 		}
 
-		charCache := make(map[string]interface{})
+		charCache := make(map[string]any)
 
-		for _, line := range lines {
+		for _, line := range r.lines {
 			ct := "speech"
 			charName := line.Character
 			if line.IsStageDirection {
@@ -158,25 +182,25 @@ func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
 		}
 		insertStmt.Close()
 
-		// Single scene for flat quartos
 		speechCount := 0
-		for _, l := range lines {
+		for _, l := range r.lines {
 			if !l.IsStageDirection {
 				speechCount++
 			}
 		}
+		// Flat quartos have a single scene
 		tx.Exec(`INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count)
 			VALUES (?, ?, ?, ?, ?)`,
-			work.ID, editionID, 1, 1, len(lines))
+			work.ID, editionID, 1, 1, len(r.lines))
 
 		if err := tx.Commit(); err != nil {
 			fmt.Printf("  ERROR committing %s: %v\n", meta.Title, err)
 			continue
 		}
 
-		totalLines += len(lines)
+		totalLines += len(r.lines)
 		fmt.Printf("  %-45s %5d lines (%4d speeches)\n",
-			meta.Title, len(lines), speechCount)
+			meta.Title, len(r.lines), speechCount)
 	}
 
 	elapsed := time.Since(start).Seconds()
