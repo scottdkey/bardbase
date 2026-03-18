@@ -49,11 +49,11 @@ jobs:
       - name: Generate build info
         id: info
         run: |
-          DB_SIZE=$(du -h projects/capell/build/bardbase.db | cut -f1)
-          TEXT_LINES=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM text_lines")
-          LEXICON=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM lexicon_entries")
-          CITATIONS=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM lexicon_citations")
-          WORKS=$(sqlite3 projects/capell/build/bardbase.db "SELECT COUNT(*) FROM works")
+          DB_SIZE=$(du -h build/bardbase.db | cut -f1)
+          TEXT_LINES=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM text_lines")
+          LEXICON=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_entries")
+          CITATIONS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_citations")
+          WORKS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM works")
 
           VERSION="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -67,7 +67,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bardbase
-          path: projects/capell/build/bardbase.db
+          path: build/bardbase.db
           retention-days: 90
 
       - name: Create release
@@ -110,4 +110,4 @@ jobs:
           gh release create "$VERSION" \
             --title "Bardbase $VERSION" \
             --notes "$BODY" \
-            projects/capell/build/bardbase.db
+            build/bardbase.db

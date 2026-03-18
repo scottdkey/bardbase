@@ -27,7 +27,7 @@ const onionsPlayAbbrevsAlt = `` +
 	`Compl\.|Phoen\.|Pilgr\.|Troil\.|` +
 	`Meas\.|Wint\.|Lucr\.|Sonn\.|Caes\.|` +
 	`LLL\.|MND\.|Gent\.|AYL\.|All's|` +
-	`Mac\.|Rom\.|Tim\.|Tit\.|Oth\.|Ant\.|Cym\.|Ham\.|Per\.|Err\.|Shr\.|Ven\.|Wiv\.|Tw\.N\.|Tw\.|` +
+	`Mac\.|Rom\.|Tim\.|Tit\.|Oth\.|Ant\.|Cym\.|Ham\.|Merch\.|Per\.|Err\.|Shr\.|Ven\.|Wiv\.|Tw\.N\.|Tw\.|` +
 	`Cor\.|Lr\.|Tp\.|Ado|John|R2|R3|H5|H8|HS|` +
 	`1H4|2H4|1H6|2H6|3H6`
 

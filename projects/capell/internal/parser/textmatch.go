@@ -218,8 +218,13 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 		return pairs
 	}
 
-	// For very large scenes, fall back to simple 1:1 alignment
-	if n > 500 || m > 500 {
+	// For very large sequences, fall back to simple 1:1 alignment to bound
+	// memory and compute. The limit is a cell count (n×m) rather than a
+	// per-sequence length so that flat-vs-structured play comparisons
+	// (e.g., Q1 Hamlet ~2000 lines × SE Hamlet ~3500 lines = 7M cells) can
+	// still use Needleman-Wunsch while truly enormous tasks fall back.
+	// 8M cells × 8 bytes × 3 matrices (sim, dp, trace) ≈ 192 MB per task.
+	if int64(n)*int64(m) > 8_000_000 {
 		return simpleAlign(linesA, linesB)
 	}
 
