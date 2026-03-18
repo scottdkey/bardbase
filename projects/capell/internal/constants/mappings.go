@@ -28,6 +28,12 @@ var FolioPlayTitles map[string]string
 // Loaded from projects/data/genre_map.json.
 var GenreMap map[string]string
 
+// OnionsAbbrevs maps Onions 1911 abbreviations to Schmidt abbreviations
+// (works.schmidt_abbrev) where they differ. Pass-through abbrevs (same in both)
+// are absent — callers fall through to the raw abbreviation.
+// Loaded from projects/data/onions_abbrevs.json.
+var OnionsAbbrevs map[string]string
+
 // CitationCorrection is a manual correction for an unmatched lexicon citation.
 // Loaded from projects/data/citation_corrections.json.
 type CitationCorrection struct {

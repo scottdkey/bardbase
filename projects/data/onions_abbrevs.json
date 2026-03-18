@@ -1,0 +1,18 @@
+{
+  "_comment": "Maps Onions 1911 play abbreviations to Schmidt abbreviations (works.schmidt_abbrev).",
+  "_comment2": "Entries only needed where Onions differs from Schmidt. Pass-through abbrevs omitted.",
+  "AYL.": "As",
+  "MND.": "Mids.",
+  "LLL.": "LLL",
+  "Sonn.": "Son.",
+  "Tw.N.": "Tw.",
+  "Compl.": "Compl.",
+  "Phoen.": "Phoen.",
+  "Pilgr.": "Pilgr.",
+  "HS": "H8",
+  "1H4": "H4A",
+  "2H4": "H4B",
+  "1H6": "H6A",
+  "2H6": "H6B",
+  "3H6": "H6C"
+}
