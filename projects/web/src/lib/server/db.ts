@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import { resolve } from 'node:path';
 
-const DB_PATH = resolve(import.meta.dirname, '../../../../build/bardbase.db');
+const DB_PATH = process.env.BARDBASE_DB_PATH ?? resolve(import.meta.dirname, '../../../../build/bardbase.db');
 
 let _db: Database.Database | null = null;
 
