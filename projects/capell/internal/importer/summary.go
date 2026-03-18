@@ -30,6 +30,8 @@ func PrintSummary(database *sql.DB, dbPath string) {
 		{"lexicon_senses", "Lexicon senses"},
 		{"lexicon_citations", "Lexicon citations"},
 		{"citation_matches", "Citation matches"},
+		{"reference_citations", "Reference citations"},
+		{"reference_citation_matches", "Ref citation matches"},
 		{"line_mappings", "Line mappings"},
 		{"attributions", "Attributions"},
 		{"sources", "Sources"},

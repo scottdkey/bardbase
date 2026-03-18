@@ -37,7 +37,7 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
 	forceDownload := flag.Bool("force-download", false, "Re-download Standard Ebooks source files (ignores cache)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, onions, attributions, citations, mappings, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, onions, attributions, citations, ref-citations, mappings, fts")
 	excludeStr := flag.String("exclude", "", "Comma-separated source keys to skip (e.g. folger,wordhoard)")
 	flag.Parse()
 
@@ -103,9 +103,11 @@ func main() {
 	//   8. eebo-quartos — Import EEBO-TCP early quartos (Q1 Hamlet, Q1 1H4, etc.)
 	//   9. onions       — Import Onions Shakespeare Glossary (1911, reference entries)
 	//  10. attributions — Populate attribution records for all sources
-	//   8. mappings    — Build cross-edition line alignments (needed by citation propagation)
-	//   9. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
-	//  10. fts         — Build full-text search index
+	//  10. attributions — Populate attribution records for all sources
+	//  11. mappings    — Build cross-edition line alignments (needed by citation propagation)
+	//  12. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
+	//  13. ref-citations — Resolve reference entry citations (Onions) to text_lines
+	//  14. fts         — Build full-text search index
 	type buildStep struct {
 		name string
 		fn   func() error
@@ -124,6 +126,7 @@ func main() {
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},
+		{"ref-citations", func() error { return importer.ResolveReferenceCitations(database) }},
 		{"fts", func() error { return importer.BuildFTS(database) }},
 	}
 
