@@ -15,16 +15,16 @@ import (
 )
 
 // ResolveReferenceCitations parses embedded play citations from reference_entries
-// (currently Onions), inserts them into reference_citations, and matches each
+// (Onions, Abbott, etc.), inserts them into reference_citations, and matches each
 // to text_lines (primarily OSS/Globe edition, then propagated to others).
 //
 // Steps:
-//   1. Build abbrev→work_id map from works table + OnionsAbbrevs translation.
-//   2. Load all reference_entries.
-//   3. Parse citations from each entry's raw_text.
-//   4. Bulk-insert into reference_citations.
-//   5. Match line numbers against text_lines; insert reference_citation_matches.
-//   6. Propagate matches to other editions via line_mappings.
+//  1. Build abbrev→work_id map from works table + source-specific translation.
+//  2. Load all reference_entries with their source short_code.
+//  3. Parse citations from each entry's raw_text (dispatching per source).
+//  4. Bulk-insert into reference_citations.
+//  5. Match line numbers against text_lines; insert reference_citation_matches.
+//  6. Propagate matches to other editions via line_mappings.
 func ResolveReferenceCitations(database *sql.DB) error {
 	stepBanner("STEP 10: Resolve Reference Citations → Text Lines")
 	start := time.Now()
@@ -40,27 +40,31 @@ func ResolveReferenceCitations(database *sql.DB) error {
 	}
 	fmt.Printf("  Abbreviation map: %d entries\n", len(abbrevToWorkID))
 
-	// --- Step 2: load reference entries ---
+	// --- Step 2: load reference entries with source short_code ---
 	type entryRow struct {
-		ID       int64
-		SourceID int64
-		RawText  string
+		ID         int64
+		SourceID   int64
+		SourceCode string // sources.short_code
+		RawText    string
 	}
-	rows, err := database.Query(`SELECT id, source_id, raw_text FROM reference_entries`)
+	rows, err := database.Query(`
+		SELECT re.id, re.source_id, s.short_code, re.raw_text
+		FROM reference_entries re
+		JOIN sources s ON s.id = re.source_id`)
 	if err != nil {
 		return fmt.Errorf("loading reference entries: %w", err)
 	}
 	var entries []entryRow
 	for rows.Next() {
 		var e entryRow
-		rows.Scan(&e.ID, &e.SourceID, &e.RawText)
+		rows.Scan(&e.ID, &e.SourceID, &e.SourceCode, &e.RawText)
 		entries = append(entries, e)
 	}
 	rows.Close()
 
 	fmt.Printf("  Reference entries: %d\n", len(entries))
 	if len(entries) == 0 {
-		fmt.Println("  No reference entries — run onions step first")
+		fmt.Println("  No reference entries — run onions/abbott steps first")
 		return nil
 	}
 
@@ -80,10 +84,24 @@ func ResolveReferenceCitations(database *sql.DB) error {
 	totalCitations := 0
 	unresolved := 0
 	for _, e := range entries {
-		cits := parser.ParseOnionsCitations(e.RawText)
+		// Dispatch to the appropriate citation parser based on source.
+		var cits []parser.RefCitation
+		switch e.SourceCode {
+		case "abbott":
+			cits = parser.ParseAbbottCitations(e.RawText)
+		default:
+			cits = parser.ParseOnionsCitations(e.RawText)
+		}
+
 		for _, c := range cits {
-			// Translate Onions abbreviation → Schmidt abbreviation → work_id.
-			schmidtAbbrev := resolveOnionsAbbrev(c.WorkAbbrev)
+			// Translate source-specific abbreviation → Schmidt abbreviation → work_id.
+			var schmidtAbbrev string
+			switch e.SourceCode {
+			case "abbott":
+				schmidtAbbrev = resolveAbbottAbbrev(c.WorkAbbrev)
+			default:
+				schmidtAbbrev = resolveOnionsAbbrev(c.WorkAbbrev)
+			}
 			workID, ok := abbrevToWorkID[schmidtAbbrev]
 			var workIDArg any
 			if ok {
@@ -163,6 +181,16 @@ func buildAbbrevMap(database *sql.DB) (map[string]int64, error) {
 // for the majority that are identical in both systems.
 func resolveOnionsAbbrev(abbrev string) string {
 	if mapped, ok := constants.OnionsAbbrevs[abbrev]; ok {
+		return mapped
+	}
+	return abbrev
+}
+
+// resolveAbbottAbbrev translates an Abbott 1877 abbreviation to the
+// corresponding Schmidt abbreviation. Falls through to the raw abbreviation
+// for the majority that are identical in both systems.
+func resolveAbbottAbbrev(abbrev string) string {
+	if mapped, ok := constants.AbbottAbbrevs[abbrev]; ok {
 		return mapped
 	}
 	return abbrev

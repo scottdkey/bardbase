@@ -1,0 +1,202 @@
+{
+  "editions": [
+    {
+      "short_code": "kjv_1611",
+      "name": "King James Bible (1611)",
+      "year": 1611,
+      "description": "King James Version (Authorized Version), 1611. Public domain.",
+      "source_key": "standalone",
+      "license_tier": "cc0"
+    },
+    {
+      "short_code": "standalone",
+      "name": "Standalone Passages",
+      "year": null,
+      "description": "Standalone passages from non-Shakespeare works cited by Schmidt.",
+      "source_key": "standalone",
+      "license_tier": "cc0"
+    }
+  ],
+  "passages": [
+    {
+      "work_id": 44,
+      "edition": "kjv_1611",
+      "act": 3,
+      "scene": 0,
+      "line_number": 16,
+      "content": "Unto the woman he said, I will greatly multiply thy sorrow and thy conception; in sorrow thou shalt bring forth children; and thy desire shall be to thy husband, and he shall rule over thee.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 45,
+      "edition": "kjv_1611",
+      "act": 13,
+      "scene": 0,
+      "line_number": 23,
+      "content": "Can the Ethiopian change his skin, or the leopard his spots? then may ye also do good, that are accustomed to do evil.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 46,
+      "edition": "kjv_1611",
+      "act": 21,
+      "scene": 0,
+      "line_number": 9,
+      "content": "And the same man had four daughters, virgins, which did prophesy.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 46,
+      "edition": "kjv_1611",
+      "act": 9,
+      "scene": 0,
+      "line_number": 5,
+      "content": "And he said, Who art thou, Lord? And the Lord said, I am Jesus whom thou persecutest: it is hard for thee to kick against the pricks.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 49,
+      "edition": "kjv_1611",
+      "act": 11,
+      "scene": 0,
+      "line_number": 5,
+      "content": "And all the firstborn in the land of Egypt shall die, from the firstborn of Pharaoh that sitteth upon his throne, even unto the firstborn of the maidservant that is behind the mill; and all the firstborn of beasts.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 50,
+      "edition": "kjv_1611",
+      "act": 7,
+      "scene": 0,
+      "line_number": 6,
+      "content": "My days are swifter than a weaver's shuttle, and are spent without hope.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 51,
+      "edition": "kjv_1611",
+      "act": 10,
+      "scene": 0,
+      "line_number": 16,
+      "content": "Woe to thee, O land, when thy king is a child, and thy princes eat in the morning!",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 52,
+      "edition": "kjv_1611",
+      "act": 4,
+      "scene": 0,
+      "line_number": 33,
+      "content": "The same hour was the thing fulfilled upon Nebuchadnezzar: and he was driven from men, and did eat grass as oxen, and his body was wet with the dew of heaven, till his hairs were grown like eagles' feathers, and his nails like birds' claws.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 53,
+      "edition": "kjv_1611",
+      "act": 11,
+      "scene": 0,
+      "line_number": 25,
+      "content": "At that time Jesus answered and said, I thank thee, O Father, Lord of heaven and earth, because thou hast hid these things from the wise and prudent, and hast revealed them unto babes.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 53,
+      "edition": "kjv_1611",
+      "act": 3,
+      "scene": 0,
+      "line_number": 4,
+      "content": "And the same John had his raiment of camel's hair, and a leathern girdle about his loins; and his meat was locusts and wild honey.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 54,
+      "edition": "kjv_1611",
+      "act": 7,
+      "scene": 0,
+      "line_number": 14,
+      "content": "For the unbelieving husband is sanctified by the wife, and the unbelieving wife is sanctified by the husband: else were your children unclean; but now are they holy.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 56,
+      "edition": "kjv_1611",
+      "act": 17,
+      "scene": 0,
+      "line_number": 7,
+      "content": "And the staff of his spear was like a weaver's beam; and his spear's head weighed six hundred shekels of iron: and one bearing a shield went before him.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 57,
+      "edition": "kjv_1611",
+      "act": 14,
+      "scene": 0,
+      "line_number": 13,
+      "content": "For thou hast said in thine heart, I will ascend into heaven, I will exalt my throne above the stars of God: I will sit also upon the mount of the congregation, in the sides of the north:",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 58,
+      "edition": "kjv_1611",
+      "act": 8,
+      "scene": 0,
+      "line_number": 5,
+      "content": "Who serve unto the example and shadow of heavenly things, as Moses was admonished of God when he was about to make the tabernacle: for, See, saith he, that thou make all things according to the pattern shewed to thee in the mount.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 59,
+      "edition": "kjv_1611",
+      "act": 4,
+      "scene": 0,
+      "line_number": 1,
+      "content": "When Mordecai perceived all that was done, Mordecai rent his clothes, and put on sackcloth with ashes, and went out into the midst of the city, and cried with a loud and a bitter cry;",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 60,
+      "edition": "kjv_1611",
+      "act": 11,
+      "scene": 0,
+      "line_number": 15,
+      "content": "He that is surety for a stranger shall smart for it: and he that hateth suretiship is sure.",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 60,
+      "edition": "kjv_1611",
+      "act": 1,
+      "scene": 0,
+      "line_number": 20,
+      "content": "Wisdom crieth without; she uttereth her voice in the streets:",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 61,
+      "edition": "kjv_1611",
+      "act": 2,
+      "scene": 0,
+      "line_number": 25,
+      "content": "And he said unto them, Have ye never read what David did, when he had need, and was an hungred, he, and they that were with him?",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 62,
+      "edition": "kjv_1611",
+      "act": 16,
+      "scene": 0,
+      "line_number": 20,
+      "content": "And there was a certain beggar named Lazarus, which was laid at his gate, full of sores,",
+      "content_type": "verse"
+    },
+    {
+      "work_id": 62,
+      "edition": "kjv_1611",
+      "act": 15,
+      "scene": 0,
+      "line_number": 12,
+      "content": "And the younger of them said to his father, Father, give me the portion of goods that falleth to me. And he divided unto them his living.",
+      "content_type": "verse"
+    }
+  ]
+}

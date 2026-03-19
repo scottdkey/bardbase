@@ -103,6 +103,9 @@ func loadAllData(dir string) error {
 	if err := loadStringMap(filepath.Join(dir, "onions_abbrevs.json"), &OnionsAbbrevs); err != nil {
 		return fmt.Errorf("onions_abbrevs.json: %w", err)
 	}
+	if err := loadStringMap(filepath.Join(dir, "abbott_abbrevs.json"), &AbbottAbbrevs); err != nil {
+		return fmt.Errorf("abbott_abbrevs.json: %w", err)
+	}
 	if err := loadStringMap(filepath.Join(dir, "perseus_to_schmidt.json"), &PerseusToSchmidt); err != nil {
 		return fmt.Errorf("perseus_to_schmidt.json: %w", err)
 	}

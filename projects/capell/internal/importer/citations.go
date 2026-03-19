@@ -695,25 +695,46 @@ func applyManualCorrections(database *sql.DB) int {
 	if err != nil {
 		return 0
 	}
-	stmt, err := tx.Prepare(`
-		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
-		SELECT ?, tl.id, ?, 'manual', ?, tl.content
-		FROM text_lines tl WHERE tl.id = ?
-		  AND NOT EXISTS (
-			SELECT 1 FROM citation_matches cm
-			WHERE cm.citation_id = ? AND cm.edition_id = ?
-		  )`)
-	if err != nil {
-		tx.Rollback()
-		return 0
-	}
 
 	matched := 0
 	for _, c := range corrections {
-		if c.BestLineID == nil || c.BestEditionID == nil {
-			continue
+		if c.Edition == "" || c.WorkID == nil || c.LineNumber == nil {
+			continue // no-match entry; skip
 		}
-		res, err := stmt.Exec(c.CitationID, *c.BestEditionID, c.Confidence, *c.BestLineID, c.CitationID, *c.BestEditionID)
+
+		// Build WHERE clause dynamically — act and scene are optional
+		// (poetry works like sonnets and Pilgrim omit act; sonnets store
+		// sonnet number in scene).
+		where := "tl.work_id = ? AND e.short_code = ? AND tl.line_number = ?"
+		args := []any{*c.WorkID, c.Edition, *c.LineNumber}
+		if c.Act != nil {
+			where += " AND tl.act = ?"
+			args = append(args, *c.Act)
+		}
+		if c.Scene != nil {
+			where += " AND tl.scene = ?"
+			args = append(args, *c.Scene)
+		}
+
+		var lineID, editionID int64
+		var content string
+		err := tx.QueryRow(
+			`SELECT tl.id, tl.edition_id, tl.content
+			 FROM text_lines tl
+			 JOIN editions e ON e.id = tl.edition_id
+			 WHERE `+where+` LIMIT 1`, args...).Scan(&lineID, &editionID, &content)
+		if err != nil {
+			continue // line not found in this build
+		}
+
+		res, err := tx.Exec(`
+			INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+			SELECT ?, ?, ?, 'manual', ?, ?
+			WHERE NOT EXISTS (
+				SELECT 1 FROM citation_matches cm
+				WHERE cm.citation_id = ? AND cm.edition_id = ?
+			)`, c.CitationID, lineID, editionID, c.Confidence, content,
+			c.CitationID, editionID)
 		if err == nil {
 			if n, _ := res.RowsAffected(); n > 0 {
 				matched++
@@ -721,7 +742,6 @@ func applyManualCorrections(database *sql.DB) int {
 		}
 	}
 
-	stmt.Close()
 	tx.Commit()
 
 	fmt.Printf("  Manual corrections: %d matches\n", matched)

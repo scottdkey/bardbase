@@ -34,15 +34,33 @@ var GenreMap map[string]string
 // Loaded from projects/data/onions_abbrevs.json.
 var OnionsAbbrevs map[string]string
 
+// AbbottAbbrevs maps Abbott 1877 Shakespearian Grammar abbreviations to Schmidt
+// abbreviations (works.schmidt_abbrev) where they differ. Pass-through abbrevs
+// are absent — callers fall through to the raw abbreviation.
+// Loaded from projects/data/abbott_abbrevs.json.
+var AbbottAbbrevs map[string]string
+
 // CitationCorrection is a manual correction for an unmatched lexicon citation.
 // Loaded from projects/data/citation_corrections.json.
+//
+// Location fields identify the correct text_line by semantic coordinates
+// (stable across database rebuilds) rather than raw row IDs:
+//   - WorkID: works.id of the correct play/poem (may differ from citation's work_id for wrong-play errors)
+//   - Edition: editions.short_code (e.g. "se_modern", "oss_globe", "perseus_globe", "first_folio")
+//   - Act, Scene: nullable; omit for poetry without act/scene structure
+//   - LineNumber: required when Edition is set
+//
+// An entry with no Edition (empty string) documents why no match is possible.
 type CitationCorrection struct {
-	CitationID    int64   `json:"citation_id"`
-	Reason        string  `json:"reason"`
-	BestLineID    *int64  `json:"best_line_id"`
-	BestEditionID *int64  `json:"best_edition_id"`
-	Confidence    float64 `json:"confidence"`
-	Notes         string  `json:"notes"`
+	CitationID int64   `json:"citation_id"`
+	Reason     string  `json:"reason"`
+	WorkID     *int64  `json:"work_id,omitempty"`
+	Edition    string  `json:"edition,omitempty"`
+	Act        *int    `json:"act,omitempty"`
+	Scene      *int    `json:"scene,omitempty"`
+	LineNumber *int    `json:"line_number,omitempty"`
+	Confidence float64 `json:"confidence"`
+	Notes      string  `json:"notes"`
 }
 
 // CitationCorrections holds manual corrections for citations that can't be

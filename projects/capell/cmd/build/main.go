@@ -37,7 +37,7 @@ import (
 func main() {
 	output := flag.String("output", "build", "Output directory (relative to repo root)")
 	forceDownload := flag.Bool("force-download", false, "Re-download Standard Ebooks source files (ignores cache)")
-	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, onions, attributions, citations, ref-citations, mappings, fts")
+	step := flag.String("step", "", "Run only one step: oss, lexicon, se, poetry, perseus, folio, folger, eebo-quartos, onions, abbott, standalone, attributions, citations, ref-citations, mappings, fts")
 	excludeStr := flag.String("exclude", "", "Comma-separated source keys to skip (e.g. folger,wordhoard)")
 	flag.Parse()
 
@@ -102,12 +102,12 @@ func main() {
 	//   7. folger      — Import Folger Shakespeare TEIsimple (37 plays, CC BY-NC 3.0)
 	//   8. eebo-quartos — Import EEBO-TCP early quartos (Q1 Hamlet, Q1 1H4, etc.)
 	//   9. onions       — Import Onions Shakespeare Glossary (1911, reference entries)
-	//  10. attributions — Populate attribution records for all sources
-	//  10. attributions — Populate attribution records for all sources
-	//  11. mappings    — Build cross-edition line alignments (needed by citation propagation)
-	//  12. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
-	//  13. ref-citations — Resolve reference entry citations (Onions) to text_lines
-	//  14. fts         — Build full-text search index
+	//  10. standalone  — Import standalone passages (biblical/classical cited by Schmidt)
+	//  11. attributions — Populate attribution records for all sources
+	//  12. mappings    — Build cross-edition line alignments (needed by citation propagation)
+	//  13. citations   — Resolve lexicon citations to text_lines (with cross-edition propagation)
+	//  14. ref-citations — Resolve reference entry citations (Onions) to text_lines
+	//  15. fts         — Build full-text search index
 	type buildStep struct {
 		name string
 		fn   func() error
@@ -123,6 +123,8 @@ func main() {
 		{"folger", func() error { return importer.ImportFolger(database, sourcesDir) }},
 		{"eebo-quartos", func() error { return importer.ImportEEBOQuartos(database, sourcesDir) }},
 		{"onions", func() error { return importer.ImportOnions(database, sourcesDir) }},
+		{"abbott", func() error { return importer.ImportAbbott(database, sourcesDir) }},
+		{"standalone", func() error { return importer.ImportStandalonePassages(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},
