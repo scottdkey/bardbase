@@ -64,6 +64,23 @@ type OSSParagraph struct {
 	LineNumber   int // computed scene-relative line number
 }
 
+// splitOSSLines splits a Moby/OSS paragraph on the `n[p]` line separator.
+// The Moby source uses `\n[p]` between verse/prose lines within a speech; the
+// SQL parser decodes MySQL `\n` escapes as the literal character 'n' (strips
+// the backslash), so `\n[p]` becomes `n[p]` in the stored string. Splitting
+// on this marker gives one entry per individual verse or prose line.
+func splitOSSLines(text string) []string {
+	parts := strings.Split(text, "n[p]")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // ImportOSS imports the OSS/Moby Shakespeare data from a MySQL dump file.
 func ImportOSS(database *sql.DB, sqlPath string) error {
 	stepBanner("STEP 1: Import OSS/Moby Shakespeare")
@@ -208,6 +225,30 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 		}
 	}
 
+	// Expand Moby sub-lines: the OSS MySQL dump stores multiple verse/prose lines
+	// in a single paragraph, joined by the `n[p]` separator. This comes from the
+	// Moby Shakespeare format where line breaks are `\n[p]`; the SQL parser strips
+	// the backslash escape and writes `n` literally, so `\n[p]` → `n[p]` in the
+	// stored string. Splitting here gives one row per verse/prose line, matching
+	// the granularity of SE Modern and Perseus Globe and dramatically improving
+	// Jaccard similarity during alignment.
+	var expanded []OSSParagraph
+	for _, p := range paragraphs {
+		parts := splitOSSLines(p.Text)
+		if len(parts) <= 1 {
+			p.Text = strings.TrimSpace(p.Text)
+			expanded = append(expanded, p)
+			continue
+		}
+		for _, line := range parts {
+			sub := p
+			sub.Text = line
+			sub.WordCount = len(strings.Fields(line))
+			expanded = append(expanded, sub)
+		}
+	}
+	paragraphs = expanded
+
 	// Compute scene-relative line numbers
 	// Sort by (WorkID, Section, Chapter, ParagraphNum) for stable ordering
 	sort.Slice(paragraphs, func(i, j int) bool {
@@ -257,6 +298,10 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 			return fmt.Errorf("inserting work %s: %w", w.OSSID, err)
 		}
 	}
+
+	// Insert biblical/external reference works cited by Schmidt.
+	// These have no text_lines but are needed so lexicon_citations can resolve work_id.
+	insertExternalReferenceWorks(database)
 
 	// Build work ID map
 	workIDMap := make(map[string]int64)
@@ -360,5 +405,178 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 
 	fmt.Printf("  ✓ %d text lines imported in %.1fs\n", lineCount, elapsed)
 	return nil
+}
+
+// externalRefWork defines a non-Shakespeare work to insert into the works table.
+type externalRefWork struct {
+	Title    string
+	WorkType string
+}
+
+// externalWorks maps raw_bibl prefixes to external works referenced in the Schmidt lexicon.
+// These works have no text_lines but allow lexicon_citations to resolve work_id.
+var externalWorks = map[string]externalRefWork{
+	// Biblical references
+	"Genesis":              {Title: "Genesis", WorkType: "biblical_reference"},
+	"Exodus":               {Title: "Exodus", WorkType: "biblical_reference"},
+	"Samuel":               {Title: "Samuel", WorkType: "biblical_reference"},
+	"Job":                  {Title: "Job", WorkType: "biblical_reference"},
+	"Esther":               {Title: "Esther", WorkType: "biblical_reference"},
+	"Ecclesiastes":         {Title: "Ecclesiastes", WorkType: "biblical_reference"},
+	"Proverbs":             {Title: "Proverbs", WorkType: "biblical_reference"},
+	"Isaiah":               {Title: "Isaiah", WorkType: "biblical_reference"},
+	"Jeremiah":             {Title: "Jeremiah", WorkType: "biblical_reference"},
+	"Daniel":               {Title: "Daniel", WorkType: "biblical_reference"},
+	"Matthew":              {Title: "Matthew", WorkType: "biblical_reference"},
+	"Mark":                 {Title: "Mark", WorkType: "biblical_reference"},
+	"Luke":                 {Title: "Luke", WorkType: "biblical_reference"},
+	"Acts of the Apostles": {Title: "Acts of the Apostles", WorkType: "biblical_reference"},
+	"Acts":                 {Title: "Acts of the Apostles", WorkType: "biblical_reference"},
+	"1 Corinthians":        {Title: "1 Corinthians", WorkType: "biblical_reference"},
+	"Epistle to the Hebr.": {Title: "Epistle to the Hebrews", WorkType: "biblical_reference"},
+	// Classical references
+	"Hom. Od.": {Title: "Homer, Odyssey", WorkType: "classical_reference"},
+	"Pliny":    {Title: "Pliny, Natural History", WorkType: "classical_reference"},
+	// Shakespeare apocrypha / disputed
+	"Edward III": {Title: "Edward III", WorkType: "apocrypha"},
+	// Schmidt lexicon appendix (cross-references within the lexicon itself)
+	"Appendix": {Title: "Schmidt Lexicon Appendix", WorkType: "lexicon_appendix"},
+	"Append.":  {Title: "Schmidt Lexicon Appendix", WorkType: "lexicon_appendix"},
+	"App.":     {Title: "Schmidt Lexicon Appendix", WorkType: "lexicon_appendix"},
+}
+
+// insertExternalReferenceWorks adds biblical, classical, and other non-Shakespeare works
+// to the works table. These are cited in the Schmidt lexicon but have no OSS source.
+func insertExternalReferenceWorks(database *sql.DB) {
+	// Deduplicate: multiple raw_bibl prefixes can map to the same title.
+	seen := make(map[string]bool)
+	inserted := 0
+	for _, w := range externalWorks {
+		if seen[w.Title] {
+			continue
+		}
+		seen[w.Title] = true
+		res, err := database.Exec(`
+			INSERT OR IGNORE INTO works (title, work_type)
+			VALUES (?, ?)`, w.Title, w.WorkType)
+		if err == nil {
+			n, _ := res.RowsAffected()
+			inserted += int(n)
+		}
+	}
+	if inserted > 0 {
+		fmt.Printf("  External reference works: %d\n", inserted)
+	}
+}
+
+// resolveUnmatchedCitations sets work_id on lexicon_citations where the XML parser
+// couldn't extract a work abbreviation. Handles two cases:
+//  1. External works (biblical, classical, etc.) — matched by raw_bibl prefix.
+//  2. Shakespeare poems (Phoen., Lucr.) — matched by raw_bibl prefix against
+//     existing works via schmidt_abbrev.
+func resolveUnmatchedCitations(database *sql.DB) int {
+	total := 0
+
+	// --- Case 1: External works (raw_bibl prefix → external work title) ---
+	// Build title → work_id map for external works.
+	extRows, err := database.Query(`SELECT id, title FROM works WHERE work_type IN ('biblical_reference', 'classical_reference', 'apocrypha', 'lexicon_appendix')`)
+	if err == nil {
+		titleToID := make(map[string]int64)
+		for extRows.Next() {
+			var id int64
+			var title string
+			extRows.Scan(&id, &title)
+			titleToID[title] = id
+		}
+		extRows.Close()
+
+		for prefix, w := range externalWorks {
+			workID, ok := titleToID[w.Title]
+			if !ok {
+				continue
+			}
+			res, err := database.Exec(`
+				UPDATE lexicon_citations
+				SET work_id = ?, work_abbrev = ?
+				WHERE work_id IS NULL AND raw_bibl LIKE ?`,
+				workID, prefix, prefix+"%")
+			if err == nil {
+				n, _ := res.RowsAffected()
+				total += int(n)
+			}
+		}
+	}
+
+	// --- Case 2: Shakespeare poems with unresolved raw_bibl ---
+	// These have raw_bibl like "Phoen. " or "Lucr. 704" but no work_abbrev.
+	// Match by raw_bibl prefix against works.schmidt_abbrev.
+	schmidtRows, err := database.Query(`SELECT id, schmidt_abbrev FROM works WHERE schmidt_abbrev IS NOT NULL`)
+	if err == nil {
+		for schmidtRows.Next() {
+			var id int64
+			var abbrev string
+			schmidtRows.Scan(&id, &abbrev)
+			res, err := database.Exec(`
+				UPDATE lexicon_citations
+				SET work_id = ?, work_abbrev = ?
+				WHERE work_id IS NULL AND raw_bibl LIKE ?`,
+				id, abbrev, abbrev+"%")
+			if err == nil {
+				n, _ := res.RowsAffected()
+				total += int(n)
+			}
+		}
+		schmidtRows.Close()
+	}
+
+	// --- Case 3: Extract line numbers from raw_bibl for poem citations ---
+	// Citations like "Phoen. 21" or "Lucr. 886" have work_id set but line IS NULL.
+	// The line number is the trailing number in raw_bibl after the abbreviation.
+	lineRows, err := database.Query(`
+		SELECT lc.id, lc.raw_bibl
+		FROM lexicon_citations lc
+		JOIN works w ON w.id = lc.work_id
+		WHERE lc.line IS NULL
+		  AND w.work_type = 'poem'
+		  AND lc.raw_bibl IS NOT NULL`)
+	if err == nil {
+		type lineUpdate struct {
+			id   int64
+			line int
+		}
+		var updates []lineUpdate
+		for lineRows.Next() {
+			var id int64
+			var rawBibl string
+			lineRows.Scan(&id, &rawBibl)
+			// Extract trailing number from raw_bibl (e.g., "Phoen. 21" → 21)
+			if lineNum := extractTrailingNumber(rawBibl); lineNum > 0 {
+				updates = append(updates, lineUpdate{id, lineNum})
+			}
+		}
+		lineRows.Close()
+
+		for _, u := range updates {
+			res, err := database.Exec(`UPDATE lexicon_citations SET line = ? WHERE id = ?`, u.line, u.id)
+			if err == nil {
+				n, _ := res.RowsAffected()
+				total += int(n)
+			}
+		}
+	}
+
+	return total
+}
+
+// extractTrailingNumber returns the last whitespace-delimited integer from s,
+// or 0 if none found. Used to parse "Phoen. 21" → 21, "Lucr. 886" → 886.
+func extractTrailingNumber(s string) int {
+	fields := strings.Fields(s)
+	for i := len(fields) - 1; i >= 0; i-- {
+		if v, err := strconv.Atoi(fields[i]); err == nil {
+			return v
+		}
+	}
+	return 0
 }
 

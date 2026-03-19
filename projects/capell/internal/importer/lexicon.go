@@ -199,6 +199,13 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 		fmt.Sprintf("%d entries, %d citations, %d errors", totalEntries, totalCitations, errors),
 		totalEntries, elapsed)
 
+	// Resolve external work references that the XML parser couldn't handle
+	// (biblical, classical, appendix, and Shakespeare poems like Phoen./Lucr.).
+	externalResolved := resolveUnmatchedCitations(database)
+	if externalResolved > 0 {
+		fmt.Printf("  Unmatched citations resolved: %d\n", externalResolved)
+	}
+
 	fmt.Printf("  ✓ %d entries, %d citations, %d senses in %.1fs\n",
 		totalEntries, totalCitations, totalSenses, elapsed)
 	return nil

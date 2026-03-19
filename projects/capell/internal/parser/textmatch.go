@@ -27,14 +27,15 @@ func normalizeSpecialChars(s string) string {
 	s = strings.ReplaceAll(s, "\u02BB", "'")
 	s = strings.ReplaceAll(s, "\u2019", "'")
 	s = strings.ReplaceAll(s, "\u2018", "'")
-	// Early-modern I/J and U/V interchangeability (lowercase after ToLower pass)
-	// Handled after lowercasing in the main loop below.
+	// Early-modern I/J and U/V interchangeability are handled after
+	// lowercasing in NormalizeForMatch (v→u, j→i).
 	return s
 }
 
 // NormalizeForMatch lowercases text, removes punctuation, and normalizes whitespace.
 // Also normalises early-modern print variants (ligatures, long-s, u/v interchange,
-// and -ie endings) so that First Folio and Q1 quarto spellings match modern editions.
+// i/j interchange, silent terminal -e, -ick endings, and -ie endings) so that
+// First Folio and Q1 quarto spellings match modern editions.
 // Applied identically to both sides of a comparison, so normalized forms need not
 // be "correct" modern English — only consistent.
 func NormalizeForMatch(s string) string {
@@ -46,23 +47,53 @@ func NormalizeForMatch(s string) string {
 	// sound) and 'u' medially (even for consonant sound).  Normalise all 'v' to 'u'
 	// on both sides so that  have↔haue, give↔giue, upon↔vpon, love↔loue all match.
 	s = strings.ReplaceAll(s, "v", "u")
+	// i/j interchange: early-modern printing used 'i' where modern English uses 'j'
+	// (Iuliet↔Juliet, ioy↔joy, iust↔just).  Normalise all 'j' to 'i' on both sides.
+	s = strings.ReplaceAll(s, "j", "i")
 	var result strings.Builder
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
 			result.WriteRune(r)
 		}
 	}
-	// Word-final -ie → -y: early-modern '-ie' endings (beautie, mercie, pittie, trie)
-	// normalise to the modern '-y' form.  Applied to both sides, so modern 'mercy' and
-	// FF 'mercie' both produce 'mercy'.  Skip words ≤3 chars: 'die', 'lie', 'pie' are
-	// identical in both periods and should not be transformed.
+	// Word-level spelling normalizations applied in order.  Each rule feeds
+	// into the next so that e.g. "musicke" → strip -e → "musick" → -ick → "music".
 	words := strings.Fields(result.String())
 	for i, w := range words {
+		// -ie → -y: beautie→beauty, mercie→mercy.  Skip ≤3 chars (die, lie, pie).
 		if len(w) > 3 && strings.HasSuffix(w, "ie") {
-			words[i] = w[:len(w)-2] + "y"
+			w = w[:len(w)-2] + "y"
+			words[i] = w
+		}
+		// Strip silent terminal -e after a consonant: speake→speak, looke→look,
+		// turne→turn, beene→been.  The consonant check avoids stripping from
+		// words like "arriue" (v→u) where the -e follows a vowel.
+		// Skip ≤4 chars to protect short words (done, gone, come, etc.).
+		if len(w) > 4 && w[len(w)-1] == 'e' && isConsonant(w[len(w)-2]) {
+			w = w[:len(w)-1]
+			words[i] = w
+		}
+		// -ick → -ic: musick→music, tragick→tragic, publick→public.
+		// Applied after terminal-e strip so "musicke" → "musick" → "music".
+		// Skip ≤4 chars to preserve kick, sick, pick (both sides transform
+		// consistently so correctness is maintained either way).
+		if len(w) > 4 && strings.HasSuffix(w, "ick") {
+			w = w[:len(w)-1]
+			words[i] = w
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// isConsonant returns true for lowercase ASCII consonants.
+// After v→u and j→i normalisation, 'v' and 'j' never appear in normalized text.
+func isConsonant(b byte) bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u':
+		return false
+	default:
+		return b >= 'a' && b <= 'z'
+	}
 }
 
 // WordSet splits normalized text into a set of unique words.
@@ -203,7 +234,7 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	}
 	if n == 0 {
 		pairs := make([]AlignedPair, m)
-		for j := 0; j < m; j++ {
+		for j := range m {
 			b := linesB[j]
 			pairs[j] = AlignedPair{LineB: &b, MatchType: "only_b"}
 		}
@@ -211,7 +242,7 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	}
 	if m == 0 {
 		pairs := make([]AlignedPair, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			a := linesA[i]
 			pairs[i] = AlignedPair{LineA: &a, MatchType: "only_a"}
 		}
@@ -221,10 +252,11 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	// For very large sequences, fall back to simple 1:1 alignment to bound
 	// memory and compute. The limit is a cell count (n×m) rather than a
 	// per-sequence length so that flat-vs-structured play comparisons
-	// (e.g., Q1 Hamlet ~2000 lines × SE Hamlet ~3500 lines = 7M cells) can
-	// still use Needleman-Wunsch while truly enormous tasks fall back.
-	// 8M cells × 8 bytes × 3 matrices (sim, dp, trace) ≈ 192 MB per task.
-	if int64(n)*int64(m) > 8_000_000 {
+	// (e.g., Q1 Hamlet ~2000 lines × SE Hamlet ~3500 lines = 7M cells, and
+	// Coriolanus OSS ~4000 × First Folio ~3400 = 13.6M cells) still use
+	// Needleman-Wunsch while truly enormous tasks fall back.
+	// 15M cells: sim(120MB float64) + dp(120MB float64) + trace(15MB int8) ≈ 255MB per task.
+	if int64(n)*int64(m) > 15_000_000 {
 		return simpleAlign(linesA, linesB)
 	}
 
@@ -234,9 +266,9 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	// Use pre-computed word sets when available (set by buildLineCache) to avoid
 	// re-normalizing each line O(n×m) times — one normalize per line instead.
 	sim := make([][]float64, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sim[i] = make([]float64, m)
-		for j := 0; j < m; j++ {
+		for j := range m {
 			if linesA[i].Words != nil && linesB[j].Words != nil {
 				sim[i][j] = jaccardFromSets(linesA[i].Words, linesB[j].Words)
 			} else {
@@ -250,44 +282,45 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	for i := range dp {
 		dp[i] = make([]float64, m+1)
 	}
-	for i := 1; i <= n; i++ {
-		dp[i][0] = float64(i) * gapPenalty
+	for i := range n {
+		dp[i+1][0] = float64(i+1) * gapPenalty
 	}
-	for j := 1; j <= m; j++ {
-		dp[0][j] = float64(j) * gapPenalty
+	for j := range m {
+		dp[0][j+1] = float64(j+1) * gapPenalty
 	}
 
-	// Traceback direction: 0=diagonal(match), 1=up(gap in B), 2=left(gap in A)
-	trace := make([][]int, n+1)
+	// Traceback direction stored as int8: 0=diagonal(match), 1=up(gap in B), 2=left(gap in A).
+	// int8 saves 7 bytes/cell vs int on 64-bit — matters at 10M+ cells.
+	trace := make([][]int8, n+1)
 	for i := range trace {
-		trace[i] = make([]int, m+1)
+		trace[i] = make([]int8, m+1)
 	}
-	for i := 1; i <= n; i++ {
-		trace[i][0] = 1
+	for i := range n {
+		trace[i+1][0] = 1
 	}
-	for j := 1; j <= m; j++ {
-		trace[0][j] = 2
+	for j := range m {
+		trace[0][j+1] = 2
 	}
 
-	for i := 1; i <= n; i++ {
-		for j := 1; j <= m; j++ {
+	for i := range n {
+		for j := range m {
 			// Subtract gapPenalty magnitude so that 0-similarity pairs score the
-		// same as a gap rather than always winning the diagonal. Lines with
-		// Jaccard > |gapPenalty| (0.1) are preferred for alignment; lines below
-		// that threshold are treated no better than a gap insertion.
-		matchScore := dp[i-1][j-1] + sim[i-1][j-1] + gapPenalty
-			gapA := dp[i-1][j] + gapPenalty
-			gapB := dp[i][j-1] + gapPenalty
+			// same as a gap rather than always winning the diagonal. Lines with
+			// Jaccard > |gapPenalty| (0.1) are preferred for alignment; lines below
+			// that threshold are treated no better than a gap insertion.
+			matchScore := dp[i][j] + sim[i][j] + gapPenalty
+			gapA := dp[i][j+1] + gapPenalty
+			gapB := dp[i+1][j] + gapPenalty
 
 			if matchScore >= gapA && matchScore >= gapB {
-				dp[i][j] = matchScore
-				trace[i][j] = 0
+				dp[i+1][j+1] = matchScore
+				trace[i+1][j+1] = 0
 			} else if gapA >= gapB {
-				dp[i][j] = gapA
-				trace[i][j] = 1
+				dp[i+1][j+1] = gapA
+				trace[i+1][j+1] = 1
 			} else {
-				dp[i][j] = gapB
-				trace[i][j] = 2
+				dp[i+1][j+1] = gapB
+				trace[i+1][j+1] = 2
 			}
 		}
 	}
@@ -335,7 +368,7 @@ func simpleAlign(linesA, linesB []AlignableLine) []AlignedPair {
 	maxLen := max(n, m)
 
 	pairs := make([]AlignedPair, 0, maxLen)
-	for k := 0; k < maxLen; k++ {
+	for k := range maxLen {
 		var pair AlignedPair
 		if k < n && k < m {
 			a := linesA[k]

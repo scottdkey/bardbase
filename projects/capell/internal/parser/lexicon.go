@@ -57,10 +57,13 @@ var sensePattern = regexp.MustCompile(`(?:^|\s)(\d+)\)\s`)
 
 // ParsePerseusRef parses a Perseus bibl n= attribute into structured components.
 // Returns nil if the reference is not a valid Shakespeare reference.
-// Two-part references are interpreted based on work type:
-//   - Plays: act.scene (no line number)
-//   - Sonnets: sonnet_number.line
-//   - Poems: section.line
+//
+// Number interpretation depends on work type and part count:
+//
+//	Plays:            3-part → act.scene.line,   2-part → act.scene
+//	Sonnets:          3-part → _.sonnet.line,    2-part → sonnet.line
+//	Poems:            3-part → _._.line,          2-part → section.line, 1-part → line
+//	Poem collections: 2-part → poem_number.line  (e.g., Passionate Pilgrim)
 func ParsePerseusRef(biblN string) *PerseusRef {
 	if biblN == "" || !strings.HasPrefix(biblN, "shak.") {
 		return nil
@@ -69,19 +72,18 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 	rest := strings.TrimPrefix(biblN, "shak.")
 	rest = strings.TrimSpace(rest)
 	parts := strings.Fields(rest)
-	if len(parts) < 2 {
+	if len(parts) == 0 {
 		return nil
 	}
 
 	workCode := parts[0]
-	numbers := parts[1]
 
 	schmidtAbbrev, ok := constants.PerseusToSchmidt[workCode]
 	if !ok {
 		return nil
 	}
 
-	// Determine work type for two-part reference interpretation
+	// Determine work type for reference interpretation.
 	workType := ""
 	if sw, ok := constants.SchmidtWorks[schmidtAbbrev]; ok {
 		workType = sw.WorkType
@@ -92,48 +94,93 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 		Raw:           biblN,
 	}
 
+	// No number part — still return the ref so work_id can be resolved.
+	// Handles cases like "shak. luc" (work-only reference, no location).
+	if len(parts) < 2 {
+		return ref
+	}
+
+	numbers := parts[1]
+
+	// Skip duplicated work codes (e.g., "shak. ven ven" → parts[1]="ven").
+	// If the "numbers" part is not numeric, try the next part.
+	if _, err := strconv.Atoi(strings.Split(numbers, ".")[0]); err != nil {
+		if len(parts) >= 3 {
+			numbers = parts[2]
+		} else {
+			return ref // work-only, no valid location
+		}
+	}
+
 	numParts := strings.Split(numbers, ".")
-	switch len(numParts) {
-	case 3:
-		// Always: act.scene.line
-		if v, err := strconv.Atoi(numParts[0]); err == nil {
-			ref.Act = &v
-		}
-		if v, err := strconv.Atoi(numParts[1]); err == nil {
-			ref.Scene = &v
-		}
-		if v, err := strconv.Atoi(numParts[2]); err == nil {
-			ref.Line = &v
-		}
-	case 2:
-		switch workType {
-		case "sonnet_sequence":
-			// sonnet_number.line
+	switch workType {
+	case "sonnet_sequence":
+		// 3-part: ignore first (volume), use second=sonnet, third=line
+		// 2-part: sonnet.line
+		// 1-part: line only
+		switch len(numParts) {
+		case 3:
+			if v, err := strconv.Atoi(numParts[1]); err == nil {
+				ref.Scene = &v
+			}
+			if v, err := strconv.Atoi(numParts[2]); err == nil {
+				ref.Line = &v
+			}
+		case 2:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
 				ref.Scene = &v
 			}
 			if v, err := strconv.Atoi(numParts[1]); err == nil {
 				ref.Line = &v
 			}
-		case "poem":
-			// section.line (stanza or canto)
+		case 1:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
-				ref.Act = &v
+				ref.Line = &v
+			}
+		}
+	case "poem":
+		// Poems use scene=section/poem_number, line=line.
+		// 3-part: ignore first two sections, use third as line
+		// 2-part: scene=section/poem_number, line=line
+		// 1-part: line only
+		switch len(numParts) {
+		case 3:
+			if v, err := strconv.Atoi(numParts[2]); err == nil {
+				ref.Line = &v
+			}
+		case 2:
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Scene = &v
 			}
 			if v, err := strconv.Atoi(numParts[1]); err == nil {
 				ref.Line = &v
 			}
-		default:
-			// Play: act.scene (line unknown from this ref alone)
+		case 1:
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Line = &v
+			}
+		}
+	default:
+		// Play: 3-part → act.scene.line, 2-part → act.scene, 1-part → line
+		switch len(numParts) {
+		case 3:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
 				ref.Act = &v
 			}
 			if v, err := strconv.Atoi(numParts[1]); err == nil {
 				ref.Scene = &v
 			}
-		}
-	case 1:
-		if numParts[0] != "" {
+			if v, err := strconv.Atoi(numParts[2]); err == nil {
+				ref.Line = &v
+			}
+		case 2:
+			if v, err := strconv.Atoi(numParts[0]); err == nil {
+				ref.Act = &v
+			}
+			if v, err := strconv.Atoi(numParts[1]); err == nil {
+				ref.Scene = &v
+			}
+		case 1:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
 				ref.Line = &v
 			}

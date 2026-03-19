@@ -26,7 +26,7 @@ import (
 //   5. Match line numbers against text_lines; insert reference_citation_matches.
 //   6. Propagate matches to other editions via line_mappings.
 func ResolveReferenceCitations(database *sql.DB) error {
-	stepBanner("STEP: Resolve Reference Citations → Text Lines")
+	stepBanner("STEP 10: Resolve Reference Citations → Text Lines")
 	start := time.Now()
 
 	// Clear previous run for idempotent rebuild.

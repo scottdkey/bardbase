@@ -26,7 +26,8 @@ func TestNormalizeForMatch_MixedCase(t *testing.T) {
 
 func TestNormalizeForMatch_ExtraWhitespace(t *testing.T) {
 	got := NormalizeForMatch("  multiple   spaces  and\ttabs\n\nnewlines  ")
-	want := "multiple spaces and tabs newlines"
+	// "multiple" → terminal-e strip (>4 chars, 'l' is consonant) → "multipl"
+	want := "multipl spaces and tabs newlines"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -124,7 +125,7 @@ func TestNormalizeForMatch_EarlyModernUV(t *testing.T) {
 		{"giue", "giue"},          // FF 'giue'
 		{"give", "giue"},          // modern 'give': v→u → giue
 		{"very", "uery"},          // v is consonant but still mapped; same on both sides
-		{"virtue", "uirtue"},      // same logic
+		{"virtue", "uirtue"},      // v→u → "uirtue"; no terminal-e strip (penultimate 'u' is vowel)
 	}
 	for _, c := range cases {
 		got := NormalizeForMatch(c.in)
@@ -154,6 +155,69 @@ func TestNormalizeForMatch_EarlyModernIeEndings(t *testing.T) {
 	}
 }
 
+func TestNormalizeForMatch_EarlyModernIJ(t *testing.T) {
+	// j→i normalization: FF uses 'i' where modern uses 'j'.
+	cases := []struct{ in, want string }{
+		{"Juliet", "iuliet"},     // modern: j→i → iuliet
+		{"Iuliet", "iuliet"},     // FF: already 'i', matches modern
+		{"joy", "ioy"},           // modern: j→i
+		{"ioy", "ioy"},           // FF
+		{"just", "iust"},         // modern
+		{"iust", "iust"},         // FF
+		{"Jack", "iack"},         // modern character name
+		{"Iack", "iack"},         // FF character name
+	}
+	for _, c := range cases {
+		got := NormalizeForMatch(c.in)
+		if got != c.want {
+			t.Errorf("NormalizeForMatch(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeForMatch_TerminalE(t *testing.T) {
+	// Strip silent terminal -e after consonant for words >4 chars.
+	cases := []struct{ in, want string }{
+		{"speake", "speak"},   // FF: strip -e (penultimate 'k' is consonant)
+		{"looke", "look"},     // FF: strip -e
+		{"turne", "turn"},     // FF: strip -e (penultimate 'n')
+		{"beene", "been"},     // FF: strip -e (penultimate 'n')
+		{"speak", "speak"},    // modern: no terminal -e, unchanged
+		{"done", "done"},      // ≤4 chars: skip
+		{"come", "come"},      // ≤4 chars: skip
+		{"here", "here"},      // ≤4 chars: skip
+		{"virtue", "uirtue"},  // v→u → "uirtue"; penultimate 'u' is vowel → no strip
+		{"arrive", "arriue"},  // v→u → "arriue"; penultimate 'u' is vowel → no strip
+	}
+	for _, c := range cases {
+		got := NormalizeForMatch(c.in)
+		if got != c.want {
+			t.Errorf("NormalizeForMatch(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeForMatch_ArchaicIck(t *testing.T) {
+	// -ick → -ic for words >4 chars.
+	cases := []struct{ in, want string }{
+		{"musick", "music"},     // FF archaic → modern
+		{"music", "music"},      // modern: no -ick suffix, unchanged
+		{"musicke", "music"},    // FF: terminal-e → "musick" → -ick → "music"
+		{"tragick", "tragic"},   // FF archaic
+		{"publick", "public"},   // FF archaic
+		{"kick", "kick"},        // ≤4 chars: skip
+		{"sick", "sick"},        // ≤4 chars: skip
+		{"thick", "thic"},       // 5>4: transforms (consistent on both sides)
+		{"thicke", "thic"},      // terminal-e → "thick" → -ick → "thic"
+	}
+	for _, c := range cases {
+		got := NormalizeForMatch(c.in)
+		if got != c.want {
+			t.Errorf("NormalizeForMatch(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestJaccardSimilarity_EarlyModernSpelling(t *testing.T) {
 	// FF spellings should produce high Jaccard vs modern equivalents.
 	cases := []struct {
@@ -164,8 +228,16 @@ func TestJaccardSimilarity_EarlyModernSpelling(t *testing.T) {
 		{"haue patience and endure", "have patience and endure", 1.0},
 		{"loue and peace", "love and peace", 1.0},
 		{"vpon this ground", "upon this ground", 1.0},
-		// -ie endings
-		{"o beautie thou art sicke", "o beauty thou art sick", 0.6},
+		// i/j interchange
+		{"O Iuliet what ioy", "O Juliet what joy", 1.0},
+		{"iust and true", "just and true", 1.0},
+		// terminal-e stripping
+		{"speake the truth", "speak the truth", 1.0},
+		{"looke vpon this", "look upon this", 1.0},
+		// -ick → -ic
+		{"the tragicke musicke", "the tragic music", 1.0},
+		// -ie endings + terminal-e + i/j combined
+		{"o beautie thou art sicke", "o beauty thou art sick", 1.0},
 	}
 	for _, c := range cases {
 		got := JaccardSimilarity(c.a, c.b)

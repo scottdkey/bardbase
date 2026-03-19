@@ -70,7 +70,7 @@ func TestParsePerseusRef_TwoPartPlay(t *testing.T) {
 }
 
 func TestParsePerseusRef_TwoPartPoem(t *testing.T) {
-	// Poems: two-part = section.line
+	// Poems: two-part = section.line (section stored in Scene, matching DB structure)
 	ref := ParsePerseusRef("shak. ven 1.123")
 	if ref == nil {
 		t.Fatal("expected non-nil ref")
@@ -78,11 +78,14 @@ func TestParsePerseusRef_TwoPartPoem(t *testing.T) {
 	if ref.SchmidtAbbrev != "Ven." {
 		t.Errorf("expected 'Ven.', got %q", ref.SchmidtAbbrev)
 	}
-	if ref.Act == nil || *ref.Act != 1 {
-		t.Errorf("expected act 1 (section), got %v", ref.Act)
+	if ref.Scene == nil || *ref.Scene != 1 {
+		t.Errorf("expected scene 1 (section/poem number), got %v", ref.Scene)
 	}
 	if ref.Line == nil || *ref.Line != 123 {
 		t.Errorf("expected line 123, got %v", ref.Line)
+	}
+	if ref.Act != nil {
+		t.Errorf("expected act nil for poem, got %v", ref.Act)
 	}
 }
 
@@ -97,6 +100,90 @@ func TestParsePerseusRef_Empty(t *testing.T) {
 	ref := ParsePerseusRef("")
 	if ref != nil {
 		t.Errorf("expected nil for empty string, got %+v", ref)
+	}
+}
+
+func TestParsePerseusRef_ThreePartSonnet(t *testing.T) {
+	// "shak. son 19.104.5" → ignore volume (19), scene=104, line=5
+	ref := ParsePerseusRef("shak. son 19.104.5")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.Scene == nil || *ref.Scene != 104 {
+		t.Errorf("expected scene 104 (sonnet number), got %v", ref.Scene)
+	}
+	if ref.Line == nil || *ref.Line != 5 {
+		t.Errorf("expected line 5, got %v", ref.Line)
+	}
+	if ref.Act != nil {
+		t.Errorf("expected act nil for sonnet, got %v", ref.Act)
+	}
+}
+
+func TestParsePerseusRef_ThreePartPoem(t *testing.T) {
+	// "shak. luc 2.3.64" → ignore stanza parts, line=64
+	ref := ParsePerseusRef("shak. luc 2.3.64")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.Line == nil || *ref.Line != 64 {
+		t.Errorf("expected line 64, got %v", ref.Line)
+	}
+	if ref.Act != nil {
+		t.Errorf("expected act nil for poem 3-part, got %v", ref.Act)
+	}
+}
+
+func TestParsePerseusRef_DuplicatedWorkCode(t *testing.T) {
+	// "shak. ven ven" → work resolved, no location
+	ref := ParsePerseusRef("shak. ven ven")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.SchmidtAbbrev != "Ven." {
+		t.Errorf("expected 'Ven.', got %q", ref.SchmidtAbbrev)
+	}
+	if ref.Line != nil {
+		t.Errorf("expected nil line for duplicated code, got %v", ref.Line)
+	}
+}
+
+func TestParsePerseusRef_WorkOnly(t *testing.T) {
+	// "shak. luc" → work resolved, no location
+	ref := ParsePerseusRef("shak. luc")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.SchmidtAbbrev != "Lucr." {
+		t.Errorf("expected 'Lucr.', got %q", ref.SchmidtAbbrev)
+	}
+}
+
+func TestParsePerseusRef_PhoenixSingleLine(t *testing.T) {
+	// "shak. pht 21" → line=21 (single-part poem ref)
+	ref := ParsePerseusRef("shak. pht 21")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.SchmidtAbbrev != "Phoen." {
+		t.Errorf("expected 'Phoen.', got %q", ref.SchmidtAbbrev)
+	}
+	if ref.Line == nil || *ref.Line != 21 {
+		t.Errorf("expected line 21, got %v", ref.Line)
+	}
+}
+
+func TestParsePerseusRef_PassionatePilgrim(t *testing.T) {
+	// "shak. pp 2.21" → scene=2 (poem number), line=21
+	ref := ParsePerseusRef("shak. pp 2.21")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.Scene == nil || *ref.Scene != 2 {
+		t.Errorf("expected scene 2 (poem number), got %v", ref.Scene)
+	}
+	if ref.Line == nil || *ref.Line != 21 {
+		t.Errorf("expected line 21, got %v", ref.Line)
 	}
 }
 

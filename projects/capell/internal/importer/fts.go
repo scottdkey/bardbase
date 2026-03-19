@@ -13,7 +13,7 @@ import (
 
 // BuildFTS rebuilds all full-text search indexes.
 func BuildFTS(database *sql.DB) error {
-	stepBanner("STEP 10: Build Full-Text Search Indexes")
+	stepBanner("STEP 11: Build Full-Text Search Indexes")
 
 	start := time.Now()
 

@@ -320,12 +320,21 @@ func buildLineCache(database *sql.DB) map[lineKey][]parser.AlignableLine {
 	// Exclude 'scene' content_type rows (OSS scene-header lines such as
 	// "SCENE I. A forest." that exist only in the OSS edition and have no
 	// counterpart in other editions, inflating only_a counts).
+	//
+	// Normalize act to 0 for non-play works (sonnet_sequence, poem). The OSS
+	// edition stores sonnets and poems with act=1 (a dummy section value) while
+	// other editions use act=NULL. The alignment task builder classifies lines
+	// by act: act>0 → play scene, act=0 → sonnet or poem. Normalising here
+	// ensures OSS sonnets/poems land in the correct bucket regardless of source.
 	rows, err := database.Query(`
-		SELECT id, content, COALESCE(line_number, 0), edition_id, work_id,
-		       COALESCE(act, 0), COALESCE(scene, 0)
-		FROM text_lines
-		WHERE content_type != 'scene' OR content_type IS NULL
-		ORDER BY edition_id, work_id, act, scene, line_number, id`)
+		SELECT tl.id, tl.content, COALESCE(tl.line_number, 0), tl.edition_id, tl.work_id,
+		       CASE WHEN w.work_type IN ('sonnet_sequence', 'poem') THEN 0
+		            ELSE COALESCE(tl.act, 0) END,
+		       COALESCE(tl.scene, 0)
+		FROM text_lines tl
+		JOIN works w ON w.id = tl.work_id
+		WHERE tl.content_type != 'scene' OR tl.content_type IS NULL
+		ORDER BY tl.edition_id, tl.work_id, tl.act, tl.scene, tl.line_number, tl.id`)
 	if err != nil {
 		return cache
 	}
