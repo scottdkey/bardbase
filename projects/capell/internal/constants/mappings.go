@@ -40,6 +40,17 @@ var OnionsAbbrevs map[string]string
 // Loaded from projects/data/abbott_abbrevs.json.
 var AbbottAbbrevs map[string]string
 
+// BartlettAbbrevs maps Bartlett 1896 concordance play name abbreviations to
+// Schmidt abbreviations (works.schmidt_abbrev) where they differ. Pass-through
+// abbrevs are absent — callers fall through to the raw abbreviation.
+// Loaded from projects/data/bartlett_abbrevs.json.
+var BartlettAbbrevs map[string]string
+
+// HenleyFarmerAbbrevs maps Henley & Farmer slang dictionary play name forms to
+// Schmidt abbreviations (works.schmidt_abbrev). Pass-through abbrevs are absent.
+// Loaded from projects/data/henley_farmer_abbrevs.json.
+var HenleyFarmerAbbrevs map[string]string
+
 // CitationCorrection is a manual correction for an unmatched lexicon citation.
 // Loaded from projects/data/citation_corrections.json.
 //

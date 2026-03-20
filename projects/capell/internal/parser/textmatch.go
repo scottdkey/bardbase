@@ -32,6 +32,31 @@ func normalizeSpecialChars(s string) string {
 	return s
 }
 
+// elisionExpander expands common verse elisions before punctuation is stripped.
+// These contracted forms appear in the First Folio and early quartos; without
+// expansion, "o' th' castle" → "o th castl" while "of the castle" → "of the castl"
+// — different word sets despite identical meaning.
+//
+// Patterns are ordered longest-first so that "o' th'" wins over "o'" or "th'"
+// when they appear together. Must be applied after lowercasing and v→u/j→i
+// while the apostrophe is still present.
+var elisionExpander = strings.NewReplacer(
+	"o' th'", "of the",
+	"i' th'", "in the",
+	"o'th'", "of the",
+	"i'th'", "in the",
+	"o' t'", "of the",
+	"i' t'", "in the",
+	"o' ", "of ",
+	"o'", "of",
+	"th' ", "the ",
+	"th'", "the",
+	"i' ", "in ",
+	"'em", "them",
+	"'gainst", "against",
+	"'pon", "upon",
+)
+
 // NormalizeForMatch lowercases text, removes punctuation, and normalizes whitespace.
 // Also normalises early-modern print variants (ligatures, long-s, u/v interchange,
 // i/j interchange, silent terminal -e, -ick endings, and -ie endings) so that
@@ -50,6 +75,12 @@ func NormalizeForMatch(s string) string {
 	// i/j interchange: early-modern printing used 'i' where modern English uses 'j'
 	// (Iuliet↔Juliet, ioy↔joy, iust↔just).  Normalise all 'j' to 'i' on both sides.
 	s = strings.ReplaceAll(s, "j", "i")
+	// Elision expansion: common contractions in verse and the First Folio.
+	// Applied before punctuation removal so the apostrophe disambiguates the form
+	// ("o'" = "of", "th'" = "the").  Both sides get the same expansion so the
+	// normalization is consistent even when one side uses the elided form and the
+	// other uses the full form.
+	s = elisionExpander.Replace(s)
 	var result strings.Builder
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
@@ -78,6 +109,29 @@ func NormalizeForMatch(s string) string {
 		// Skip ≤4 chars to preserve kick, sick, pick (both sides transform
 		// consistently so correctness is maintained either way).
 		if len(w) > 4 && strings.HasSuffix(w, "ick") {
+			w = w[:len(w)-1]
+			words[i] = w
+		}
+		// -cion → -tion: perfeccion→perfection, instruccion→instruction.
+		if len(w) > 5 && strings.HasSuffix(w, "cion") {
+			w = w[:len(w)-4] + "tion"
+			words[i] = w
+		}
+		// -ll doubling at word end: hee→he is handled below; here handle
+		// double-l patterns: wil→will, al→all, til→till, ful→full.
+		// Only add trailing -l for short words (≤4) ending in a single l
+		// after a vowel, to avoid over-matching.
+		// Actually safer: normalize double-l to single-l on both sides:
+		// well→wel, all→al, shall→shal. Applied consistently so both sides match.
+		if len(w) > 2 && w[len(w)-1] == 'l' && w[len(w)-2] == 'l' {
+			w = w[:len(w)-1]
+			words[i] = w
+		}
+		// Pronoun/verb ee-doubling: hee→he, shee→she, mee→me, wee→we, bee→be.
+		// These are extremely common in the First Folio. Only apply to short
+		// words (≤5 chars) ending in -ee to avoid mangling words like "three",
+		// "free", "agree" (which normalize consistently on both sides anyway).
+		if len(w) >= 3 && len(w) <= 5 && strings.HasSuffix(w, "ee") {
 			w = w[:len(w)-1]
 			words[i] = w
 		}
@@ -186,10 +240,11 @@ func ContainsStemPrefix(text, word string) bool {
 // re-normalizing each line O(n×m) times when building the similarity matrix.
 // If Words is nil, JaccardSimilarity falls back to computing it on the fly.
 type AlignableLine struct {
-	ID         int64
-	Content    string
-	LineNumber int
-	Words      map[string]bool
+	ID          int64
+	Content     string
+	LineNumber  int
+	Words       map[string]bool
+	ContentType string // "speech", "stage_direction", "verse", etc.
 }
 
 // jaccardFromSets computes the Jaccard index from two pre-computed word sets.
@@ -222,10 +277,55 @@ type AlignedPair struct {
 	Similarity float64
 }
 
+// AlignOptions configures per-pair tuning for the alignment algorithm.
+type AlignOptions struct {
+	// LineNumberAffinity adds a similarity bonus when both lines have the same
+	// (or very close) line numbers. Use for edition pairs that share a common
+	// numbering scheme (e.g. oss_globe↔perseus_globe). A value of 0.15 means
+	// an exact line-number match adds 0.15 to the Jaccard score; a ±1-3 line
+	// offset adds half that. Zero disables the bonus entirely.
+	LineNumberAffinity float64
+}
+
+// alignedThreshold returns the minimum Jaccard similarity for a pair to be
+// classified as "aligned" rather than "modified".
+//
+//   - Stage directions use a flat 0.1 threshold — they often differ in wording
+//     between editions even when they describe the same action (e.g. "Enter Hamlet."
+//     vs "Enter HAMLET, Prince of Denmark.").
+//   - Short dialogue lines (1-3 words) use 0.1 — a single spelling variant in a
+//     two-word line drops Jaccard to 0.33, even when the lines clearly correspond.
+//   - Medium lines (4 words) use 0.15.
+//   - Longer lines use 0.2.
+func alignedThreshold(a, b *AlignableLine) float64 {
+	if a.ContentType == "stage_direction" || b.ContentType == "stage_direction" {
+		return 0.1
+	}
+	minWords := len(a.Words)
+	if len(b.Words) < minWords {
+		minWords = len(b.Words)
+	}
+	if minWords <= 2 {
+		return 0.1
+	}
+	if minWords <= 4 {
+		return 0.15
+	}
+	return 0.2
+}
+
 // AlignSequences performs Needleman-Wunsch global alignment on two sequences of text lines.
 // Returns aligned pairs in display order with gap handling for insertions/deletions.
 // Uses Jaccard word similarity as the scoring function.
-func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
+//
+// opts is optional; when omitted the default zero value is used (no line-number
+// affinity). Passing a non-zero AlignOptions enables per-pair tuning.
+func AlignSequences(linesA, linesB []AlignableLine, opts ...AlignOptions) []AlignedPair {
+	var opt AlignOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	n := len(linesA)
 	m := len(linesB)
 
@@ -257,7 +357,7 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 	// Needleman-Wunsch while truly enormous tasks fall back.
 	// 15M cells: sim(120MB float64) + dp(120MB float64) + trace(15MB int8) ≈ 255MB per task.
 	if int64(n)*int64(m) > 15_000_000 {
-		return simpleAlign(linesA, linesB)
+		return simpleAlign(linesA, linesB, opt)
 	}
 
 	gapPenalty := -0.1
@@ -273,6 +373,30 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 				sim[i][j] = jaccardFromSets(linesA[i].Words, linesB[j].Words)
 			} else {
 				sim[i][j] = JaccardSimilarity(linesA[i].Content, linesB[j].Content)
+			}
+			// Line-number affinity: for edition pairs sharing a numbering scheme
+			// (e.g. oss_globe↔perseus_globe), add a bonus when line numbers are
+			// close. This anchors the NW traceback and prevents drift in scenes
+			// where many consecutive lines share common short words.
+			if opt.LineNumberAffinity > 0 &&
+				linesA[i].LineNumber > 0 && linesB[j].LineNumber > 0 {
+				delta := linesA[i].LineNumber - linesB[j].LineNumber
+				if delta < 0 {
+					delta = -delta
+				}
+				var bonus float64
+				switch {
+				case delta == 0:
+					bonus = opt.LineNumberAffinity
+				case delta <= 3:
+					bonus = opt.LineNumberAffinity * 0.5
+				}
+				if bonus > 0 {
+					sim[i][j] += bonus
+					if sim[i][j] > 1.0 {
+						sim[i][j] = 1.0
+					}
+				}
 			}
 		}
 	}
@@ -334,7 +458,7 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 			b := linesB[j-1]
 			s := sim[i-1][j-1]
 			mt := "aligned"
-			if s < 0.2 {
+			if s < alignedThreshold(&a, &b) {
 				mt = "modified"
 			}
 			pairs = append(pairs, AlignedPair{LineA: &a, LineB: &b, MatchType: mt, Similarity: s})
@@ -362,7 +486,7 @@ func AlignSequences(linesA, linesB []AlignableLine) []AlignedPair {
 // simpleAlign performs 1:1 positional alignment for very large sequences.
 // Uses pre-computed word sets (AlignableLine.Words) when available to avoid
 // re-normalizing every line on each call.
-func simpleAlign(linesA, linesB []AlignableLine) []AlignedPair {
+func simpleAlign(linesA, linesB []AlignableLine, opt AlignOptions) []AlignedPair {
 	n := len(linesA)
 	m := len(linesB)
 	maxLen := max(n, m)
@@ -379,8 +503,28 @@ func simpleAlign(linesA, linesB []AlignableLine) []AlignedPair {
 			} else {
 				s = JaccardSimilarity(a.Content, b.Content)
 			}
+			// Apply line-number affinity in the simple aligner too.
+			if opt.LineNumberAffinity > 0 && a.LineNumber > 0 && b.LineNumber > 0 {
+				delta := a.LineNumber - b.LineNumber
+				if delta < 0 {
+					delta = -delta
+				}
+				var bonus float64
+				switch {
+				case delta == 0:
+					bonus = opt.LineNumberAffinity
+				case delta <= 3:
+					bonus = opt.LineNumberAffinity * 0.5
+				}
+				if bonus > 0 {
+					s += bonus
+					if s > 1.0 {
+						s = 1.0
+					}
+				}
+			}
 			mt := "aligned"
-			if s < 0.2 {
+			if s < alignedThreshold(&a, &b) {
 				mt = "modified"
 			}
 			pair = AlignedPair{LineA: &a, LineB: &b, MatchType: mt, Similarity: s}

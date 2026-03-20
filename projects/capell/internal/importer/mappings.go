@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,7 @@ type alignTask struct {
 	scene  int
 	aLines []parser.AlignableLine
 	bLines []parser.AlignableLine
+	opts   parser.AlignOptions
 }
 
 // alignResult holds the output of one alignment task.
@@ -191,7 +193,7 @@ func BuildLineMappings(database *sql.DB) error {
 		go func() {
 			defer wg.Done()
 			for task := range taskCh {
-				aligned := parser.AlignSequences(task.aLines, task.bLines)
+				aligned := parser.AlignSequences(task.aLines, task.bLines, task.opts)
 				resultCh <- alignResult{task: task, pairs: aligned}
 			}
 		}()
@@ -330,7 +332,8 @@ func buildLineCache(database *sql.DB) map[lineKey][]parser.AlignableLine {
 		SELECT tl.id, tl.content, COALESCE(tl.line_number, 0), tl.edition_id, tl.work_id,
 		       CASE WHEN w.work_type IN ('sonnet_sequence', 'poem') THEN 0
 		            ELSE COALESCE(tl.act, 0) END,
-		       COALESCE(tl.scene, 0)
+		       COALESCE(tl.scene, 0),
+		       COALESCE(tl.content_type, 'speech')
 		FROM text_lines tl
 		JOIN works w ON w.id = tl.work_id
 		WHERE tl.content_type != 'scene' OR tl.content_type IS NULL
@@ -344,7 +347,7 @@ func buildLineCache(database *sql.DB) map[lineKey][]parser.AlignableLine {
 		var l parser.AlignableLine
 		var editionID, workID int64
 		var act, scene int
-		rows.Scan(&l.ID, &l.Content, &l.LineNumber, &editionID, &workID, &act, &scene)
+		rows.Scan(&l.ID, &l.Content, &l.LineNumber, &editionID, &workID, &act, &scene, &l.ContentType)
 		l.Words = parser.WordSet(l.Content)
 		k := lineKey{editionID, workID, act, scene}
 		cache[k] = append(cache[k], l)
@@ -371,11 +374,26 @@ func buildWorkTypes(database *sql.DB) map[int64]string {
 
 // loadAlignTasksFromCache builds alignment tasks for a pair entirely from the
 // in-memory line cache — no DB access. Replaces loadAlignTasks.
+// isGlobeEdition returns true for editions whose line numbers follow the Globe
+// numbering scheme (oss_globe, perseus_globe). When both editions in a pair use
+// Globe numbering, line-number affinity is enabled to anchor NW alignment and
+// reduce drift in scenes with many short or common words.
+func isGlobeEdition(code string) bool {
+	return strings.Contains(code, "globe")
+}
+
 func loadAlignTasksFromCache(
 	lineCache map[lineKey][]parser.AlignableLine,
 	workTypes map[int64]string,
 	pair editionPair,
 ) []alignTask {
+	// Build per-pair alignment options.
+	var opts parser.AlignOptions
+	if isGlobeEdition(pair.ACode) && isGlobeEdition(pair.BCode) {
+		// Both editions share Globe line numbering: add affinity so that NW
+		// strongly prefers matching lines with the same (or adjacent) line numbers.
+		opts.LineNumberAffinity = 0.15
+	}
 	// Collect all keys visible from this pair (present in either edition A or B)
 	// and group them by content type: plays, sonnets, poems.
 	type sceneRef struct {
@@ -438,25 +456,42 @@ func loadAlignTasksFromCache(
 			}
 		}
 
-		aFlat := aScenes == 1
-		bFlat := bScenes == 1
-
-		// When exactly one edition is flat (all lines in a single scene, typical
-		// of EEBO-TCP quartos) and the other is structured (spread across many
-		// scenes), scene-by-scene alignment yields near-zero matches: the quarto's
-		// single (1,1) bucket is compared only to the structured edition's (1,1)
-		// scene, missing the rest of the play. Merge all scenes of the structured
-		// edition into one work-level task so simpleAlign can do positional
-		// matching across the full play text.
+		// Detect when two editions have incompatible scene structures and
+		// fall back to work-level alignment. This catches three cases:
+		//
+		// 1. One edition is truly flat (1 scene) — e.g. EEBO-TCP quartos.
+		// 2. One edition has partial act/scene divisions — e.g. the First
+		//    Folio's Hamlet has 4 scene entries vs OSS Globe's 20. Per-scene
+		//    alignment would leave most scenes matched against nothing.
+		// 3. Scenes don't overlap — editions use different numbering schemes.
+		//
+		// We measure scene overlap: the fraction of scenes present in BOTH
+		// editions out of the total distinct scenes across both. When overlap
+		// is below 50%, per-scene alignment wastes most lines as only_a/only_b.
 		//
 		// NOTE: when one edition has no lines at all for this work (aScenes==0 or
 		// bScenes==0), we fall through to the per-scene path, which produces
 		// only_a/only_b entries for the present edition's lines. This is correct:
 		// a play present in OSS but absent from SE should appear as only_a rows in
 		// the comparison, allowing the front-end to render one side empty.
-		if aScenes > 0 && bScenes > 0 && (aFlat != bFlat) {
-			// One edition is flat: merge all lines for this work into one task
-			// (act=0, scene=0 as a work-level sentinel, same as poems).
+		var sharedScenes int
+		for _, ref := range refs {
+			hasA := len(lineCache[lineKey{pair.AID, workID, ref.act, ref.scene}]) > 0
+			hasB := len(lineCache[lineKey{pair.BID, workID, ref.act, ref.scene}]) > 0
+			if hasA && hasB {
+				sharedScenes++
+			}
+		}
+		totalScenes := len(refs) // distinct (act, scene) across both editions
+		sceneOverlap := 0.0
+		if totalScenes > 0 {
+			sceneOverlap = float64(sharedScenes) / float64(totalScenes)
+		}
+		structureMismatch := aScenes > 0 && bScenes > 0 && sceneOverlap < 0.5
+
+		if structureMismatch {
+			// Scene structures are incompatible: merge all lines for this work
+			// into one work-level task (act=0, scene=0 sentinel, same as poems).
 			var aAll, bAll []parser.AlignableLine
 			for _, ref := range refs {
 				aAll = append(aAll, lineCache[lineKey{pair.AID, workID, ref.act, ref.scene}]...)
@@ -467,6 +502,7 @@ func loadAlignTasksFromCache(
 					pair: pair, workID: workID,
 					act: 0, scene: 0,
 					aLines: aAll, bLines: bAll,
+					opts: opts,
 				})
 			}
 		} else {
@@ -481,6 +517,7 @@ func loadAlignTasksFromCache(
 					pair: pair, workID: workID,
 					act: ref.act, scene: ref.scene,
 					aLines: aLines, bLines: bLines,
+					opts: opts,
 				})
 			}
 		}
@@ -497,6 +534,7 @@ func loadAlignTasksFromCache(
 			pair: pair, workID: ref.workID,
 			act: 0, scene: ref.scene,
 			aLines: aLines, bLines: bLines,
+			opts: opts,
 		})
 	}
 
@@ -511,6 +549,7 @@ func loadAlignTasksFromCache(
 			pair: pair, workID: workID,
 			act: 0, scene: 0,
 			aLines: aLines, bLines: bLines,
+			opts: opts,
 		})
 	}
 

@@ -89,6 +89,10 @@ func ResolveReferenceCitations(database *sql.DB) error {
 		switch e.SourceCode {
 		case "abbott":
 			cits = parser.ParseAbbottCitations(e.RawText)
+		case "bartlett":
+			cits = parser.ParseBartlettCitations(e.RawText)
+		case "henley_farmer":
+			cits = parser.ParseHenleyFarmerCitations(e.RawText)
 		default:
 			cits = parser.ParseOnionsCitations(e.RawText)
 		}
@@ -99,6 +103,10 @@ func ResolveReferenceCitations(database *sql.DB) error {
 			switch e.SourceCode {
 			case "abbott":
 				schmidtAbbrev = resolveAbbottAbbrev(c.WorkAbbrev)
+			case "bartlett":
+				schmidtAbbrev = resolveBartlettAbbrev(c.WorkAbbrev)
+			case "henley_farmer":
+				schmidtAbbrev = resolveHenleyFarmerAbbrev(c.WorkAbbrev)
 			default:
 				schmidtAbbrev = resolveOnionsAbbrev(c.WorkAbbrev)
 			}
@@ -191,6 +199,26 @@ func resolveOnionsAbbrev(abbrev string) string {
 // for the majority that are identical in both systems.
 func resolveAbbottAbbrev(abbrev string) string {
 	if mapped, ok := constants.AbbottAbbrevs[abbrev]; ok {
+		return mapped
+	}
+	return abbrev
+}
+
+// resolveBartlettAbbrev translates a Bartlett 1896 concordance abbreviation to
+// the corresponding Schmidt abbreviation. Falls through to the raw abbreviation
+// when no mapping is found.
+func resolveBartlettAbbrev(abbrev string) string {
+	if mapped, ok := constants.BartlettAbbrevs[abbrev]; ok {
+		return mapped
+	}
+	return abbrev
+}
+
+// resolveHenleyFarmerAbbrev translates a Henley & Farmer play name to the
+// corresponding Schmidt abbreviation. Falls through to the raw name when no
+// mapping is found.
+func resolveHenleyFarmerAbbrev(abbrev string) string {
+	if mapped, ok := constants.HenleyFarmerAbbrevs[abbrev]; ok {
 		return mapped
 	}
 	return abbrev

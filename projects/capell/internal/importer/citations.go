@@ -44,6 +44,55 @@ type citMatchTask struct {
 	lines []textLineRow // already split by edition
 }
 
+// citSceneKey indexes text lines within a single work by (act, scene).
+// act and scene use COALESCE(x, 0): sonnet lines have act=0 (NULL→0),
+// prologue/induction lines have act=0 (explicit). Poems use {0, 0}.
+type citSceneKey struct{ act, scene int }
+
+// workLineSet holds all text lines for one work pre-indexed for O(1) lookup
+// during citation task building — eliminating per-scene DB queries.
+type workLineSet struct {
+	byScene map[citSceneKey][]textLineRow // (act, scene) → lines with line_number
+	byAct   map[int][]textLineRow         // act → all lines in act (for whole-act fallback)
+	all     []textLineRow                 // all lines (for poem/whole-work lookup)
+}
+
+// buildCitLineCache loads ALL text_lines with non-null line numbers in a single
+// query and indexes them by work_id for O(1) scene/act/work lookup during Phase 1.
+// Replaces ~7000 individual loadTextLines calls with one bulk read.
+func buildCitLineCache(database *sql.DB) map[int64]*workLineSet {
+	cache := make(map[int64]*workLineSet)
+	rows, err := database.Query(`
+		SELECT tl.id, tl.content, COALESCE(tl.line_number, 0), tl.edition_id, tl.work_id,
+		       COALESCE(tl.act, 0), COALESCE(tl.scene, 0)
+		FROM text_lines tl
+		WHERE tl.line_number IS NOT NULL
+		ORDER BY tl.work_id, tl.edition_id, tl.act, tl.scene, tl.line_number, tl.id`)
+	if err != nil {
+		return cache
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tl textLineRow
+		var workID int64
+		var act, scene int
+		rows.Scan(&tl.ID, &tl.Content, &tl.LineNumber, &tl.EditionID, &workID, &act, &scene)
+		wls := cache[workID]
+		if wls == nil {
+			wls = &workLineSet{
+				byScene: make(map[citSceneKey][]textLineRow),
+				byAct:   make(map[int][]textLineRow),
+			}
+			cache[workID] = wls
+		}
+		sk := citSceneKey{act, scene}
+		wls.byScene[sk] = append(wls.byScene[sk], tl)
+		wls.byAct[act] = append(wls.byAct[act], tl)
+		wls.all = append(wls.all, tl)
+	}
+	return cache
+}
+
 // citMatchResult holds the output of one citation matching task per edition.
 type citMatchResult struct {
 	citID      int64
@@ -197,33 +246,36 @@ func ResolveCitations(database *sql.DB) error {
 	fmt.Printf("    Sonnet citations: %d groups\n", len(sonnetCitations))
 	fmt.Printf("    Poem citations: %d groups\n", len(poemCitations))
 
-	// === Phase 1: Load text lines and build match tasks (sequential DB reads) ===
+	// === Phase 1: Bulk-load ALL text lines, then build match tasks from cache ===
+	//
+	// Previous approach: one loadTextLines DB query per (work_id, act, scene) group
+	// — ~7000 queries totalling 60+ seconds on a cold SQLite cache.
+	//
+	// New approach: one query loads everything into a map keyed by work_id.
+	// Task building then runs entirely in memory with O(1) map lookups.
+	citCache := buildCitLineCache(database)
+	fmt.Printf("  Text line cache: %d works loaded in %.1fs\n", len(citCache), time.Since(start).Seconds())
+
 	var tasks []citMatchTask
 
-	// Play citations
+	// Play citations — look up (act, scene) from cache; fall back to whole act.
 	for key, sceneCitations := range playCitations {
-		var lines []textLineRow
-		var err error
-		if key.Scene > 0 {
-			lines, err = loadTextLines(database, "work_id = ? AND act = ? AND scene = ?",
-				key.WorkID, key.Act, key.Scene)
-		} else {
-			lines, err = loadTextLines(database, "work_id = ? AND act = ?",
-				key.WorkID, key.Act)
-		}
-		if err != nil {
+		wls := citCache[key.WorkID]
+		if wls == nil {
 			continue
 		}
+		var lines []textLineRow
+		if key.Scene > 0 {
+			lines = wls.byScene[citSceneKey{key.Act, key.Scene}]
+		} else {
+			lines = wls.byAct[key.Act]
+		}
 
-		// Fallback: if the scene returned 0 lines, the 2-part Perseus reference
+		// Fallback: scene lookup returned nothing → the 2-part Perseus reference
 		// (e.g., "shak. tmp 5.169") was probably act.line, not act.scene.
-		// Reload the entire act and inject the scene value as each citation's line number.
+		// Use the whole-act lines and promote the scene value to a line number.
 		if len(lines) == 0 && key.Scene > 0 {
-			lines, err = loadTextLines(database, "work_id = ? AND act = ?",
-				key.WorkID, key.Act)
-			if err != nil {
-				continue
-			}
+			lines = wls.byAct[key.Act]
 			for i := range sceneCitations {
 				if sceneCitations[i].Line == nil {
 					lineNum := key.Scene
@@ -237,30 +289,30 @@ func ResolveCitations(database *sql.DB) error {
 		}
 	}
 
-	// Sonnet citations
+	// Sonnet citations — act is NULL in DB (coalesced to 0), scene = sonnet number.
 	for key, sCitations := range sonnetCitations {
-		lines, err := loadTextLines(database, "work_id = ? AND scene = ?",
-			key.WorkID, key.Scene)
-		if err != nil {
+		wls := citCache[key.WorkID]
+		if wls == nil {
 			continue
 		}
+		lines := wls.byScene[citSceneKey{0, key.Scene}]
 		for _, cit := range sCitations {
 			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
 		}
 	}
 
-	// Poem citations
+	// Poem citations — no act or scene constraint; use all lines for the work.
 	for key, pCitations := range poemCitations {
-		lines, err := loadTextLines(database, "work_id = ?", key.WorkID)
-		if err != nil {
+		wls := citCache[key.WorkID]
+		if wls == nil {
 			continue
 		}
 		for _, cit := range pCitations {
-			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
+			tasks = append(tasks, citMatchTask{cit: cit, lines: wls.all})
 		}
 	}
 
-	fmt.Printf("  Match tasks: %d (loaded in %.1fs)\n", len(tasks), time.Since(start).Seconds())
+	fmt.Printf("  Match tasks: %d (built in %.1fs)\n", len(tasks), time.Since(start).Seconds())
 
 	// === Phase 2: Run findBestMatch in parallel (CPU-bound, no DB access) ===
 	workers := min(runtime.NumCPU(), 8)
