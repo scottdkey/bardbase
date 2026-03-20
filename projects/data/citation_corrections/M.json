@@ -1,0 +1,38 @@
+[
+  {
+    "headword": "Meet",
+    "raw_bibl": "Gent. II, 7, 58",
+    "work_id": 17,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 1,
+    "line_number": 2,
+    "confidence": 0.4,
+    "reason": "headword-only citation; 'meet' found in opening line of scene",
+    "notes": "Meet in John II,1. Ed2 line 2 'Before Angiers well met, brave Austria.' Schmidt cites the whole scene."
+  },
+  {
+    "headword": "Meet",
+    "raw_bibl": "Gent. II, 7, 58",
+    "work_id": 17,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 1,
+    "line_number": 2,
+    "confidence": 0.4,
+    "reason": "headword-only citation; 'meet' found in opening line of scene",
+    "notes": "Meet in John II,1. Ed2 line 2 'Before Angiers well met, brave Austria.' Schmidt cites the whole scene."
+  },
+  {
+    "headword": "Meet2",
+    "raw_bibl": "John II, 1",
+    "work_id": 17,
+    "edition": "oss_globe",
+    "act": 2,
+    "scene": 1,
+    "line_number": 4,
+    "confidence": 0.6,
+    "reason": "no line number in citation; best match is 'well met' at II,1,4",
+    "notes": "Meet: 'Before Angiers well met, brave Austria'"
+  }
+]

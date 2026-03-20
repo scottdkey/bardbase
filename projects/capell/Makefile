@@ -27,16 +27,16 @@ cover:
 	go tool cover -html=coverage.out -o coverage.html
 
 # Run the full build pipeline (output goes to repo-root build/)
-run:
-	go run ./cmd/build -output build
+run: build
+	../../bin/shakespeare-build -output build
 
 # Re-download all source files before building
-run-fresh:
-	go run ./cmd/build -output build -force-download
+run-fresh: build
+	../../bin/shakespeare-build -output build -force-download
 
 # Run a single named step (e.g., make run-step-oss)
-run-step-%:
-	go run ./cmd/build -step $*
+run-step-%: build
+	../../bin/shakespeare-build -step $*
 
 # Static analysis
 lint:

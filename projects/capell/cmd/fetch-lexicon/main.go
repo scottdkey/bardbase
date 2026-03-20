@@ -18,23 +18,21 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/scottdkey/bardbase/projects/capell/internal/fetch"
+	"github.com/scottdkey/bardbase/projects/capell/internal/reporoot"
 )
 
 const (
 	perseusXMLChunkURL = "http://www.perseus.tufts.edu/hopper/xmlchunk"
 	lexiconTextID      = "1999.03.0079"
-	userAgent          = "Capell-Builder/2.0 (academic research; scottdkey/bardbase)"
 	rateLimit          = 1 * time.Second
-	httpTimeout        = 30 * time.Second
-	maxRetries         = 3
 )
 
 type entryList struct {
@@ -52,7 +50,7 @@ func main() {
 	letterFilter := flag.String("letter", "", "Only process this letter (e.g., C)")
 	flag.Parse()
 
-	repoRoot := findRepoRoot()
+	repoRoot := reporoot.Find()
 	entriesDir := filepath.Join(repoRoot, "projects", "sources", "lexicon", "entries")
 	listPath := filepath.Join(repoRoot, "projects", "sources", "lexicon", "entry_list.json")
 
@@ -114,7 +112,6 @@ func main() {
 	}
 
 	// Fetch missing entries
-	client := &http.Client{Timeout: httpTimeout}
 	fetched := 0
 	notFound := 0
 	errors := 0
@@ -129,7 +126,11 @@ func main() {
 
 		fmt.Printf("  [%d/%d] %s/%s ... ", i+1, len(missing), m.Letter, m.Key)
 
-		body, err := fetchEntry(client, m.Letter, xmlKey)
+		doc := fmt.Sprintf("Perseus:text:%s:alphabetic letter=%s:entry=%s",
+			lexiconTextID, m.Letter, xmlKey)
+		u := fmt.Sprintf("%s?doc=%s", perseusXMLChunkURL, url.PathEscape(doc))
+
+		body, err := fetch.URLWithRetries(u, 3)
 		if err != nil {
 			fmt.Printf("ERROR: %v\n", err)
 			errors++
@@ -158,49 +159,6 @@ func main() {
 	fmt.Printf("\nDone: %d fetched, %d not in Perseus, %d errors\n", fetched, notFound, errors)
 }
 
-// fetchEntry retrieves a single lexicon entry from the Perseus xmlchunk API.
-// URL format: /hopper/xmlchunk?doc=Perseus:text:1999.03.0079:alphabetic%20letter=L:entry=KEY
-func fetchEntry(client *http.Client, letter, entryKey string) (string, error) {
-	doc := fmt.Sprintf("Perseus:text:%s:alphabetic letter=%s:entry=%s",
-		lexiconTextID, letter, entryKey)
-
-	u := fmt.Sprintf("%s?doc=%s", perseusXMLChunkURL, url.PathEscape(doc))
-
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		req, err := http.NewRequest("GET", u, nil)
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("User-Agent", userAgent)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		return string(body), nil
-	}
-
-	return "", fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
-}
-
 // scanExisting returns a set of entry keys that already exist as XML files.
 func scanExisting(letterDir string) map[string]bool {
 	existing := make(map[string]bool)
@@ -217,18 +175,3 @@ func scanExisting(letterDir string) map[string]bool {
 	return existing
 }
 
-func findRepoRoot() string {
-	dir, _ := os.Getwd()
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	wd, _ := os.Getwd()
-	return wd
-}

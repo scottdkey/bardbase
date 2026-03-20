@@ -165,10 +165,9 @@ func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
 		charCache := make(map[string]any)
 
 		for _, line := range r.lines {
-			ct := "speech"
+			ct := contentType(line.IsStageDirection)
 			charName := line.Character
 			if line.IsStageDirection {
-				ct = "stage_direction"
 				charName = ""
 			}
 

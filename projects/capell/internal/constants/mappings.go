@@ -52,10 +52,14 @@ var BartlettAbbrevs map[string]string
 var HenleyFarmerAbbrevs map[string]string
 
 // CitationCorrection is a manual correction for an unmatched lexicon citation.
-// Loaded from projects/data/citation_corrections.json.
+// Loaded from projects/data/citation_corrections/*.json.
 //
-// Location fields identify the correct text_line by semantic coordinates
-// (stable across database rebuilds) rather than raw row IDs:
+// Citations are identified by (Headword, RawBibl) — the lexicon entry key and
+// original bibliographic string from Schmidt's XML. This pair is stable across
+// database rebuilds (unlike auto-increment citation IDs). When multiple senses
+// of the same word cite the same passage, all matching citations are corrected.
+//
+// Location fields identify the correct text_line by semantic coordinates:
 //   - WorkID: works.id of the correct play/poem (may differ from citation's work_id for wrong-play errors)
 //   - Edition: editions.short_code (e.g. "se_modern", "oss_globe", "perseus_globe", "first_folio")
 //   - Act, Scene: nullable; omit for poetry without act/scene structure
@@ -63,7 +67,8 @@ var HenleyFarmerAbbrevs map[string]string
 //
 // An entry with no Edition (empty string) documents why no match is possible.
 type CitationCorrection struct {
-	CitationID int64   `json:"citation_id"`
+	Headword   string  `json:"headword"`
+	RawBibl    string  `json:"raw_bibl"`
 	Reason     string  `json:"reason"`
 	WorkID     *int64  `json:"work_id,omitempty"`
 	Edition    string  `json:"edition,omitempty"`
@@ -75,5 +80,5 @@ type CitationCorrection struct {
 }
 
 // CitationCorrections holds manual corrections for citations that can't be
-// matched automatically. Loaded from projects/data/citation_corrections.json.
+// matched automatically. Loaded from projects/data/citation_corrections/*.json.
 var CitationCorrections []CitationCorrection

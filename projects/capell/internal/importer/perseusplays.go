@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/scottdkey/bardbase/projects/capell/internal/db"
@@ -56,19 +55,13 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 	}
 
 	// Build a map from perseus_id → work info.
-	worksMap, err := buildPerseusWorksMap(database)
+	worksMap, err := buildWorksMapByColumn(database, "perseus_id")
 	if err != nil {
 		return fmt.Errorf("building works map: %w", err)
 	}
 
 	// Collect XML files, sorted for deterministic output.
-	var xmlFiles []string
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".xml" {
-			xmlFiles = append(xmlFiles, e.Name())
-		}
-	}
-	sort.Strings(xmlFiles)
+	xmlFiles := collectXMLFiles(entries)
 
 	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
 	type parsedPlay struct {
@@ -138,12 +131,11 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 			charName := line.Character
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
-			ct := "speech"
+			ct := contentType(line.IsStageDirection)
 			sk := sceneKey{line.Act, line.Scene}
 			var lineNum int
 
 			if line.IsStageDirection {
-				ct = "stage_direction"
 				charName = ""
 				lineNum = verseCounters[sk]
 			} else {
@@ -187,23 +179,3 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 	return nil
 }
 
-// buildPerseusWorksMap queries the works table for all rows with a perseus_id
-// and returns a map from perseus_id → workInfo.
-func buildPerseusWorksMap(database *sql.DB) (map[string]workInfo, error) {
-	rows, err := database.Query("SELECT id, title, perseus_id FROM works WHERE perseus_id IS NOT NULL AND perseus_id != ''")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	m := make(map[string]workInfo)
-	for rows.Next() {
-		var id int64
-		var title, perseusID string
-		if err := rows.Scan(&id, &title, &perseusID); err != nil {
-			continue
-		}
-		m[perseusID] = workInfo{ID: id, Title: title}
-	}
-	return m, nil
-}

@@ -56,31 +56,9 @@ func ImportAbbott(database *sql.DB, sourcesDir string) error {
 		return nil
 	}
 
-	tx, err := database.Begin()
+	inserted, err := insertReferenceEntries(database, srcID, entries)
 	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO reference_entries (source_id, headword, letter, raw_text)
-		VALUES (?, ?, ?, ?)`)
-	if err != nil {
-		return fmt.Errorf("preparing statement: %w", err)
-	}
-	defer stmt.Close()
-
-	inserted := 0
-	for _, e := range entries {
-		// headword is "§N" (e.g. "§1", "§52"); letter is always "§" for Abbott.
-		if _, err := stmt.Exec(srcID, e.headword, "§", e.rawText); err != nil {
-			continue
-		}
-		inserted++
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
+		return err
 	}
 
 	elapsed := time.Since(start).Seconds()
@@ -93,12 +71,6 @@ func ImportAbbott(database *sql.DB, sourcesDir string) error {
 	return nil
 }
 
-// abbottEntry holds a parsed paragraph number (as headword) and raw text.
-type abbottEntry struct {
-	headword string // "§N"
-	rawText  string
-}
-
 // parseAbbottEntries reads the Abbott OCR text file and splits it into
 // numbered grammar paragraphs.
 //
@@ -108,7 +80,7 @@ type abbottEntry struct {
 //   - the digit sequence is ≥ 1 and ≤ 520 (paragraph range in Abbott).
 //
 // The preamble (table of contents, preface, etc.) is discarded.
-func parseAbbottEntries(path string) ([]abbottEntry, error) {
+func parseAbbottEntries(path string) ([]referenceEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -116,7 +88,7 @@ func parseAbbottEntries(path string) ([]abbottEntry, error) {
 	defer f.Close()
 
 	var (
-		entries    []abbottEntry
+		entries    []referenceEntry
 		curNum     int
 		curLines   []string
 		inGrammar  bool // true once we've passed the "GRAMMAR." header
@@ -128,8 +100,9 @@ func parseAbbottEntries(path string) ([]abbottEntry, error) {
 		}
 		raw := strings.TrimSpace(strings.Join(curLines, "\n"))
 		if raw != "" {
-			entries = append(entries, abbottEntry{
+			entries = append(entries, referenceEntry{
 				headword: "§" + strconv.Itoa(curNum),
+				letter:   "§",
 				rawText:  raw,
 			})
 		}

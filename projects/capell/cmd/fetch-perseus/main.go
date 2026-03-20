@@ -19,21 +19,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"net/url"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/scottdkey/bardbase/projects/capell/internal/fetch"
+	"github.com/scottdkey/bardbase/projects/capell/internal/reporoot"
 )
 
 const (
 	perseusBaseURL = "http://www.perseus.tufts.edu/hopper/dltext"
-	userAgent      = "Capell-Builder/2.0 (academic research; scottdkey/bardbase)"
 	rateLimit      = 1 * time.Second
-	httpTimeout    = 30 * time.Second
-	maxRetries     = 3
 )
 
 type schmidtWork struct {
@@ -48,7 +46,7 @@ func main() {
 	flag.Parse()
 
 	// Resolve paths
-	repoRoot := findRepoRoot()
+	repoRoot := reporoot.Find()
 	dataFile := filepath.Join(repoRoot, "projects", "data", "schmidt_works.json")
 	outputDir := filepath.Join(repoRoot, "projects", "sources", "perseus-plays")
 
@@ -117,7 +115,6 @@ func main() {
 	fmt.Printf("  Works:  %d\n", len(entries))
 	fmt.Printf("  Rate:   1 req/sec\n\n")
 
-	client := &http.Client{Timeout: httpTimeout}
 	fetched := 0
 	skipped := 0
 	errors := 0
@@ -144,7 +141,9 @@ func main() {
 			i+1, len(entries), e.Abbrev, e.Title, e.PerseusID)
 
 		// Fetch with retries
-		body, err := fetchWithRetries(client, e.PerseusID, maxRetries)
+		u := fmt.Sprintf("%s?doc=%s", perseusBaseURL,
+			url.QueryEscape("Perseus:text:"+e.PerseusID))
+		body, err := fetch.URLWithRetries(u, 3)
 		if err != nil {
 			fmt.Printf("ERROR: %v\n", err)
 			errors++
@@ -163,59 +162,4 @@ func main() {
 	}
 
 	fmt.Printf("\nDone: %d fetched, %d skipped, %d errors\n", fetched, skipped, errors)
-}
-
-func fetchWithRetries(client *http.Client, perseusID string, retries int) (string, error) {
-	u := fmt.Sprintf("%s?doc=%s", perseusBaseURL,
-		url.QueryEscape("Perseus:text:"+perseusID))
-
-	var lastErr error
-	for attempt := 0; attempt < retries; attempt++ {
-		req, err := http.NewRequest("GET", u, nil)
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("User-Agent", userAgent)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		return string(body), nil
-	}
-
-	return "", fmt.Errorf("failed after %d attempts: %w", retries, lastErr)
-}
-
-func findRepoRoot() string {
-	dir, _ := os.Getwd()
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	wd, _ := os.Getwd()
-	return wd
 }

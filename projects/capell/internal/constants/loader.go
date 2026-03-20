@@ -121,8 +121,8 @@ func loadAllData(dir string) error {
 	if err := loadAttributions(filepath.Join(dir, "attributions.json")); err != nil {
 		return fmt.Errorf("attributions.json: %w", err)
 	}
-	if err := loadCitationCorrections(filepath.Join(dir, "citation_corrections.json")); err != nil {
-		return fmt.Errorf("citation_corrections.json: %w", err)
+	if err := loadCitationCorrections(filepath.Join(dir, "citation_corrections")); err != nil {
+		return fmt.Errorf("citation_corrections: %w", err)
 	}
 	return nil
 }
@@ -192,17 +192,29 @@ type AttributionDef struct {
 	Notes                 string `json:"notes"`
 }
 
-// loadCitationCorrections reads citation_corrections.json and populates the CitationCorrections slice.
-func loadCitationCorrections(path string) error {
-	data, err := os.ReadFile(path)
+// loadCitationCorrections reads all JSON files in the citation_corrections/
+// directory and merges them into the CitationCorrections slice.
+func loadCitationCorrections(dir string) error {
+	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil {
 		return err
 	}
-	var corrections []CitationCorrection
-	if err := json.Unmarshal(data, &corrections); err != nil {
-		return err
+	if len(files) == 0 {
+		return fmt.Errorf("no JSON files found in %s", dir)
 	}
-	CitationCorrections = corrections
+	var all []CitationCorrection
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return fmt.Errorf("%s: %w", filepath.Base(f), err)
+		}
+		var batch []CitationCorrection
+		if err := json.Unmarshal(data, &batch); err != nil {
+			return fmt.Errorf("%s: %w", filepath.Base(f), err)
+		}
+		all = append(all, batch...)
+	}
+	CitationCorrections = all
 	return nil
 }
 

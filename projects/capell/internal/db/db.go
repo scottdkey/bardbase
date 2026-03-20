@@ -22,12 +22,13 @@ var schemaFS embed.FS
 // Open creates or opens a SQLite database at the given path.
 // It sets optimal pragmas for bulk import performance.
 //
-// Build-time pragmas optimize for sequential writes during import:
-//   - page_size=4096: standard page size, good balance for mixed workloads
-//   - journal_mode=WAL: allows concurrent reads during import
-//   - synchronous=NORMAL: faster writes, safe with WAL
-//   - cache_size=-64000: 64MB cache for large imports
-//   - mmap_size=268435456: 256MB memory-mapped I/O for read performance
+// Build-time pragmas are tuned for maximum throughput during a full rebuild:
+//   - page_size=8192: larger pages reduce B-tree depth, better for large tables
+//   - journal_mode=OFF: no crash recovery needed (we rebuild from source)
+//   - synchronous=OFF: skip fsync entirely (rebuild is idempotent)
+//   - locking_mode=EXCLUSIVE: eliminate lock acquisition overhead
+//   - cache_size=-512000: 512MB cache keeps hot pages in memory
+//   - mmap_size=1073741824: 1GB memory-mapped I/O for read performance
 //   - temp_store=MEMORY: temp tables in memory (faster sorts/joins)
 //   - foreign_keys=ON: enforce referential integrity
 func Open(dbPath string) (*sql.DB, error) {
@@ -45,11 +46,12 @@ func Open(dbPath string) (*sql.DB, error) {
 	// Performance pragmas for bulk import.
 	// page_size must be set before creating tables (or on empty DB).
 	pragmas := []string{
-		"PRAGMA page_size=4096",
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA cache_size=-64000",
-		"PRAGMA mmap_size=268435456",
+		"PRAGMA page_size=8192",
+		"PRAGMA journal_mode=OFF",
+		"PRAGMA synchronous=OFF",
+		"PRAGMA locking_mode=EXCLUSIVE",
+		"PRAGMA cache_size=-512000",
+		"PRAGMA mmap_size=1073741824",
 		"PRAGMA temp_store=MEMORY",
 		"PRAGMA foreign_keys=ON",
 	}
@@ -65,9 +67,8 @@ func Open(dbPath string) (*sql.DB, error) {
 
 // Optimize runs post-import optimizations on the database.
 // Should be called after all data is imported and before the DB is
-// distributed. Runs ANALYZE (updates query planner statistics),
-// PRAGMA optimize (lets SQLite choose additional optimizations),
-// and VACUUM (defragments and reclaims space).
+// distributed. Runs ANALYZE, VACUUM, then switches to WAL mode
+// for concurrent read access by the application.
 func Optimize(db *sql.DB) error {
 	steps := []struct {
 		name string
@@ -75,8 +76,10 @@ func Optimize(db *sql.DB) error {
 	}{
 		{"analyze", "ANALYZE"},
 		{"optimize", "PRAGMA optimize"},
-		{"wal_checkpoint", "PRAGMA wal_checkpoint(TRUNCATE)"},
 		{"vacuum", "VACUUM"},
+		// Switch to WAL for production use (readers won't block each other).
+		// Must come after VACUUM since VACUUM requires matching journal mode.
+		{"wal_mode", "PRAGMA journal_mode=WAL"},
 	}
 	for _, step := range steps {
 		if _, err := db.Exec(step.sql); err != nil {

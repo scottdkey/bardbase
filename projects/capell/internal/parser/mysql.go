@@ -133,7 +133,19 @@ func ParseMySQLValues(stmt string) [][]MySQLValue {
 				var val strings.Builder
 				for i < length {
 					if valuesStr[i] == '\\' && i+1 < length {
-						val.WriteByte(valuesStr[i+1])
+						// MySQL backslash escape sequences
+						switch valuesStr[i+1] {
+						case 'n':
+							val.WriteByte('\n')
+						case 't':
+							val.WriteByte('\t')
+						case 'r':
+							val.WriteByte('\r')
+						case '0':
+							val.WriteByte(0)
+						default:
+							val.WriteByte(valuesStr[i+1])
+						}
 						i += 2
 					} else if valuesStr[i] == '\'' && i+1 < length && valuesStr[i+1] == '\'' {
 						val.WriteByte('\'')

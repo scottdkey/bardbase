@@ -17,33 +17,30 @@ Potential open source works, reference data, and Shakespeare-themed naming to ex
 ## Open Source Texts & Editions
 
 ### Folger Shakespeare Library Digital Texts
-- **Status**: Planned
+- **Status**: **Done** — implemented in Phase 7 (`folger`)
 - **URL**: https://www.folgerdigitaltexts.org/
 - **License**: CC BY-NC 3.0
-- **Content**: Richly encoded XML (TEI) for all 37 plays. Considered the modern gold-standard scholarly edition. Detailed markup for stage directions, verse/prose, speech prefixes, and editorial notes.
+- **Content**: Richly encoded XML (TEIsimple) for all 37 plays. Considered the modern gold-standard scholarly edition. Includes word-by-word POS annotation (MorphAdorner) and Folger Through Line Numbers.
 - **What it enables**: A high-quality "modern scholarly" edition column in cross-edition comparison. Folger's editorial decisions often differ from Globe/Standard Ebooks, making comparisons genuinely interesting.
 - **Impact**: **High** — best available modern edition; strong complement to existing Globe/SE/Folio lineup.
-- **License complexity**: The NC (non-commercial) clause creates friction for a freemium model. Three approaches:
-  1. **Source isolation** *(recommended)*: Tag each edition in the DB with its license tier. Paid features (Productions, script editing) are restricted to CC0/public domain editions — Standard Ebooks, EEBO-TCP, Perseus. Folger is read-only, free-tier content only. A user creating a paid Production simply picks a non-NC base edition; Folger is never the working script.
-  2. **Contact Folger**: Their Digital Texts team is research-friendly and has granted commercial carve-outs before. A freemium model where texts are always publicly readable is a reasonable ask.
-  3. **Skip Folger**: Standard Ebooks is already CC0 and high quality. If the licensing overhead isn't worth it, use ISE quartos (CC BY-SA, commercially usable with attribution) as the premium scholarly edition instead.
-- **Build note**: See [Source Exclusion](#source-exclusion-in-the-build-pipeline) below — Folger is the primary motivator for per-source build flags.
+- **License complexity**: The NC (non-commercial) clause creates friction for a freemium model. The edition is tagged with `license_tier = 'cc-by-nc'` and `source_key = 'folger'` so it can be excluded from commercial features at query time. The `--exclude folger` build flag omits it from production releases if needed.
 
 ### Internet Shakespeare Editions (ISE) — Early Quartos
-- **Status**: Planned
+- **Status**: Considering
 - **URL**: https://internetshakespeare.uvic.ca/
 - **License**: CC BY-SA (varies by text)
 - **Content**: Diplomatic transcriptions of early quartos — Q1 Hamlet ("Bad Quarto"), Q1/Q2 King Lear, Q1 Romeo and Juliet, etc. These are textually distinct versions, not just spelling variants.
 - **What it enables**: Quarto vs. Folio comparison for plays with significant textual differences. Q1 Hamlet is ~2,200 lines vs. the Folio's ~3,900 — a completely different experience. King Lear's two texts are arguably different plays.
-- **Impact**: **High** — unique content no other source provides; cross-edition comparison (Phase 4) becomes dramatically more compelling with genuinely divergent texts.
+- **Impact**: **High** — unique content no other source provides; cross-edition comparison becomes dramatically more compelling with genuinely divergent texts.
+- **Note**: EEBO-TCP quartos (below) already provide CC0 diplomatic transcriptions of several early quartos. ISE would add scholarly editions with modernized annotations.
 
 ### EEBO-TCP Early Quartos
-- **Status**: Planned
+- **Status**: **Done** — implemented in Phase 8 (`eebo-quartos`)
 - **URL**: https://github.com/textcreationpartnership
 - **License**: CC0 / Public Domain
-- **Content**: The same archive as the existing First Folio source. Contains early quartos (Q1 Hamlet, Q1/Q2 Lear, etc.) as diplomatic transcriptions.
-- **What it enables**: Same as ISE quartos above.
-- **Impact**: **High** — lowest friction path since the EEBO-TCP parser already exists in Capell.
+- **Content**: The same archive as the existing First Folio source. Contains early quartos (Q1 Hamlet, Q1/Q2 Lear, etc.) as diplomatic transcriptions. Each quarto gets its own edition record.
+- **What it enables**: Quarto vs. Folio comparison for plays with significant textual differences.
+- **Impact**: **High** — lowest friction path since the EEBO-TCP parser already existed in Capell.
 
 ### Project Gutenberg — Bowdler "Family Shakespeare" (1818)
 - **Status**: Planned
@@ -65,31 +62,31 @@ Potential open source works, reference data, and Shakespeare-themed naming to ex
 
 ## Lexicons & Reference Works
 
-### Abbott's Shakespearian Grammar (1870)
-- **Status**: Planned
+### Abbott's Shakespearian Grammar (1877)
+- **Status**: **Done** — implemented in Phase 10 (`abbott`)
 - **License**: Public Domain
-- **Content**: Systematic grammar of Shakespeare's English — constructions, syntax, and word-formation patterns Schmidt's Lexicon doesn't address. Organized by numbered grammatical sections.
+- **Content**: Systematic grammar of Shakespeare's English — constructions, syntax, and word-formation patterns Schmidt's Lexicon doesn't address. Organized as numbered paragraphs (§1 – §515+). Stored in `reference_entries` with citations resolved via Phase 17.
 - **What it enables**: A "grammar" layer alongside the lexicon. When a user encounters "methinks" or a double negative, Abbott explains the grammatical rule. Complements Schmidt (vocabulary) with Abbott (syntax).
 - **Impact**: **High** — fills a real gap. Schmidt tells you what a word means; Abbott tells you why the sentence is structured that way.
 
 ### Onions' Shakespeare Glossary (1911 edition)
-- **Status**: Planned
+- **Status**: **Done** — implemented in Phase 9 (`onions`)
 - **License**: Public Domain (1911 edition)
-- **Content**: Shorter, more accessible glossary than Schmidt (~10,000 entries) focused on words whose meaning has shifted since Shakespeare's time.
-- **What it enables**: A "quick definition" layer — show Onions for at-a-glance meaning, link to Schmidt for full scholarly treatment. Well suited to the reader popover (Phase 5.2).
+- **Content**: Shorter, more accessible glossary than Schmidt (~10,000 entries) focused on words whose meaning has shifted since Shakespeare's time. Stored in `reference_entries` with citations resolved via Phase 17.
+- **What it enables**: A "quick definition" layer — show Onions for at-a-glance meaning, link to Schmidt for full scholarly treatment. Well suited to the reader popover.
 - **Impact**: **Medium** — good UX improvement but overlaps significantly with Schmidt.
 
-### Bartlett's Concordance to Shakespeare (1894)
-- **Status**: Planned
+### Bartlett's Concordance to Shakespeare (1896)
+- **Status**: **Done** — implemented in Phase 11 (`bartlett`)
 - **License**: Public Domain
-- **Content**: Every word in Shakespeare indexed to every occurrence with surrounding context.
+- **Content**: Every word in Shakespeare indexed to every occurrence with surrounding context. Stored in `reference_entries` with citations resolved via Phase 17.
 - **What it enables**: Word frequency analysis per play, statistical features ("this word appears 47 times in comedies but only 3 times in tragedies"), word explorer.
 - **Impact**: **Medium** — interesting analytical features; existing FTS + text_lines can approximate some of this.
 
-### Henley & Farmer's Slang Dictionary (1905)
-- **Status**: Planned
+### Henley & Farmer's Slang Dictionary (1890-1904)
+- **Status**: **Done** — implemented in Phase 12 (`henley-farmer`)
 - **License**: Public Domain
-- **Content**: Dictionary of Elizabethan slang, cant, and colloquial language. Covers bawdy language and street slang that Schmidt treats delicately.
+- **Content**: Dictionary of Elizabethan slang, cant, and colloquial language (7 volumes). Only entries citing Shakespeare are imported. Stored in `reference_entries` with citations resolved via Phase 17.
 - **What it enables**: A "slang" annotation layer. Shakespeare is full of double entendres that modern readers miss. Fills gaps where Schmidt is euphemistic.
 - **Impact**: **Medium** — niche but genuinely useful for understanding Shakespeare's humor. A feature few other platforms offer.
 
@@ -123,33 +120,16 @@ Potential open source works, reference data, and Shakespeare-themed naming to ex
 
 ## Source Exclusion in the Build Pipeline
 
-As the number of sources grows, some may carry licensing restrictions (e.g. Folger's NC clause) or be experimental/incomplete. The build pipeline needs a per-source opt-out mechanism so we can include Folger in development and CI builds while excluding it from production releases until the licensing question is resolved.
+**Status**: **Done** — implemented via the `--exclude` flag.
 
-### Proposed approach: `--exclude` flag on `capell build`
+Sources with licensing restrictions (e.g. Folger's CC BY-NC clause) can be excluded from builds:
 
 ```
-go run ./cmd/build --exclude folger --exclude wordhoard
+go run ./cmd/build --exclude folger
+go run ./cmd/build --exclude folger,wordhoard
 ```
 
-Each phase in the pipeline registers itself with a source key. If that key appears in the exclude list, the phase is skipped entirely and its data is not written to the database. The `editions` table gains a `source_key` column so downstream code can filter by license tier at query time.
-
-**Schema addition:**
-```sql
-ALTER TABLE editions ADD COLUMN source_key TEXT;  -- e.g. 'folger', 'ise', 'eebo'
-ALTER TABLE editions ADD COLUMN license_tier TEXT; -- 'cc0', 'cc-by-sa', 'cc-by-nc'
-```
-
-**Build flag in CI:**
-```yaml
-# workflow_dispatch input (manual build)
-inputs:
-  exclude_sources:
-    description: 'Comma-separated source keys to exclude (e.g. folger,wordhoard)'
-    required: false
-    default: ''
-```
-
-This way Folger can be developed and tested locally with `--exclude` omitted, while the public release build passes `--exclude folger` until the license situation is resolved.
+Each edition is tagged with `source_key` and `license_tier` columns in the `editions` table, enabling downstream query-time filtering by license. The Folger edition is tagged `license_tier = 'cc-by-nc'` so it can be excluded from commercial/paid features while remaining available for free-tier read-only access.
 
 ---
 

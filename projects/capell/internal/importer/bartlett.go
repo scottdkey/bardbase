@@ -57,40 +57,9 @@ func ImportBartlett(database *sql.DB, sourcesDir string) error {
 		return nil
 	}
 
-	tx, err := database.Begin()
+	inserted, err := insertReferenceEntries(database, srcID, entries)
 	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO reference_entries (source_id, headword, letter, raw_text)
-		VALUES (?, ?, ?, ?)`)
-	if err != nil {
-		return fmt.Errorf("preparing statement: %w", err)
-	}
-	defer stmt.Close()
-
-	inserted := 0
-	for _, e := range entries {
-		letter := ""
-		for _, r := range e.headword {
-			if unicode.IsLetter(r) {
-				letter = strings.ToUpper(string(r))
-				break
-			}
-		}
-		if letter == "" {
-			letter = "?"
-		}
-		if _, err := stmt.Exec(srcID, e.headword, letter, e.rawText); err != nil {
-			continue
-		}
-		inserted++
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
+		return err
 	}
 
 	elapsed := time.Since(start).Seconds()
@@ -103,15 +72,9 @@ func ImportBartlett(database *sql.DB, sourcesDir string) error {
 	return nil
 }
 
-// bartlettEntry holds a parsed headword and its raw entry text.
-type bartlettEntry struct {
-	headword string
-	rawText  string
-}
-
 // parseBartlettEntries reads the Bartlett OCR text file and splits it into
 // individual concordance headword groups.
-func parseBartlettEntries(path string) ([]bartlettEntry, error) {
+func parseBartlettEntries(path string) ([]referenceEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -124,7 +87,7 @@ func parseBartlettEntries(path string) ([]bartlettEntry, error) {
 	scanner.Buffer(buf, len(buf))
 
 	var (
-		entries     []bartlettEntry
+		entries     []referenceEntry
 		curHeadword string
 		curLines    []string
 	)
@@ -135,8 +98,9 @@ func parseBartlettEntries(path string) ([]bartlettEntry, error) {
 		}
 		raw := strings.TrimSpace(strings.Join(curLines, "\n"))
 		if raw != "" {
-			entries = append(entries, bartlettEntry{
+			entries = append(entries, referenceEntry{
 				headword: curHeadword,
+				letter:   headwordLetter(curHeadword),
 				rawText:  raw,
 			})
 		}

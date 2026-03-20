@@ -1,0 +1,38 @@
+[
+  {
+    "headword": "Ostentation",
+    "raw_bibl": "H5 V Chor.",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 5,
+    "scene": 0,
+    "line_number": 22,
+    "confidence": 0.5,
+    "reason": "H5 V Chor; 'ostent' found in chorus text",
+    "notes": "Ostentation in H5 V Chor. Ed2 line 22 'Giving full trophy, signal and ostent'. Ostent = ostentation."
+  },
+  {
+    "headword": "Ostentation",
+    "raw_bibl": "H5 V Chor.",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 5,
+    "scene": 0,
+    "line_number": 22,
+    "confidence": 0.5,
+    "reason": "H5 V Chor; 'ostent' found in chorus text",
+    "notes": "Ostentation in H5 V Chor. Ed2 line 22 'Giving full trophy, signal and ostent'. Ostent = ostentation."
+  },
+  {
+    "headword": "Oerfed",
+    "raw_bibl": "III Prol. 3",
+    "work_id": 29,
+    "edition": "oss_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 4,
+    "confidence": 0.85,
+    "reason": "wrong play; text is in Pericles III Prol. 4 not LLL",
+    "notes": "Oerfed: 'Made louder by the o'er-fed breast' in Pericles III Chorus."
+  }
+]

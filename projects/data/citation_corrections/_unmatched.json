@@ -1,0 +1,541 @@
+[
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 562)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 562 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 3093)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 3093 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 34637)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 34637 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 50315)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 50315 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 58303)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 58303 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 60037)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 60037 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 60994)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 60994 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 60995)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 60995 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 61433)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 61433 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 61542)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 61542 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 71147)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 71147 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 132674)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 132674 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 170441)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 170441 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "_appendix",
+    "raw_bibl": "App. I,1 (old citation_id 177606)",
+    "confidence": 0.0,
+    "reason": "Schmidt Lexicon Appendix: internal reference to Schmidt's own Latin index; no quotable passage text",
+    "notes": "Citation 177606 refers to Schmidt Appendix (App. I,1), Schmidt's own Latin-English vocabulary supplement."
+  },
+  {
+    "headword": "Acheron",
+    "raw_bibl": "H6B I, 4, 42",
+    "confidence": 0.0,
+    "reason": "Acheron not found in H6B text; word doesn't appear in any edition",
+    "notes": "Acheron: H6B I,4,42. Word 'Acheron' not present in any H6B edition text."
+  },
+  {
+    "headword": "Acheron",
+    "raw_bibl": "Mids. III, 2, 357",
+    "confidence": 0.0,
+    "reason": "Acheron not found in King Lear text; word doesn't appear in any edition",
+    "notes": "Acheron: Lr. III,6,8. Word 'Acheron' not present in any Lear edition text."
+  },
+  {
+    "headword": "Adonis",
+    "raw_bibl": "Pliny XIX, 19, 1",
+    "confidence": 0.0,
+    "reason": "Pliny Natural History: no English text available for import",
+    "notes": "Adonis: Pliny XIX,19,1. Latin text not imported."
+  },
+  {
+    "headword": "Advancement",
+    "raw_bibl": "H4B V, 5, 74",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'advancement' not at V,3,68 in any Lear edition",
+    "notes": "Advancement: Lr. V,3,68. Closest is V,3,33 'One step I have advanced thee' but line mismatch too large to be confident."
+  },
+  {
+    "headword": "Act",
+    "raw_bibl": "Alls II, 1, 155",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'act' not at R2 II,3,21 in any meaningful match",
+    "notes": "Act: R2 II,3,21. Generic word; text at that line ('Than your good words') doesn't contain 'act'."
+  },
+  {
+    "headword": "After-hours",
+    "raw_bibl": "IV, 4, 293",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'after-hours' not found in Cymbeline; IV,4 has only 69 lines, citation says line 293",
+    "notes": "After-hours: Cymb. IV,4,293. Line number far exceeds scene length; likely continuous-numbering mismatch."
+  },
+  {
+    "headword": "Autolycus",
+    "raw_bibl": "Hom. Od. XIX, 394",
+    "confidence": 0.0,
+    "reason": "Homer Odyssey: no English translation text available for import",
+    "notes": "Autolycus: Homer Od. XIX,394. No translation text imported."
+  },
+  {
+    "headword": "Berown",
+    "raw_bibl": "IV, 3, 232",
+    "confidence": 0.0,
+    "reason": "cannot locate; Hamlet IV,3 has only 77 lines, citation says line 232",
+    "notes": "Berown: Hml. IV,3,232. Headword is character name Biron/Berowne. Line number exceeds scene length."
+  },
+  {
+    "headword": "Bnign",
+    "raw_bibl": "II Prol. 3",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Merry Wives of Windsor has no scene=0 text",
+    "notes": "Bnign: Wiv. II Prol. 3. Merry Wives has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Breathe",
+    "raw_bibl": "Tp. II, 2, 65",
+    "confidence": 0.0,
+    "reason": "cannot locate; H6A III,2 has only 166 lines, citation says line 287",
+    "notes": "Breathe: H6A III,2,287. Quote 'b. infection'. Line number exceeds scene length."
+  },
+  {
+    "headword": "Car",
+    "raw_bibl": "Mids. I, 2, 37",
+    "confidence": 0.0,
+    "reason": "cannot locate; Tw I,1 doesn't reach line 218; closest 'care' at I,3,3",
+    "notes": "Car: Tw. I,1,218. Quote 'John de la C.' Likely continuous-numbering or scene mismatch."
+  },
+  {
+    "headword": "Die",
+    "raw_bibl": "H5 IV Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'die' not in H5 IV Chorus text",
+    "notes": "Die: H5 IV Chor. Word 'die' does not appear in IV Chorus (scene 0)."
+  },
+  {
+    "headword": "Die",
+    "raw_bibl": "H5 IV Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'die' not in H5 IV Chorus text (duplicate)",
+    "notes": "Die: H5 IV Chor. Word 'die' does not appear in IV Chorus (scene 0)."
+  },
+  {
+    "headword": "Doom",
+    "raw_bibl": "V, 6, 23",
+    "confidence": 0.0,
+    "reason": "cannot locate; Lear V,2 has only 16 lines, citation says line 20",
+    "notes": "Doom: Lr. V,2,20. Quote '(obedient to their --s)'. Line exceeds scene length."
+  },
+  {
+    "headword": "Doing",
+    "raw_bibl": "H5 V Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'doing' not in H5 V Chorus text",
+    "notes": "Doing: H5 V Chor. Word 'doing' does not appear in V Chorus."
+  },
+  {
+    "headword": "Doing",
+    "raw_bibl": "H5 V Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'doing' not in H5 V Chorus text (duplicate)",
+    "notes": "Doing: H5 V Chor. Word 'doing' does not appear in V Chorus."
+  },
+  {
+    "headword": "Fancy",
+    "raw_bibl": "III Prol. 13",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Antony and Cleopatra has no scene=0 text",
+    "notes": "Fancy: Ant. III Prol. 13. Ant. has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Gimmal",
+    "raw_bibl": "Edward III I, 2, 29",
+    "confidence": 0.0,
+    "reason": "Edward III: text not available in any imported source",
+    "notes": "Gimmal: Edward III I,2,29. Play not included in OSS or other imported sources."
+  },
+  {
+    "headword": "Godfather",
+    "raw_bibl": "Per. V Prol.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'godfather' not found anywhere in Pericles",
+    "notes": "Godfather: Per. V Prol. Word 'godfather' not present in any Pericles edition."
+  },
+  {
+    "headword": "High",
+    "raw_bibl": "Merch. I, 1, 28",
+    "confidence": 0.0,
+    "reason": "cannot locate; AYLI II,1 has only 74 lines, citation says line 213",
+    "notes": "High: As II,1,213. Quote 'if thou proceed as h. as word'. Line exceeds scene length."
+  },
+  {
+    "headword": "History",
+    "raw_bibl": "H5 V Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'history' not in H5 V Chorus (only 'story' at line 2)",
+    "notes": "History: H5 V Chor. Closest is 'story' at V,0,2 but semantic, not lexical match."
+  },
+  {
+    "headword": "Honey",
+    "raw_bibl": "II Prol. 18",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'honey' not in R&J II Chorus text",
+    "notes": "Honey: R&J II Prol. 18. But R&J II Chorus has only 16 lines. Line exceeds length."
+  },
+  {
+    "headword": "I-wis",
+    "raw_bibl": "II Prol. 2",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Richard III has no scene=0 text",
+    "notes": "I-wis: R3 II Prol. 2. Richard III has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Ill-ta'en",
+    "raw_bibl": "Wint. II, 1, 17",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'ill-ta'en' not in Wint II,1; closest at I,2,542 (wrong act)",
+    "notes": "Ill-ta'en: Wint. II,1,17. 'ill-ta'en' appears at I,2,542 but that's Act I not II."
+  },
+  {
+    "headword": "Inscription",
+    "raw_bibl": "Tim. V, 4, 67",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'inscription' not found in Tim V,4",
+    "notes": "Inscription: Tim. V,4,67. Word 'inscription' not present in Timon V,4."
+  },
+  {
+    "headword": "Life",
+    "raw_bibl": "Tp. I, 2, 267",
+    "confidence": 0.0,
+    "reason": "cannot locate; H6C II,4 has only 16 lines in OSS, citation says line 18",
+    "notes": "Life: H6C II,4,18. Quote 'stir not, for your lives'. Line exceeds scene length."
+  },
+  {
+    "headword": "Lombard",
+    "raw_bibl": "H4B I, 1, --",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'lombard' not found in H4B I,1 (only in First Folio II,1,434 as 'Lombard')",
+    "notes": "Lombard: H4B I,1,--. No line number given. Only found in Folio text at different location."
+  },
+  {
+    "headword": "Meet",
+    "raw_bibl": "Gent. II, 7, 58",
+    "confidence": 0.0,
+    "reason": "cannot locate; no line number given in citation",
+    "notes": "Meet: John II,1. No specific line; 'meet' appears many times in II,1."
+  },
+  {
+    "headword": "Neeld",
+    "raw_bibl": "IV Prol. 23",
+    "confidence": 0.0,
+    "reason": "play has no prologue; King John has no scene=0 text",
+    "notes": "Neeld: John IV Prol. 23. King John has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "New-ta'en",
+    "raw_bibl": "Mcb. I, 3, 133",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'new-ta'en' not found in Macbeth I,3",
+    "notes": "New-ta'en: Mcb. I,3,133. Word not present in any Macbeth edition at this location."
+  },
+  {
+    "headword": "Now-born",
+    "raw_bibl": "II, 3, 186",
+    "confidence": 0.0,
+    "reason": "cannot locate; Pericles II,3 has only 131 lines, citation says line 186",
+    "notes": "Now-born: Per. II,3,186. Line exceeds scene length."
+  },
+  {
+    "headword": "Oerfed",
+    "raw_bibl": "III Prol. 3",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Love's Labour's Lost has no scene=0 text",
+    "notes": "Oerfed: LLL III Prol. 3. LLL has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Postscript",
+    "raw_bibl": "Lr. I, 2, --",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'postscript' not found in any King Lear edition",
+    "notes": "Postscript: Lr. I,2,--. No line number; word not present in any Lear text."
+  },
+  {
+    "headword": "Pronounce",
+    "raw_bibl": "Mcb. V, 3, 5",
+    "confidence": 0.0,
+    "reason": "cannot locate; Mcb II,4 has only 54 lines, citation says line 115",
+    "notes": "Pronounce: Mcb. II,4,115. Quote 'as 't please yourself p. their office'. Line exceeds scene length."
+  },
+  {
+    "headword": "Send",
+    "raw_bibl": "John II, 409",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'allegiance' only found in R3 I,3,177, not III,3",
+    "notes": "Send: R3 III,3,37. Quote '--s allegiance to his royal person'. No 'allegiance' in III,3."
+  },
+  {
+    "headword": "Spurn",
+    "raw_bibl": "",
+    "confidence": 0.0,
+    "reason": "Acts of the Apostles text not available at this reference",
+    "notes": "Spurn: Acts IX,5. Quote 'to kick against the pricks'. KJV text not imported for this verse."
+  },
+  {
+    "headword": "Tarquinius",
+    "raw_bibl": "Lucr. Arg. I, 5",
+    "confidence": 0.0,
+    "reason": "cannot locate; Lucrece Argument section uses different line numbering",
+    "notes": "Tarquinius: Lucr. Arg. I,5. The Argument is prose; line numbering doesn't match."
+  },
+  {
+    "headword": "Tarquinius",
+    "raw_bibl": "Lucr. Arg. I, 5",
+    "confidence": 0.0,
+    "reason": "cannot locate; Lucrece Argument section uses different line numbering (duplicate)",
+    "notes": "Tarquinius: Lucr. Arg. I,5."
+  },
+  {
+    "headword": "Tickle",
+    "raw_bibl": "",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'luxury'/'tickle' not found in Cymb V,2; scene has only 35 lines, citation says 56",
+    "notes": "Tickle: Cymb. V,2,56. Quote 'the devil Luxury . . . --s these together'. Line exceeds scene length."
+  },
+  {
+    "headword": "Toss",
+    "raw_bibl": "II Prol. 34",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Titus Andronicus has no scene=0 text",
+    "notes": "Toss: Tit. II Prol. 34. Titus has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Travail",
+    "raw_bibl": "H6A V, 4, 102",
+    "confidence": 0.0,
+    "reason": "cannot locate; AYLI IV,2 has only 20 lines, citation says line 73",
+    "notes": "Travail: AYLI IV,2,73. Quote '(--ing some journey)'. Line exceeds scene length."
+  },
+  {
+    "headword": "Take",
+    "raw_bibl": "Wint. III, 2, 38",
+    "confidence": 0.0,
+    "reason": "cannot locate; Lear III,2 has only 100 lines, citation says line 164",
+    "notes": "Take: Lr. III,2,164. Quote 'as he stooped to t. it up'. Line exceeds scene length."
+  },
+  {
+    "headword": "Vary",
+    "raw_bibl": "",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Henry IV Part I has no scene=0 text",
+    "notes": "Vary: H4A III Prol. 47. H4A has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Very",
+    "raw_bibl": "Ado IV, 1, 188",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'heart-string' not found in Merch IV; scene numbering mismatch",
+    "notes": "Very: Merch. IV,2,62. Quote 'he grieves my v. heart-strings'. 'heart-string' not in any MoV edition."
+  },
+  {
+    "headword": "Wrack",
+    "raw_bibl": "IV Prol. 12",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Macbeth has no scene=0 text",
+    "notes": "Wrack: Mcb. II Prol. 32. Macbeth has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Wood",
+    "raw_bibl": "II Prol. 4",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Macbeth has no scene=0 text",
+    "notes": "Wood: Mcb. II Prol. 4. Macbeth has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Acheron",
+    "raw_bibl": "Lr. III, 6, 8",
+    "confidence": 0.0,
+    "reason": "Acheron not found in King Lear text; word doesn't appear in any edition",
+    "notes": "Acheron: Lr. III,6,8."
+  },
+  {
+    "headword": "Act1",
+    "raw_bibl": "II, 3, 21",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'act' not at R2 II,3,21",
+    "notes": "Act: R2 II,3,21. Text at that line doesn't contain 'act'."
+  },
+  {
+    "headword": "Adoors",
+    "raw_bibl": "Hml. II, 1, 99",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'a-doors' not at Hml II,1,99; closest at II,1,112",
+    "notes": "Adoors: Hml. II,1,99. 'out o' doors' at line 112 but too far."
+  },
+  {
+    "headword": "Advancement",
+    "raw_bibl": "V, 3, 68",
+    "confidence": 0.0,
+    "reason": "cannot locate; 'advancement' not at Lr V,3,68",
+    "notes": "Advancement: Lr. V,3,68. Closest is V,3,33 'advanced' but large line mismatch."
+  },
+  {
+    "headword": "Wrack2",
+    "raw_bibl": "II Prol. 32",
+    "confidence": 0.0,
+    "reason": "play has no prologue; Macbeth has no scene=0 text",
+    "notes": "Wrack: Mcb. II Prol. 32. Macbeth has no prologue. Likely misattributed work."
+  },
+  {
+    "headword": "Doing1",
+    "raw_bibl": "H5 V Chor.",
+    "confidence": 0.0,
+    "reason": "cannot locate in Henry V; needs manual research",
+    "notes": "Doing1: Henry V H5 V Chor."
+  },
+  {
+    "headword": "Doom1",
+    "raw_bibl": "V, 2, 20",
+    "confidence": 0.0,
+    "reason": "cannot locate in King Lear; needs manual research",
+    "notes": "Doom1: King Lear V, 2, 20. Quote: '(obedient to their --s).'"
+  },
+  {
+    "headword": "High3",
+    "raw_bibl": "As II, 1, 213",
+    "confidence": 0.0,
+    "reason": "cannot locate in As You Like It; needs manual research",
+    "notes": "High3: As You Like It As II, 1, 213. Quote: 'if thou proceed as h. as word,'"
+  },
+  {
+    "headword": "Honey1",
+    "raw_bibl": "II Prol. 18",
+    "confidence": 0.0,
+    "reason": "cannot locate in Romeo and Juliet; needs manual research",
+    "notes": "Honey1: Romeo and Juliet II Prol. 18"
+  },
+  {
+    "headword": "Life",
+    "raw_bibl": "H6C II, 4, 18",
+    "confidence": 0.0,
+    "reason": "cannot locate in Henry VI, Part III; needs manual research",
+    "notes": "Life: Henry VI, Part III H6C II, 4, 18. Quote: 'stir not, for your lives,'"
+  },
+  {
+    "headword": "Meet2",
+    "raw_bibl": "John II, 1",
+    "confidence": 0.0,
+    "reason": "cannot locate in King John; needs manual research",
+    "notes": "Meet2: King John John II, 1"
+  },
+  {
+    "headword": "Pronounce",
+    "raw_bibl": "II, 4, 115",
+    "confidence": 0.0,
+    "reason": "cannot locate in Macbeth; needs manual research",
+    "notes": "Pronounce: Macbeth II, 4, 115. Quote: 'as 't please yourself p. their office,'"
+  },
+  {
+    "headword": "Send",
+    "raw_bibl": "R3 III, 3, 37",
+    "confidence": 0.0,
+    "reason": "cannot locate in Richard III; needs manual research",
+    "notes": "Send: Richard III R3 III, 3, 37. Quote: '--s allegiance to his royal person,'"
+  },
+  {
+    "headword": "Take",
+    "raw_bibl": "III, 2, 164",
+    "confidence": 0.0,
+    "reason": "cannot locate in King Lear; needs manual research",
+    "notes": "Take: King Lear III, 2, 164. Quote: 'as he stooped to t. it up,'"
+  },
+  {
+    "headword": "Travail2",
+    "raw_bibl": "IV, 2, 73",
+    "confidence": 0.0,
+    "reason": "cannot locate in As You Like It; needs manual research",
+    "notes": "Travail2: As You Like It IV, 2, 73. Quote: '(--ing some journey).'"
+  },
+  {
+    "headword": "Vary2",
+    "raw_bibl": "III Prol. 47",
+    "confidence": 0.0,
+    "reason": "cannot locate in Henry IV, Part I; needs manual research",
+    "notes": "Vary2: Henry IV, Part I III Prol. 47"
+  },
+  {
+    "headword": "Very1",
+    "raw_bibl": "IV, 2, 62",
+    "confidence": 0.0,
+    "reason": "cannot locate in Merchant of Venice; needs manual research",
+    "notes": "Very1: Merchant of Venice IV, 2, 62. Quote: 'he grieves my v. heart-strings,'"
+  }
+]

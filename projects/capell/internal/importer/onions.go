@@ -59,41 +59,9 @@ func ImportOnions(database *sql.DB, sourcesDir string) error {
 		return nil
 	}
 
-	// Bulk insert inside a transaction.
-	tx, err := database.Begin()
+	inserted, err := insertReferenceEntries(database, srcID, entries)
 	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO reference_entries (source_id, headword, letter, raw_text)
-		VALUES (?, ?, ?, ?)`)
-	if err != nil {
-		return fmt.Errorf("preparing statement: %w", err)
-	}
-	defer stmt.Close()
-
-	inserted := 0
-	for _, e := range entries {
-		letter := ""
-		for _, r := range e.headword {
-			if unicode.IsLetter(r) {
-				letter = strings.ToUpper(string(r))
-				break
-			}
-		}
-		if letter == "" {
-			letter = "?"
-		}
-		if _, err := stmt.Exec(srcID, e.headword, letter, e.rawText); err != nil {
-			continue // skip duplicates / bad rows silently
-		}
-		inserted++
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
+		return err
 	}
 
 	elapsed := time.Since(start).Seconds()
@@ -104,12 +72,6 @@ func ImportOnions(database *sql.DB, sourcesDir string) error {
 		inserted, elapsed)
 
 	return nil
-}
-
-// onionsEntry holds a parsed headword and its raw entry text.
-type onionsEntry struct {
-	headword string
-	rawText  string
 }
 
 // parseOnionsEntries reads the Onions OCR text file and splits it into
@@ -123,7 +85,7 @@ type onionsEntry struct {
 //
 // Everything from that line until the next entry start is the entry body.
 // The glossary preamble (before the first matched entry) is discarded.
-func parseOnionsEntries(path string) ([]onionsEntry, error) {
+func parseOnionsEntries(path string) ([]referenceEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -131,7 +93,7 @@ func parseOnionsEntries(path string) ([]onionsEntry, error) {
 	defer f.Close()
 
 	var (
-		entries     []onionsEntry
+		entries     []referenceEntry
 		curHeadword string
 		curLines    []string
 	)
@@ -142,8 +104,9 @@ func parseOnionsEntries(path string) ([]onionsEntry, error) {
 		}
 		raw := strings.TrimSpace(strings.Join(curLines, "\n"))
 		if raw != "" {
-			entries = append(entries, onionsEntry{
+			entries = append(entries, referenceEntry{
 				headword: curHeadword,
+				letter:   headwordLetter(curHeadword),
 				rawText:  raw,
 			})
 		}
@@ -208,21 +171,6 @@ func isOnionsEntryStart(line string) bool {
 		prefix = prefix[:80]
 	}
 	return strings.ContainsAny(prefix, ":(")
-}
-
-// isAllCaps returns true if all letter runes in s are uppercase.
-// Short lines that are all-uppercase are treated as section headers.
-func isAllCaps(s string) bool {
-	hasLetter := false
-	for _, r := range s {
-		if unicode.IsLetter(r) {
-			hasLetter = true
-			if unicode.IsLower(r) {
-				return false
-			}
-		}
-	}
-	return hasLetter
 }
 
 // extractOnionsHeadword returns the headword portion of an entry-start line.

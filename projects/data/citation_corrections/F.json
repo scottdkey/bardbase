@@ -1,0 +1,38 @@
+[
+  {
+    "headword": "Fancy1",
+    "raw_bibl": "III Prol. 13",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 3,
+    "scene": 0,
+    "line_number": 8,
+    "confidence": 0.3,
+    "reason": "wrong play; Ant has no prologues; 'fancy' in H5 III Chor",
+    "notes": "Fancy1 cited as Ant III Prol 13 but Ant has no prologues. H5 III Chor line 8 'Play with your fancies'. Raw bibl says 'III Prol. 13' which is H5 not Ant."
+  },
+  {
+    "headword": "Fancy",
+    "raw_bibl": "III Prol. 13",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 3,
+    "scene": 0,
+    "line_number": 8,
+    "confidence": 0.3,
+    "reason": "work_id mismatch; Ant has no prologues; 'fancy' in H5 III Chor",
+    "notes": "Fancy cited as Ant III Prol 13 but Ant has no prologues. H5 III Chor line 8 'Play with your fancies'. Raw bibl says 'III Prol. 13' which is H5 not Ant."
+  },
+  {
+    "headword": "First-born",
+    "raw_bibl": "Exodus XI, 5",
+    "work_id": 49,
+    "edition": "kjv_1611",
+    "act": 11,
+    "scene": 0,
+    "line_number": 5,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "First-born: KJV Exodus 11:5"
+  }
+]

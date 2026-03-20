@@ -60,40 +60,11 @@ func ImportHenleyFarmer(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		tx, err := database.Begin()
+		inserted, err := insertReferenceEntries(database, srcID, entries)
 		if err != nil {
-			return fmt.Errorf("beginning transaction (vol %d): %w", vol, err)
+			return fmt.Errorf("inserting Henley-Farmer vol %d: %w", vol, err)
 		}
-
-		stmt, err := tx.Prepare(`
-			INSERT OR IGNORE INTO reference_entries (source_id, headword, letter, raw_text)
-			VALUES (?, ?, ?, ?)`)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("preparing statement (vol %d): %w", vol, err)
-		}
-
-		for _, e := range entries {
-			letter := ""
-			for _, r := range e.headword {
-				if unicode.IsLetter(r) {
-					letter = strings.ToUpper(string(r))
-					break
-				}
-			}
-			if letter == "" {
-				letter = "?"
-			}
-			if _, err := stmt.Exec(srcID, e.headword, letter, e.rawText); err != nil {
-				continue
-			}
-			totalInserted++
-		}
-
-		stmt.Close()
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("committing transaction (vol %d): %w", vol, err)
-		}
+		totalInserted += inserted
 	}
 
 	elapsed := time.Since(start).Seconds()
@@ -106,18 +77,12 @@ func ImportHenleyFarmer(database *sql.DB, sourcesDir string) error {
 	return nil
 }
 
-// henleyFarmerEntry holds a parsed headword and its raw entry text.
-type henleyFarmerEntry struct {
-	headword string
-	rawText  string
-}
-
 // parseHenleyFarmerEntries reads a Henley & Farmer volume OCR text file and
 // returns only entries that contain "Shak" (Shakespeare citations).
 //
 // H&F entries start with an ALL-CAPS headword at column 0. Everything up to
 // the next all-caps headword is the entry body.
-func parseHenleyFarmerEntries(path string) ([]henleyFarmerEntry, error) {
+func parseHenleyFarmerEntries(path string) ([]referenceEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -129,7 +94,7 @@ func parseHenleyFarmerEntries(path string) ([]henleyFarmerEntry, error) {
 	scanner.Buffer(buf, len(buf))
 
 	var (
-		entries     []henleyFarmerEntry
+		entries     []referenceEntry
 		curHeadword string
 		curLines    []string
 	)
@@ -140,9 +105,11 @@ func parseHenleyFarmerEntries(path string) ([]henleyFarmerEntry, error) {
 		}
 		raw := strings.TrimSpace(strings.Join(curLines, "\n"))
 		// Only keep entries that reference Shakespeare.
+		hw := strings.ToLower(curHeadword)
 		if raw != "" && strings.Contains(strings.ToLower(raw), "shak") {
-			entries = append(entries, henleyFarmerEntry{
-				headword: strings.ToLower(curHeadword),
+			entries = append(entries, referenceEntry{
+				headword: hw,
+				letter:   headwordLetter(hw),
 				rawText:  raw,
 			})
 		}

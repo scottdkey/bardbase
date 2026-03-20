@@ -32,6 +32,7 @@ import (
 
 	"github.com/scottdkey/bardbase/projects/capell/internal/db"
 	"github.com/scottdkey/bardbase/projects/capell/internal/importer"
+	"github.com/scottdkey/bardbase/projects/capell/internal/reporoot"
 )
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 
 	// Resolve paths relative to the monorepo root.
 	// Sources live at projects/sources/, output goes to build/ at repo root.
-	repoRoot := findRepoRoot()
+	repoRoot := reporoot.Find()
 	sourcesDir := filepath.Join(repoRoot, "projects", "sources")
 	outputDir := filepath.Join(repoRoot, *output)
 	dbPath := filepath.Join(outputDir, "bardbase.db")
@@ -185,24 +186,3 @@ func main() {
 	importer.PrintSummary(database, dbPath)
 }
 
-// findRepoRoot walks up from the working directory to find the monorepo root.
-// It looks for a .git directory, which marks the top of the repository.
-// This allows the builder to resolve paths to projects/sources/ regardless
-// of whether it's invoked from the repo root or from projects/capell/.
-func findRepoRoot() string {
-	dir, _ := os.Getwd()
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-
-	// Fall back to working directory if no .git found
-	wd, _ := os.Getwd()
-	return wd
-}

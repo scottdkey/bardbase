@@ -315,7 +315,7 @@ func ResolveCitations(database *sql.DB) error {
 	fmt.Printf("  Match tasks: %d (built in %.1fs)\n", len(tasks), time.Since(start).Seconds())
 
 	// === Phase 2: Run findBestMatch in parallel (CPU-bound, no DB access) ===
-	workers := min(runtime.NumCPU(), 8)
+	workers := runtime.NumCPU()
 	if workers < 1 {
 		workers = 1
 	}
@@ -419,7 +419,7 @@ func ResolveCitations(database *sql.DB) error {
 	fallbackMatches := matchByHeadwordFallback(database)
 	totalMatches += fallbackMatches
 
-	// === Phase 7: Apply manual corrections from citation_corrections.json ===
+	// === Phase 7: Apply manual corrections from citation_corrections/*.json ===
 	manualMatches := applyManualCorrections(database)
 	totalMatches += manualMatches
 
@@ -651,7 +651,7 @@ func runHeadwordSearch(database *sql.DB, citQuery string, confidence float64, ca
 		content   string
 	}
 
-	workers := max(1, min(runtime.NumCPU(), 8))
+	workers := max(1, runtime.NumCPU())
 	taskCh := make(chan hwTask, 256)
 	resultCh := make(chan hwResult, 256)
 
@@ -734,9 +734,12 @@ func runHeadwordSearch(database *sql.DB, citQuery string, confidence float64, ca
 // making the full string unmatchable as a substring. Each non-empty fragment
 // can be tried independently as a shorter, matchable substring.
 // applyManualCorrections inserts citation matches from the manually curated
-// corrections file (projects/data/citation_corrections.json). These handle
+// corrections files (projects/data/citation_corrections/*.json). These handle
 // citations that can't be matched automatically due to spelling variants,
 // line number mismatches, or missing text in all editions.
+//
+// Citations are identified by (headword, raw_bibl) rather than database row ID,
+// making corrections stable across rebuilds.
 func applyManualCorrections(database *sql.DB) int {
 	corrections := constants.CitationCorrections
 	if len(corrections) == 0 {
@@ -753,19 +756,20 @@ func applyManualCorrections(database *sql.DB) int {
 		if c.Edition == "" || c.WorkID == nil || c.LineNumber == nil {
 			continue // no-match entry; skip
 		}
+		if c.Headword == "" || c.RawBibl == "" {
+			continue // missing lookup key
+		}
 
-		// Build WHERE clause dynamically — act and scene are optional
-		// (poetry works like sonnets and Pilgrim omit act; sonnets store
-		// sonnet number in scene).
-		where := "tl.work_id = ? AND e.short_code = ? AND tl.line_number = ?"
-		args := []any{*c.WorkID, c.Edition, *c.LineNumber}
+		// Find the target text line by semantic coordinates.
+		tlWhere := "tl.work_id = ? AND e.short_code = ? AND tl.line_number = ?"
+		tlArgs := []any{*c.WorkID, c.Edition, *c.LineNumber}
 		if c.Act != nil {
-			where += " AND tl.act = ?"
-			args = append(args, *c.Act)
+			tlWhere += " AND tl.act = ?"
+			tlArgs = append(tlArgs, *c.Act)
 		}
 		if c.Scene != nil {
-			where += " AND tl.scene = ?"
-			args = append(args, *c.Scene)
+			tlWhere += " AND tl.scene = ?"
+			tlArgs = append(tlArgs, *c.Scene)
 		}
 
 		var lineID, editionID int64
@@ -774,24 +778,41 @@ func applyManualCorrections(database *sql.DB) int {
 			`SELECT tl.id, tl.edition_id, tl.content
 			 FROM text_lines tl
 			 JOIN editions e ON e.id = tl.edition_id
-			 WHERE `+where+` LIMIT 1`, args...).Scan(&lineID, &editionID, &content)
+			 WHERE `+tlWhere+` LIMIT 1`, tlArgs...).Scan(&lineID, &editionID, &content)
 		if err != nil {
 			continue // line not found in this build
 		}
 
-		res, err := tx.Exec(`
-			INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
-			SELECT ?, ?, ?, 'manual', ?, ?
-			WHERE NOT EXISTS (
-				SELECT 1 FROM citation_matches cm
-				WHERE cm.citation_id = ? AND cm.edition_id = ?
-			)`, c.CitationID, lineID, editionID, c.Confidence, content,
-			c.CitationID, editionID)
-		if err == nil {
-			if n, _ := res.RowsAffected(); n > 0 {
-				matched++
+		// Find all citation IDs matching (headword, raw_bibl). Multiple senses
+		// of the same word may cite the same passage — correct them all.
+		rows, err := tx.Query(`
+			SELECT lc.id FROM lexicon_citations lc
+			JOIN lexicon_entries le ON le.id = lc.entry_id
+			WHERE le.key = ? AND lc.raw_bibl = ?`, c.Headword, c.RawBibl)
+		if err != nil {
+			continue
+		}
+
+		for rows.Next() {
+			var citID int64
+			if rows.Scan(&citID) != nil {
+				continue
+			}
+			res, err := tx.Exec(`
+				INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+				SELECT ?, ?, ?, 'manual', ?, ?
+				WHERE NOT EXISTS (
+					SELECT 1 FROM citation_matches cm
+					WHERE cm.citation_id = ? AND cm.edition_id = ?
+				)`, citID, lineID, editionID, c.Confidence, content,
+				citID, editionID)
+			if err == nil {
+				if n, _ := res.RowsAffected(); n > 0 {
+					matched++
+				}
 			}
 		}
+		rows.Close()
 	}
 
 	tx.Commit()

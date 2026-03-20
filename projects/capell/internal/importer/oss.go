@@ -64,13 +64,13 @@ type OSSParagraph struct {
 	LineNumber   int // computed scene-relative line number
 }
 
-// splitOSSLines splits a Moby/OSS paragraph on the `n[p]` line separator.
-// The Moby source uses `\n[p]` between verse/prose lines within a speech; the
-// SQL parser decodes MySQL `\n` escapes as the literal character 'n' (strips
-// the backslash), so `\n[p]` becomes `n[p]` in the stored string. Splitting
-// on this marker gives one entry per individual verse or prose line.
+// splitOSSLines splits a Moby/OSS paragraph on the `\n[p]` line separator.
+// The Moby source uses `\n[p]` between verse/prose lines within a speech.
+// After MySQL escape decoding, `\n` becomes a real newline character, so
+// the separator is newline + `[p]`. Any trailing newlines (from `\n` at
+// end of text without `[p]`) are also handled by TrimSpace.
 func splitOSSLines(text string) []string {
-	parts := strings.Split(text, "n[p]")
+	parts := strings.Split(text, "\n[p]")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
@@ -380,14 +380,11 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 		charDBID := charIDMap[p.CharID]
 		charName := charNameMap[p.CharID]
 
-		contentType := "speech"
-		if p.Type == "d" {
-			contentType = "stage_direction"
-		}
+		ct := contentType(p.Type == "d")
 
 		_, err := stmt.Exec(
 			dbWorkID, editionID, p.Section, p.Chapter, p.ParagraphNum, p.LineNumber,
-			nilIfZero(charDBID), nilIfEmpty(charName), p.Text, contentType,
+			nilIfZero(charDBID), nilIfEmpty(charName), p.Text, ct,
 			p.WordCount, p.ParagraphID)
 		if err != nil {
 			tx.Rollback()

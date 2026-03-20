@@ -109,8 +109,7 @@ func ImportFirstFolio(database *sql.DB, sourcesDir string) error {
 		totalPlays++
 
 		// Clear existing First Folio data for this work (idempotent).
-		database.Exec("DELETE FROM text_lines WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
-		database.Exec("DELETE FROM text_divisions WHERE work_id = ? AND edition_id = ?", work.ID, editionID)
+		clearWorkEditionData(database, work.ID, editionID)
 
 		tx, err := database.Begin()
 		if err != nil {
@@ -118,34 +117,22 @@ func ImportFirstFolio(database *sql.DB, sourcesDir string) error {
 			continue
 		}
 
-		insertStmt, err := tx.Prepare(`
-			INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
-				character_id, char_name, content, content_type, word_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		insertStmt, err := tx.Prepare(textLinesInsertSQL)
 		if err != nil {
 			tx.Rollback()
 			fmt.Printf("  ERROR preparing insert for %s: %v\n", work.Title, err)
 			continue
 		}
 
-		charCache := make(map[string]interface{})
+		charCache := make(map[string]any)
+		actScenes := make([][2]int, 0, len(playLineSlice))
 
 		for i, line := range playLineSlice {
-			var charID interface{}
 			charName := line.Character
+			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
-			if charName != "" {
-				if cached, ok := charCache[charName]; ok {
-					charID = cached
-				} else {
-					charID = lookupCharacter(database, work.ID, charName)
-					charCache[charName] = charID
-				}
-			}
-
-			ct := "speech"
+			ct := contentType(line.IsStageDirection)
 			if line.IsStageDirection {
-				ct = "stage_direction"
 				charName = ""
 			}
 
@@ -154,20 +141,12 @@ func ImportFirstFolio(database *sql.DB, sourcesDir string) error {
 				line.Act, line.Scene, i+1,
 				charID, nilIfEmpty(charName),
 				line.Text, ct, countWords(line.Text))
+
+			actScenes = append(actScenes, [2]int{line.Act, line.Scene})
 		}
 		insertStmt.Close()
 
-		// Insert text_divisions summary per scene.
-		scenes := make(map[[2]int]int)
-		for _, line := range playLineSlice {
-			key := [2]int{line.Act, line.Scene}
-			scenes[key]++
-		}
-		for key, count := range scenes {
-			tx.Exec(`INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count)
-				VALUES (?, ?, ?, ?, ?)`,
-				work.ID, editionID, key[0], key[1], count)
-		}
+		insertTextDivisions(tx, work.ID, editionID, actScenes)
 
 		if err := tx.Commit(); err != nil {
 			fmt.Printf("  ERROR committing %s: %v\n", work.Title, err)

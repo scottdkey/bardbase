@@ -1,0 +1,14 @@
+[
+  {
+    "headword": "Young",
+    "raw_bibl": "138, 5",
+    "work_id": 62,
+    "edition": "kjv_1611",
+    "act": 15,
+    "scene": 0,
+    "line_number": 12,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "Young: KJV Luke 15:12"
+  }
+]

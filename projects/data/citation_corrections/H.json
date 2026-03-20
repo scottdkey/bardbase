@@ -1,0 +1,98 @@
+[
+  {
+    "headword": "High3",
+    "raw_bibl": "Tw. I, 3, 150",
+    "work_id": 2,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 1,
+    "line_number": 212,
+    "confidence": 0.4,
+    "reason": "wrong play; As should be All's (All's Well)",
+    "notes": "High3: 'If thou proceed' in All's II,1,212. Schmidt confused As/All's."
+  },
+  {
+    "headword": "High3",
+    "raw_bibl": "Tw. I, 3, 150",
+    "work_id": 2,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 1,
+    "line_number": 212,
+    "confidence": 0.4,
+    "reason": "wrong play; As should be All's (All's Well)",
+    "notes": "High3: 'if thou proceed as h. as word' — citation says AYL II,1,213 but text is All's Well II,1,212 'Give me some help here, ho! If thou proceed'."
+  },
+  {
+    "headword": "History",
+    "raw_bibl": "H5 V Chor.",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 5,
+    "scene": 0,
+    "line_number": 2,
+    "confidence": 0.4,
+    "reason": "H5 V Chor; 'history' found as 'story' in line 2",
+    "notes": "History in H5 V Chor. Ed2 line 2 'Vouchsafe to those that have not read the story'. Schmidt may equate 'story' with 'history'."
+  },
+  {
+    "headword": "History1",
+    "raw_bibl": "H5 V Chor.",
+    "work_id": 11,
+    "edition": "se_modern",
+    "act": 5,
+    "scene": 0,
+    "line_number": 2,
+    "confidence": 0.4,
+    "reason": "H5 V Chor; 'history' found as 'story'",
+    "notes": "History1 in H5 V Chor. Ed2 line 2 'Vouchsafe to those that have not read the story'."
+  },
+  {
+    "headword": "Honey1",
+    "raw_bibl": "Gent. I, 2, 106",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 0,
+    "line_number": 21,
+    "confidence": 0.5,
+    "reason": "wrong play; Rom II,0 chorus has no 'honey'; text is Per. II Gower chorus",
+    "notes": "Honey1: 'Not to eat honey like a drone' in Per. II,0 line 21."
+  },
+  {
+    "headword": "Honey1",
+    "raw_bibl": "Gent. I, 2, 106",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 0,
+    "line_number": 21,
+    "confidence": 0.5,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "notes": "Honey1: 'Not to eat honey like a drone' in Per. II,0 line 21."
+  },
+  {
+    "headword": "High3",
+    "raw_bibl": "As II, 1, 213",
+    "work_id": 4,
+    "edition": "standalone",
+    "act": 2,
+    "scene": 1,
+    "line_number": 213,
+    "confidence": 0.5,
+    "reason": "text from Schmidt's Globe edition; not in any imported edition",
+    "notes": "High: 'If thou proceed as high as word.' Standalone passage from Schmidt."
+  },
+  {
+    "headword": "Honey1",
+    "raw_bibl": "II Prol. 18",
+    "work_id": 34,
+    "edition": "oss_globe",
+    "act": 2,
+    "scene": 5,
+    "line_number": 2,
+    "confidence": 0.6,
+    "reason": "misattributed to chorus; 'honey' appears at II,5,2",
+    "notes": "Honey: 'O honey nurse, what news?'"
+  }
+]

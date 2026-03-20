@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -80,13 +79,7 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 	}
 
 	// Collect XML files, sorted for deterministic output.
-	var xmlFiles []string
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".xml" {
-			xmlFiles = append(xmlFiles, e.Name())
-		}
-	}
-	sort.Strings(xmlFiles)
+	xmlFiles := collectXMLFiles(entries)
 
 	// === Phase 1: Parse all XML files in parallel (CPU-bound) ===
 	type parsedPlay struct {
@@ -193,10 +186,9 @@ func ImportFolger(database *sql.DB, sourcesDir string) error {
 				verseCounters[sk] = line.LineNumber
 			}
 
-			ct := "speech"
+			ct := contentType(line.IsStageDirection)
 			charName := line.Character
 			if line.IsStageDirection {
-				ct = "stage_direction"
 				charName = ""
 			}
 

@@ -1,0 +1,74 @@
+[
+  {
+    "headword": "Pronounce",
+    "raw_bibl": "Mcb. V, 3, 5",
+    "work_id": 21,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 2,
+    "line_number": 40,
+    "confidence": 0.4,
+    "reason": "scene/line mismatch; Mcb II,4 only has ~53 lines; 'pronounce' in II,2",
+    "notes": "Pronounce in Mcb. Ed2 II,2,40 'But wherefore could not I pronounce Amen?' Schmidt cites II,4,115 but that scene is too short."
+  },
+  {
+    "headword": "Pronounce",
+    "raw_bibl": "Mcb. V, 3, 5",
+    "work_id": 21,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 2,
+    "line_number": 40,
+    "confidence": 0.4,
+    "reason": "scene/line mismatch; Mcb II,4 only has 53 lines; 'pronounce' in II,2",
+    "notes": "Pronounce in Mcb. Ed2 II,2,40 'But wherefore could not I pronounce Amen?' Schmidt cites II,4,115 but that scene is too short. Different scene numbering."
+  },
+  {
+    "headword": "Punishment",
+    "raw_bibl": "Genesis III, 16",
+    "work_id": 44,
+    "edition": "kjv_1611",
+    "act": 3,
+    "scene": 0,
+    "line_number": 16,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "Punishment: KJV Genesis 3:16"
+  },
+  {
+    "headword": "Philip",
+    "raw_bibl": "Acts of the Apostles XXI, 9",
+    "work_id": 46,
+    "edition": "kjv_1611",
+    "act": 21,
+    "scene": 0,
+    "line_number": 9,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "Philip: KJV Acts 21:9"
+  },
+  {
+    "headword": "Pronounce",
+    "raw_bibl": "II, 4, 115",
+    "work_id": 21,
+    "edition": "standalone",
+    "act": 2,
+    "scene": 4,
+    "line_number": 115,
+    "confidence": 0.5,
+    "reason": "text from Schmidt's Globe edition; not in any imported edition",
+    "notes": "Pronounce: 'As 't please yourself pronounce their office.' Standalone passage from Schmidt."
+  },
+  {
+    "headword": "Postscript",
+    "raw_bibl": "Lr. I, 2, --",
+    "work_id": 18,
+    "edition": "standalone",
+    "act": 1,
+    "scene": 2,
+    "line_number": 1,
+    "confidence": 0.3,
+    "reason": "Schmidt cites concept without line number; standalone placeholder",
+    "notes": "Postscript: concept reference from Lr. I,2 letter scene."
+  }
+]

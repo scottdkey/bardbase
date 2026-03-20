@@ -180,7 +180,7 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 
 		clearWorkEditionData(database, play.work.ID, editionID)
 
-		charCache := make(map[string]interface{})
+		charCache := make(map[string]any)
 		tx, _ := database.Begin()
 		insertStmt, _ := tx.Prepare(`
 			INSERT INTO text_lines (work_id, edition_id, act, scene, paragraph_num, line_number,
@@ -191,9 +191,8 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 			charName := line.Character
 			charID := cachedLookupCharacter(database, play.work.ID, charName, charCache)
 
-			ct := "speech"
+			ct := contentType(line.IsStageDirection)
 			if line.IsStageDirection {
-				ct = "stage_direction"
 				charName = ""
 			}
 
@@ -204,15 +203,11 @@ func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error 
 		insertStmt.Close()
 
 		// Insert divisions
-		scenes := make(map[[2]int]int)
+		actScenes := make([][2]int, 0, len(play.lines))
 		for _, line := range play.lines {
-			key := [2]int{line.Act, line.Scene}
-			scenes[key]++
+			actScenes = append(actScenes, [2]int{line.Act, line.Scene})
 		}
-		for key, count := range scenes {
-			tx.Exec("INSERT OR IGNORE INTO text_divisions (work_id, edition_id, act, scene, line_count) VALUES (?, ?, ?, ?, ?)",
-				play.work.ID, editionID, key[0], key[1], count)
-		}
+		insertTextDivisions(tx, play.work.ID, editionID, actScenes)
 
 		tx.Commit()
 		totalLines += len(play.lines)

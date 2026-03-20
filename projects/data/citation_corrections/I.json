@@ -1,0 +1,62 @@
+[
+  {
+    "headword": "I-wis",
+    "raw_bibl": "Merch. II, 9, 68",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 0,
+    "line_number": 3,
+    "confidence": 0.5,
+    "reason": "phantom prologue; actually Per. II Gower chorus",
+    "notes": "I-wis: 'His child, I wis, to incest bring' in Per. II,0 line 3."
+  },
+  {
+    "headword": "I-wis",
+    "raw_bibl": "Merch. II, 9, 68",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 0,
+    "line_number": 3,
+    "confidence": 0.5,
+    "reason": "wrong play; R3 II,0 does not exist; actually Per. II Gower chorus",
+    "notes": "I-wis: 'His child, I wis, to incest bring' in Per. II,0 line 3."
+  },
+  {
+    "headword": "Ill-ta'en",
+    "raw_bibl": "Wint. II, 1, 17",
+    "work_id": 43,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 2,
+    "line_number": 542,
+    "confidence": 0.85,
+    "reason": "act/scene mismatch; Schmidt II,1,17 → OSS I,2,542",
+    "notes": "Ill-ta'en: 'Of his ill-ta'en suspicion! Come, Camillo'"
+  },
+  {
+    "headword": "I-wis",
+    "raw_bibl": "II Prol. 2",
+    "work_id": 33,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 3,
+    "line_number": 106,
+    "confidence": 0.6,
+    "reason": "R3 has no prologue; 'I wis' found at R3 I,3,106",
+    "notes": "I-wis: 'I wis your grandam had a worser match'"
+  },
+  {
+    "headword": "Inscription",
+    "raw_bibl": "Tim. V, 4, 67",
+    "work_id": 38,
+    "edition": "oss_globe",
+    "act": 5,
+    "scene": 4,
+    "line_number": 83,
+    "confidence": 0.7,
+    "reason": "line mismatch; Schmidt V,4,67 → OSS V,4,83; 'insculpture' = 'inscription'",
+    "notes": "Inscription: 'And on his grave-stone this insculpture, which'"
+  }
+]

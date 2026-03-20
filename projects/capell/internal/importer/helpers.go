@@ -6,9 +6,13 @@ package importer
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // stepBanner prints a formatted step header for pipeline progress output.
@@ -33,7 +37,7 @@ func printBar() {
 
 // nilIfEmpty returns nil if s is empty, otherwise returns s.
 // Used when inserting optional TEXT columns that should be NULL not "".
-func nilIfEmpty(s string) interface{} {
+func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil
 	}
@@ -42,7 +46,7 @@ func nilIfEmpty(s string) interface{} {
 
 // nilIfZero returns nil if n is zero, otherwise returns n.
 // Used when inserting optional INTEGER columns that should be NULL not 0.
-func nilIfZero(n int64) interface{} {
+func nilIfZero(n int64) any {
 	if n == 0 {
 		return nil
 	}
@@ -61,7 +65,7 @@ func boolToInt(b bool) int {
 
 // lookupCharacter resolves a character name (or abbreviation) to its DB id
 // for the given work. Returns nil when not found.
-func lookupCharacter(database *sql.DB, workID int64, charName string) interface{} {
+func lookupCharacter(database *sql.DB, workID int64, charName string) any {
 	var id int64
 	err := database.QueryRow(
 		"SELECT id FROM characters WHERE work_id = ? AND UPPER(name) = UPPER(?)",
@@ -93,18 +97,27 @@ type workInfo struct {
 // buildWorksMap queries the works table and returns a map from oss_id → workInfo.
 // Used by multiple importers that need to match source records to DB works by oss_id.
 func buildWorksMap(database *sql.DB) (map[string]workInfo, error) {
-	rows, err := database.Query("SELECT id, oss_id, title FROM works")
+	return buildWorksMapByColumn(database, "oss_id")
+}
+
+// buildWorksMapByColumn queries the works table and returns a map from the
+// specified column → workInfo. Rows with NULL or empty values are skipped.
+func buildWorksMapByColumn(database *sql.DB, keyColumn string) (map[string]workInfo, error) {
+	query := fmt.Sprintf(
+		"SELECT id, %s, title FROM works WHERE %s IS NOT NULL AND %s != ''",
+		keyColumn, keyColumn, keyColumn)
+	rows, err := database.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("querying works: %w", err)
+		return nil, fmt.Errorf("querying works by %s: %w", keyColumn, err)
 	}
 	defer rows.Close()
 
 	m := make(map[string]workInfo)
 	for rows.Next() {
 		var id int64
-		var ossID, title string
-		rows.Scan(&id, &ossID, &title)
-		m[ossID] = workInfo{ID: id, Title: title}
+		var key, title string
+		rows.Scan(&id, &key, &title)
+		m[key] = workInfo{ID: id, Title: title}
 	}
 	return m, nil
 }
@@ -148,6 +161,27 @@ func parallelProcess[I, O any](items []I, fn func(I) O) []O {
 
 // ─── Text-line helpers ───────────────────────────────────────────────────────
 
+// contentType returns the text_lines content_type for a line.
+// Stage directions return "stage_direction"; all other lines return "speech".
+func contentType(isStageDirection bool) string {
+	if isStageDirection {
+		return "stage_direction"
+	}
+	return "speech"
+}
+
+// collectXMLFiles returns sorted .xml filenames from a directory listing.
+func collectXMLFiles(entries []os.DirEntry) []string {
+	var files []string
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".xml" {
+			files = append(files, e.Name())
+		}
+	}
+	sort.Strings(files)
+	return files
+}
+
 // textLinesInsertSQL is the shared INSERT statement used by all play importers.
 const textLinesInsertSQL = `
 	INSERT INTO text_lines (work_id, edition_id, act, scene, line_number,
@@ -179,7 +213,7 @@ func clearWorkEditionData(database *sql.DB, workID, editionID int64) {
 // cachedLookupCharacter resolves a character name to its DB id, caching the
 // result in cache to avoid redundant queries within a single import loop.
 // Returns nil when charName is empty or the character is not found.
-func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cache map[string]interface{}) interface{} {
+func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cache map[string]any) any {
 	if charName == "" {
 		return nil
 	}
@@ -191,10 +225,80 @@ func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cach
 	return id
 }
 
+// ─── Reference-entry helpers ────────────────────────────────────────────────
+
+// referenceEntry holds a parsed headword, letter category, and raw text for
+// any reference source (Abbott, Bartlett, Henley-Farmer, Onions).
+type referenceEntry struct {
+	headword string
+	letter   string
+	rawText  string
+}
+
+// headwordLetter returns the uppercase first letter of hw, or "?" if hw
+// contains no letters. Used to categorise reference entries by letter.
+func headwordLetter(hw string) string {
+	for _, r := range hw {
+		if unicode.IsLetter(r) {
+			return strings.ToUpper(string(r))
+		}
+	}
+	return "?"
+}
+
+// isAllCaps returns true if all letter runes in s are uppercase.
+// Short lines that are all-uppercase are treated as section headers.
+func isAllCaps(s string) bool {
+	hasLetter := false
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			if unicode.IsLower(r) {
+				return false
+			}
+		}
+	}
+	return hasLetter
+}
+
+// insertReferenceEntries bulk-inserts reference entries into the
+// reference_entries table within a single transaction. Returns the number
+// of rows inserted.
+func insertReferenceEntries(database *sql.DB, srcID int64, entries []referenceEntry) (int, error) {
+	tx, err := database.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO reference_entries (source_id, headword, letter, raw_text)
+		VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return 0, fmt.Errorf("preparing statement: %w", err)
+	}
+	defer stmt.Close()
+
+	inserted := 0
+	for _, e := range entries {
+		if _, err := stmt.Exec(srcID, e.headword, e.letter, e.rawText); err != nil {
+			continue
+		}
+		inserted++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing transaction: %w", err)
+	}
+	return inserted, nil
+}
+
+// ─── Text-line query helpers ────────────────────────────────────────────────
+
 // loadTextLinesAll is like loadTextLines but does NOT filter out rows with
 // NULL line_number. Used for headword search in prologue/chorus scenes where
 // Perseus stores content without Globe line numbers.
-func loadTextLinesAll(database *sql.DB, where string, args ...interface{}) ([]textLineRow, error) {
+func loadTextLinesAll(database *sql.DB, where string, args ...any) ([]textLineRow, error) {
 	query := fmt.Sprintf(
 		`SELECT id, content, COALESCE(line_number, 0), edition_id
 		 FROM text_lines
@@ -227,7 +331,7 @@ func loadTextLinesAll(database *sql.DB, where string, args ...interface{}) ([]te
 // Example:
 //
 //	lines, err := loadTextLines(db, "work_id = ? AND act = ? AND scene = ?", workID, act, scene)
-func loadTextLines(database *sql.DB, where string, args ...interface{}) ([]textLineRow, error) {
+func loadTextLines(database *sql.DB, where string, args ...any) ([]textLineRow, error) {
 	query := fmt.Sprintf(
 		`SELECT id, content, COALESCE(line_number, 0), edition_id
 		 FROM text_lines

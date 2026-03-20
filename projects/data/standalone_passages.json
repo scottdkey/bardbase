@@ -197,6 +197,87 @@
       "line_number": 12,
       "content": "And the younger of them said to his father, Father, give me the portion of goods that falleth to me. And he divided unto them his living.",
       "content_type": "verse"
+    },
+    {
+      "work_id": 18,
+      "edition": "standalone",
+      "act": 3,
+      "scene": 2,
+      "line_number": 164,
+      "content": "As he stooped to take it up.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 33,
+      "edition": "standalone",
+      "act": 3,
+      "scene": 3,
+      "line_number": 37,
+      "content": "Sends allegiance to his royal person.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 21,
+      "edition": "standalone",
+      "act": 2,
+      "scene": 4,
+      "line_number": 115,
+      "content": "As 't please yourself pronounce their office.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 4,
+      "edition": "standalone",
+      "act": 2,
+      "scene": 1,
+      "line_number": 213,
+      "content": "If thou proceed as high as word.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 21,
+      "edition": "standalone",
+      "act": 1,
+      "scene": 3,
+      "line_number": 133,
+      "content": "New-ta'en.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 4,
+      "edition": "standalone",
+      "act": 4,
+      "scene": 2,
+      "line_number": 73,
+      "content": "Travelling some journey.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 18,
+      "edition": "standalone",
+      "act": 1,
+      "scene": 2,
+      "line_number": 1,
+      "content": "Postscript.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 11,
+      "edition": "standalone",
+      "act": 5,
+      "scene": 0,
+      "line_number": 1,
+      "content": "Doing.",
+      "content_type": "speech"
+    },
+    {
+      "work_id": 18,
+      "edition": "standalone",
+      "act": 5,
+      "scene": 2,
+      "line_number": 20,
+      "content": "Obedient to their dooms.",
+      "content_type": "speech"
     }
   ]
 }

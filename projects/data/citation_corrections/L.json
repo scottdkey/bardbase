@@ -1,0 +1,86 @@
+[
+  {
+    "headword": "Lie",
+    "raw_bibl": "V, 2, 144",
+    "work_id": 36,
+    "edition": "oss_globe",
+    "act": 0,
+    "scene": 2,
+    "line_number": 83,
+    "confidence": 0.4,
+    "reason": "Shr Induction; only edition 1 has act=0 mapping",
+    "notes": "Lie in Shr Ind.2,86. Ed1 act=0,scene=2,line 83 'For though you lay here in this goodly chamber'."
+  },
+  {
+    "headword": "Life",
+    "raw_bibl": "Tp. I, 2, 267",
+    "work_id": 13,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 5,
+    "line_number": 21,
+    "confidence": 0.4,
+    "reason": "work_id mismatch; text is in H6B not H6C",
+    "notes": "Life in H6C II,4,18 but 'stir not, for your lives' found in H6B II,5,21. Citation says H6C (work 14) but text is H6B."
+  },
+  {
+    "headword": "Life",
+    "raw_bibl": "Tp. I, 2, 267",
+    "work_id": 13,
+    "edition": "se_modern",
+    "act": 2,
+    "scene": 5,
+    "line_number": 21,
+    "confidence": 0.4,
+    "reason": "wrong play and scene; H6C II,4 should be H6B II,5",
+    "notes": "Life: 'stir not, for your lives' in H6B II,5,21. Citation says H6C (work 14) II,4,18."
+  },
+  {
+    "headword": "Locusts",
+    "raw_bibl": "Matthew III, 4",
+    "work_id": 53,
+    "edition": "kjv_1611",
+    "act": 3,
+    "scene": 0,
+    "line_number": 4,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "Locusts: KJV Matthew 3:4"
+  },
+  {
+    "headword": "Lazarus",
+    "raw_bibl": "Luke XVI, 20",
+    "work_id": 62,
+    "edition": "kjv_1611",
+    "act": 16,
+    "scene": 0,
+    "line_number": 20,
+    "confidence": 0.9,
+    "reason": "standalone passage added for non-Shakespeare work",
+    "notes": "Lazarus: KJV Luke 16:20"
+  },
+  {
+    "headword": "Life",
+    "raw_bibl": "H6C II, 4, 18",
+    "work_id": 13,
+    "edition": "oss_globe",
+    "act": 2,
+    "scene": 4,
+    "line_number": 24,
+    "confidence": 0.8,
+    "reason": "wrong play; text is in H6B II,4,24 not H6C",
+    "notes": "Life: 'No, stir not, for your lives; let her pass by' in H6B."
+  },
+  {
+    "headword": "Lombard",
+    "raw_bibl": "H4B I, 1, --",
+    "work_id": 10,
+    "edition": "first_folio",
+    "act": 2,
+    "scene": 1,
+    "line_number": 434,
+    "confidence": 0.7,
+    "reason": "only in First Folio; modern editions removed 'Lombard'. Folio II,1,434 'Lombardstreet'",
+    "notes": "Lombard: 'indited to dinner to the Lubbars head in Lombardstreet' (Folio only)."
+  }
+]

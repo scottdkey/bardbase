@@ -1,0 +1,74 @@
+[
+  {
+    "headword": "Vary2",
+    "raw_bibl": "Tit. III, 1, 86",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 3,
+    "scene": 0,
+    "line_number": 50,
+    "confidence": 0.4,
+    "reason": "phantom prologue; actually Per. III Gower chorus",
+    "notes": "Vary2: 'Varies again; the grisly north' in Per. III,0 line 50."
+  },
+  {
+    "headword": "Vary2",
+    "raw_bibl": "Tit. III, 1, 86",
+    "work_id": 29,
+    "edition": "se_modern",
+    "act": 3,
+    "scene": 0,
+    "line_number": 50,
+    "confidence": 0.4,
+    "reason": "wrong play; H4A III,0 does not exist; actually Per. III Gower chorus",
+    "notes": "Vary2: 'Varies again; the grisly north' in Per. III,0 line 50."
+  },
+  {
+    "headword": "Very1",
+    "raw_bibl": "Ado IV, 1, 188",
+    "work_id": 41,
+    "edition": "se_modern",
+    "act": 4,
+    "scene": 2,
+    "line_number": 60,
+    "confidence": 0.5,
+    "reason": "wrong play; Merch. should be Gent.",
+    "notes": "Very1: 'he grieves my very heart-strings' in Gent. IV,2,60."
+  },
+  {
+    "headword": "Very1",
+    "raw_bibl": "Ado IV, 1, 188",
+    "work_id": 41,
+    "edition": "se_modern",
+    "act": 4,
+    "scene": 2,
+    "line_number": 60,
+    "confidence": 0.5,
+    "reason": "wrong play; Merch. should be Gent.",
+    "notes": "Very1: 'he grieves my very heart-strings' in Gent. IV,2,60. Citation says Merch 4.2.62."
+  },
+  {
+    "headword": "Vary2",
+    "raw_bibl": "III Prol. 47",
+    "work_id": 29,
+    "edition": "oss_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 58,
+    "confidence": 0.7,
+    "reason": "wrong play; 'varies' found in Pericles III Prol. 58",
+    "notes": "Vary: 'Varies again; the grisly north' in Pericles III Chorus."
+  },
+  {
+    "headword": "Very1",
+    "raw_bibl": "IV, 2, 62",
+    "work_id": 41,
+    "edition": "se_modern",
+    "act": 4,
+    "scene": 2,
+    "line_number": 60,
+    "confidence": 0.9,
+    "reason": "wrong play; text is in Two Gentlemen of Verona IV,2,60 not Merchant of Venice",
+    "notes": "Very: 'Not so; but yet so false that he grieves my very heart-strings' in Gent. IV,2,60."
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "headword": "Godfather",
+    "raw_bibl": "Per. V Prol.",
+    "work_id": 42,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 0,
+    "line_number": 14,
+    "confidence": 0.5,
+    "reason": "wrong play; Per V Prol has no 'godfather'; text is in Venus and Adonis dedication",
+    "notes": "Godfather: Ven. dedication 'sorry it had so noble a god-father'. Schmidt raw text: 'Ven. Dedic. Per. V Prol. LLL I, 1, 88'. Parser created spurious Per. V Prol. citation."
+  },
+  {
+    "headword": "Gimmal",
+    "raw_bibl": "Edward III I, 2, 29",
+    "confidence": 0.0,
+    "reason": "Edward III: text not available in any imported source",
+    "notes": "Gimmal: Edward III I,2,29. Play not included in OSS or other imported sources."
+  }
+]

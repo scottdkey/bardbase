@@ -1,0 +1,74 @@
+[
+  {
+    "headword": "Eche",
+    "raw_bibl": "H5 III Chor.",
+    "work_id": 11,
+    "edition": "perseus_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 35,
+    "confidence": 0.5,
+    "reason": "H5 III Chor; 'eche' found as 'eke' in last line",
+    "notes": "Eche in H5 III Chor. Ed3 line 35 'And eke out our performance with your mind.' Schmidt says line 13 but this is the last line of the chorus."
+  },
+  {
+    "headword": "Eche",
+    "raw_bibl": "H5 III Chor.",
+    "work_id": 11,
+    "edition": "perseus_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 35,
+    "confidence": 0.5,
+    "reason": "H5 III Chor; 'eche' found as 'eke' in last line",
+    "notes": "Eche in H5 III Chor. Ed3 line 35 'And eke out our performance with your mind.'"
+  },
+  {
+    "headword": "Entertain",
+    "raw_bibl": "In II, 3, 64",
+    "work_id": 31,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 2,
+    "line_number": 596,
+    "confidence": 0.4,
+    "reason": "Lucrece mapping; 'In' prefix in bibl means Lucrece internal poem section",
+    "notes": "Entertain in Lucrece. Ed1 I,2,596 'In Tarquin's likeness I did entertain thee'. Raw bibl 'In II, 3, 64' refers to stanza numbering."
+  },
+  {
+    "headword": "Entertain",
+    "raw_bibl": "Per. I, 1, 119",
+    "work_id": 31,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 2,
+    "line_number": 596,
+    "confidence": 0.5,
+    "reason": "same Lucrece reference as 58395 with quote text",
+    "notes": "Entertain in Lucrece. Ed1 I,2,596 'In Tarquin's likeness I did entertain thee'. Quote matches exactly."
+  },
+  {
+    "headword": "Extreme",
+    "raw_bibl": "Appendix I, 1",
+    "work_id": 36,
+    "edition": "first_folio",
+    "act": 1,
+    "scene": 1,
+    "line_number": 138,
+    "confidence": 0.4,
+    "reason": "Shr Induction line numbering issue; text found in Folio edition",
+    "notes": "Extreme in Shr Ind.1,138. Folio ed4 I,1,138 'May well abate the ouer-merrie spleene'. Quote 'overmerry spleen' matches. Induction mapped differently across editions."
+  },
+  {
+    "headword": "Eche",
+    "raw_bibl": "III Prol. 13",
+    "work_id": 11,
+    "edition": "oss_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 37,
+    "confidence": 0.9,
+    "reason": "H5 III Chorus; archaic 'eche' = modern 'eke'",
+    "notes": "Eche: 'And eke out our performance with your mind'"
+  }
+]

@@ -19,3 +19,5 @@ CREATE TABLE IF NOT EXISTS line_mappings (
 );
 CREATE INDEX IF NOT EXISTS idx_line_mappings_scene ON line_mappings(work_id, act, scene);
 CREATE INDEX IF NOT EXISTS idx_line_mappings_cursor ON line_mappings(work_id, act, scene, id);
+CREATE INDEX IF NOT EXISTS idx_line_mappings_line_a ON line_mappings(line_a_id) WHERE line_a_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_line_mappings_line_b ON line_mappings(line_b_id) WHERE line_b_id IS NOT NULL;

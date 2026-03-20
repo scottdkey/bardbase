@@ -1,0 +1,62 @@
+[
+  {
+    "headword": "Car",
+    "raw_bibl": "Mids. I, 2, 37",
+    "work_id": 15,
+    "edition": "se_modern",
+    "act": 1,
+    "scene": 1,
+    "line_number": 258,
+    "confidence": 0.4,
+    "reason": "work_id mismatch; 'John de la Car' is in H8 not Tw",
+    "notes": "Car in H8 I,1,258. Ed2 line 258 'Of the duke's confessor, John de la Car'. Citation says Tw (work 1) I,1,218."
+  },
+  {
+    "headword": "Car",
+    "raw_bibl": "Mids. I, 2, 37",
+    "work_id": 15,
+    "edition": "se_modern",
+    "act": 1,
+    "scene": 1,
+    "line_number": 258,
+    "confidence": 0.4,
+    "reason": "work_id mismatch; 'John de la Car' is in H8 not Tw",
+    "notes": "Car in H8 I,1,258 (work 15). Ed2 line 258 'Of the duke's confessor, John de la Car'. Citation says Tw (work 1) I,1,218."
+  },
+  {
+    "headword": "Cat-o'-mountain",
+    "raw_bibl": "Tp. IV, 1, 264",
+    "work_id": 37,
+    "edition": "oss_globe",
+    "act": 4,
+    "scene": 1,
+    "line_number": 309,
+    "confidence": 0.85,
+    "reason": "line number mismatch; Schmidt IV,1,264 → OSS IV,1,309",
+    "notes": "Cat-o'-mountain: 'Than pard or cat o' mountain'"
+  },
+  {
+    "headword": "Cat-o'-mountain",
+    "raw_bibl": "Wiv. II, 2, 27",
+    "work_id": 24,
+    "edition": "oss_globe",
+    "act": 2,
+    "scene": 2,
+    "line_number": 26,
+    "confidence": 0.9,
+    "reason": "line number mismatch; Schmidt II,2,27 → OSS II,2,26",
+    "notes": "Cat-o'-mountain: 'your rags, your cat-a-mountain'"
+  },
+  {
+    "headword": "Car2",
+    "raw_bibl": "I, 1, 218",
+    "work_id": 15,
+    "edition": "oss_globe",
+    "act": 1,
+    "scene": 1,
+    "line_number": 267,
+    "confidence": 0.8,
+    "reason": "wrong play; 'John de la Car' is in H8 I,1,267 not Tw I,1,218",
+    "notes": "Car: 'Of the duke's confessor, John de la Car' in Henry VIII."
+  }
+]

@@ -175,17 +175,32 @@ func BuildLineMappings(database *sql.DB) error {
 		tasks = append(tasks, loadAlignTasksFromCache(lineCache, workTypes, pair)...)
 	}
 
-	fmt.Printf("  Alignment tasks: %d (loading done in %.1fs)\n",
-		len(tasks), time.Since(start).Seconds())
+	// Report task size distribution
+	var bigTasks int
+	for _, t := range tasks {
+		cells := int64(len(t.aLines)) * int64(len(t.bLines))
+		if cells > 100_000 {
+			bigTasks++
+		}
+	}
+	fmt.Printf("  Alignment tasks: %d (%d large) (loading done in %.1fs)\n",
+		len(tasks), bigTasks, time.Since(start).Seconds())
 
 	// Phase 2: Run alignments in parallel (CPU-bound, no DB access).
-	workers := min(runtime.NumCPU(), 8)
+	workers := runtime.NumCPU()
 	if workers < 1 {
 		workers = 1
 	}
 
+	// Sort tasks largest-first so big tasks start early and don't become tail latency.
+	sort.Slice(tasks, func(i, j int) bool {
+		sizeI := int64(len(tasks[i].aLines)) * int64(len(tasks[i].bLines))
+		sizeJ := int64(len(tasks[j].aLines)) * int64(len(tasks[j].bLines))
+		return sizeI > sizeJ
+	})
+
 	taskCh := make(chan alignTask, len(tasks))
-	resultCh := make(chan alignResult, len(tasks))
+	resultCh := make(chan alignResult, 256) // small buffer to reduce memory pressure
 
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
@@ -274,8 +289,8 @@ func BuildLineMappings(database *sql.DB) error {
 			totalStats.onlyA, totalStats.onlyB),
 		totalStats.total, elapsed)
 
-	fmt.Printf("  ✓ %d alignment pairs across %d works in %.1fs (%d workers)\n",
-		totalStats.total, len(worksProcessed), elapsed, workers)
+	fmt.Printf("  ✓ %d alignment pairs across %d works in %.1fs (%d workers, %d CPUs)\n",
+		totalStats.total, len(worksProcessed), elapsed, workers, runtime.NumCPU())
 	fmt.Printf("    aligned: %d, modified: %d, only_a: %d, only_b: %d\n",
 		totalStats.aligned, totalStats.modified, totalStats.onlyA, totalStats.onlyB)
 	return nil
