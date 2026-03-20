@@ -1,10 +1,10 @@
 import { getDb } from '$lib/server/db';
-import { getWorkList, getStats } from '$lib/server/queries';
+import { getLexiconLetters, getLexiconEntriesPage } from '$lib/server/queries';
 
 export function load() {
 	const db = getDb();
 	return {
-		works: getWorkList(db),
-		stats: getStats(db)
+		letters: getLexiconLetters(db),
+		entries: getLexiconEntriesPage(db, 'A', 0, 50)
 	};
 }

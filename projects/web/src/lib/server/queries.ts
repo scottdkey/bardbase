@@ -4,7 +4,7 @@
  * usable in any server context without coupling to the singleton in db.ts.
  */
 import type Database from 'better-sqlite3';
-import type { Works, Characters, Editions, TextLines, LexiconEntries } from '$lib/generated/db';
+import type { Works, Characters, Editions, TextLines, LexiconEntries, LexiconSenses, LexiconCitations } from '$lib/generated/db';
 
 // ─── Convenience re-exports (singular aliases for route ergonomics) ───────────
 export type Work = Works;
@@ -117,23 +117,89 @@ export function getLexiconLetters(db: Database.Database): { letter: string; coun
 		.all() as { letter: string; count: number }[];
 }
 
-export function getLexiconEntries(
+export interface LexiconListItem {
+	id: number;
+	key: string;
+	orthography: string | null;
+}
+
+export function getLexiconEntriesPage(
 	db: Database.Database,
 	letter: string,
-	limit = 100
-): Pick<LexiconEntries, 'id' | 'key' | 'letter' | 'orthography' | 'full_text'>[] {
+	offset: number,
+	limit: number
+): LexiconListItem[] {
 	return db
 		.prepare(
-			`SELECT id, key, letter, orthography, full_text
+			`SELECT id, key, orthography
        FROM lexicon_entries
        WHERE letter = ?
        ORDER BY key
-       LIMIT ?`
+       LIMIT ? OFFSET ?`
 		)
-		.all(letter, limit) as Pick<
-		LexiconEntries,
-		'id' | 'key' | 'letter' | 'orthography' | 'full_text'
-	>[];
+		.all(letter, limit, offset) as LexiconListItem[];
+}
+
+export interface LexiconCitationDetail {
+	id: number;
+	sense_id: number | null;
+	work_id: number | null;
+	work_abbrev: string | null;
+	work_title: string | null;
+	act: number | null;
+	scene: number | null;
+	line: number | null;
+	quote_text: string | null;
+	display_text: string | null;
+	raw_bibl: string | null;
+}
+
+export interface LexiconSenseDetail {
+	id: number;
+	sense_number: number;
+	definition_text: string | null;
+}
+
+export interface LexiconEntryDetail {
+	id: number;
+	key: string;
+	orthography: string | null;
+	entry_type: string | null;
+	full_text: string | null;
+	senses: LexiconSenseDetail[];
+	citations: LexiconCitationDetail[];
+}
+
+export function getLexiconEntryFull(db: Database.Database, id: number): LexiconEntryDetail | null {
+	const entry = db
+		.prepare('SELECT id, key, orthography, entry_type, full_text FROM lexicon_entries WHERE id = ?')
+		.get(id) as Pick<LexiconEntries, 'id' | 'key' | 'orthography' | 'entry_type' | 'full_text'> | undefined;
+
+	if (!entry) return null;
+
+	const senses = db
+		.prepare(
+			`SELECT id, sense_number, definition_text
+       FROM lexicon_senses
+       WHERE entry_id = ?
+       ORDER BY sense_number`
+		)
+		.all(id) as LexiconSenseDetail[];
+
+	const citations = db
+		.prepare(
+			`SELECT lc.id, lc.sense_id, lc.work_id, lc.work_abbrev,
+              w.title AS work_title,
+              lc.act, lc.scene, lc.line,
+              lc.quote_text, lc.display_text, lc.raw_bibl
+       FROM lexicon_citations lc
+       LEFT JOIN works w ON w.id = lc.work_id
+       WHERE lc.entry_id = ?
+       ORDER BY w.title, lc.act, lc.scene, lc.line`
+		)
+		.all(id) as LexiconCitationDetail[];
+
+	return { ...entry, senses, citations };
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

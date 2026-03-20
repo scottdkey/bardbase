@@ -46,6 +46,10 @@ jobs:
           done
           go run ./cmd/build -output build $EXCLUDE_FLAG
 
+      - name: Run tests
+        working-directory: projects/capell
+        run: go test ./... -v
+
       - name: Generate build info
         id: info
         run: |
@@ -74,8 +78,17 @@ jobs:
         if: inputs.release == true
         env:
           GH_TOKEN: ${{ github.token }}
+          EXCLUDED: ${{ inputs.exclude_sources != '' && format('`{0}`', inputs.exclude_sources) || 'None' }}
         run: |
           VERSION="${{ steps.info.outputs.version }}"
+
+          BODY=$(cat <<'HEREDOC_END'
+          ## Bardbase Database Build
+
+          | Metric | Count |
+          |--------|-------|
+          HEREDOC_END
+          )
 
           BODY="## Bardbase Database Build
 
@@ -93,7 +106,7 @@ jobs:
           - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
 
           ### Excluded sources
-          ${{ inputs.exclude_sources != '' && format('`{0}`', inputs.exclude_sources) || 'None' }}
+          ${EXCLUDED}
 
           ### Usage
           \`\`\`bash

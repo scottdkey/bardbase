@@ -1,2 +1,2 @@
-// Enable static prerendering for all pages by default
-export const prerender = true;
+export const prerender = false;
+export const ssr = true;
