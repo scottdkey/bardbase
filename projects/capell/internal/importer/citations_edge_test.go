@@ -86,7 +86,7 @@ func TestResolveCitations_NoTextLinesForWork(t *testing.T) {
 	}
 	workID, _ := res.LastInsertId()
 
-	res, err = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('test','T','<xml/>')`)
+	res, err = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('test','T')`)
 	if err != nil {
 		t.Fatalf("insert entry: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestResolveCitations_DuplicateCitations(t *testing.T) {
 	database.Exec(`INSERT INTO text_lines (work_id, edition_id, act, scene, line_number, content)
 		VALUES (?, ?, 3, 1, 56, 'To be, or not to be, that is the question')`, workID, ossEdID)
 
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('Be','B','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('Be','B')`)
 	entryID, _ := res.LastInsertId()
 
 	// Two identical citations pointing to the same location
@@ -151,7 +151,7 @@ func TestResolveCitations_BelowFuzzyThreshold(t *testing.T) {
 	database.Exec(`INSERT INTO text_lines (work_id, edition_id, act, scene, line_number, content)
 		VALUES (?, ?, 1, 1, 1, 'The trumpets sound and cannons fire loudly')`, workID, ossEdID)
 
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('xyz','X','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('xyz','X')`)
 	entryID, _ := res.LastInsertId()
 
 	// Citation with quote that has zero word overlap with the line
@@ -180,7 +180,7 @@ func TestResolveCitations_NoQuoteNoLine(t *testing.T) {
 	database.Exec(`INSERT INTO text_lines (work_id, edition_id, act, scene, line_number, content)
 		VALUES (?, ?, 3, 1, 1, 'To be, or not to be')`, workID, ossEdID)
 
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('test','T','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('test','T')`)
 	entryID, _ := res.LastInsertId()
 
 	// Citation has act and scene but NO line number and NO quote text
@@ -210,9 +210,9 @@ func TestResolveCitations_MultipleCitationsSameLine(t *testing.T) {
 		VALUES (?, ?, 3, 1, 56, 'To be, or not to be, that is the question')`, workID, ossEdID)
 
 	// Two different entries both cite the same line
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('Be','B','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('Be','B')`)
 	entry1, _ := res.LastInsertId()
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('Question','Q','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('Question','Q')`)
 	entry2, _ := res.LastInsertId()
 
 	database.Exec(`INSERT INTO lexicon_citations (entry_id, work_id, act, scene, line, quote_text, raw_bibl)
@@ -254,7 +254,7 @@ func TestResolveCitations_Idempotent(t *testing.T) {
 	database.Exec(`INSERT INTO text_lines (work_id, edition_id, act, scene, line_number, content)
 		VALUES (?, ?, 3, 1, 56, 'To be, or not to be, that is the question')`, workID, ossEdID)
 
-	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter, raw_xml) VALUES ('Be','B','<xml/>')`)
+	res, _ = database.Exec(`INSERT INTO lexicon_entries (key, letter) VALUES ('Be','B')`)
 	entryID, _ := res.LastInsertId()
 	database.Exec(`INSERT INTO lexicon_citations (entry_id, work_id, act, scene, line, quote_text, raw_bibl)
 		VALUES (?, ?, 3, 1, 56, 'to be', 'Ham. III, 1, 56')`, entryID, workID)

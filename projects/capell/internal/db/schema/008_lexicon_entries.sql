@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS lexicon_entries (
     orthography TEXT,
     entry_type TEXT DEFAULT 'main',
     full_text TEXT,
-    raw_xml TEXT,
     source_file TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

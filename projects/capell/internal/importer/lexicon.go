@@ -126,10 +126,10 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 		letterCount := 0
 		for _, entry := range entries {
 			result, err := tx.Exec(`
-				INSERT OR IGNORE INTO lexicon_entries (key, letter, orthography, entry_type, full_text, raw_xml, source_file)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				INSERT OR IGNORE INTO lexicon_entries (key, letter, orthography, entry_type, full_text, source_file)
+				VALUES (?, ?, ?, ?, ?, ?)`,
 				entry.Key, entry.Letter, entry.Orthography, entry.EntryType,
-				entry.FullText, entry.RawXML, entry.SourceFile)
+				entry.FullText, entry.SourceFile)
 			if err != nil {
 				continue
 			}
