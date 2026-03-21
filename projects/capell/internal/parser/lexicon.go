@@ -105,6 +105,27 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 
 	numbers := parts[1]
 
+	// Handle "ind.2.77" (Induction) → act=0, scene=2, line=77
+	if strings.HasPrefix(strings.ToLower(numbers), "ind") {
+		// Strip "ind" or "ind." prefix and parse remaining as scene.line
+		remainder := strings.TrimPrefix(strings.ToLower(numbers), "ind")
+		remainder = strings.TrimPrefix(remainder, ".")
+		zero := 0
+		ref.Act = &zero
+		remParts := strings.Split(remainder, ".")
+		if len(remParts) >= 1 {
+			if v, err := strconv.Atoi(remParts[0]); err == nil {
+				ref.Scene = &v
+			}
+		}
+		if len(remParts) >= 2 {
+			if v, err := strconv.Atoi(remParts[1]); err == nil {
+				ref.Line = &v
+			}
+		}
+		return ref
+	}
+
 	// Skip duplicated work codes (e.g., "shak. ven ven" → parts[1]="ven").
 	// If the "numbers" part is not numeric, try the next part.
 	if _, err := strconv.Atoi(strings.Split(numbers, ".")[0]); err != nil {

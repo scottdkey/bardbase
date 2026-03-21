@@ -214,5 +214,17 @@
     "confidence": 0.9,
     "reason": "wrong play; 'obedient to their dooms' is in Pericles III Prol, not Lear V,2",
     "notes": "Doom: 'He, obedient to their dooms' in Per III Chorus line 43."
+  },
+  {
+    "headword": "Dover",
+    "raw_bibl": "H5 III Chor.",
+    "work_id": 11,
+    "edition": "oss_globe",
+    "act": 3,
+    "scene": 0,
+    "line_number": 4,
+    "confidence": 0.3,
+    "reason": "textual variant; Schmidt reads 'Dover castle' but modern editions have 'Hampton pier' at H5 III Chor. 4",
+    "notes": "Dover: H5 III Chor. 4 'Suppose that you have seen / The well-appointed king at Hampton pier'. Schmidt's edition read 'Dover castle' where modern texts have 'Hampton pier'."
   }
 ]

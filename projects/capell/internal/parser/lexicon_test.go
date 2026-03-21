@@ -87,6 +87,26 @@ func TestParsePerseusRef_TwoPartPlay_HighNumber(t *testing.T) {
 	}
 }
 
+func TestParsePerseusRef_Induction(t *testing.T) {
+	// "shak. shr ind.2.77" → Induction act=0, scene=2, line=77
+	ref := ParsePerseusRef("shak. shr ind.2.77")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.SchmidtAbbrev != "Shr." {
+		t.Errorf("expected 'Shr.', got %q", ref.SchmidtAbbrev)
+	}
+	if ref.Act == nil || *ref.Act != 0 {
+		t.Errorf("expected act 0 (Induction), got %v", ref.Act)
+	}
+	if ref.Scene == nil || *ref.Scene != 2 {
+		t.Errorf("expected scene 2, got %v", ref.Scene)
+	}
+	if ref.Line == nil || *ref.Line != 77 {
+		t.Errorf("expected line 77, got %v", ref.Line)
+	}
+}
+
 func TestParsePerseusRef_TwoPartPoem(t *testing.T) {
 	// Poems: two-part = section.line (section stored in Scene, matching DB structure)
 	ref := ParsePerseusRef("shak. ven 1.123")

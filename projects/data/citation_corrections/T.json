@@ -202,5 +202,29 @@
     "confidence": 0.5,
     "reason": "wrong play and wrong act; 'sea-tost' found in Per III Prol. 71",
     "notes": "Toss: 'The sea-tost Pericles appears to speak' in Per III Chorus."
+  },
+  {
+    "headword": "Toss",
+    "raw_bibl": "V Prol. 13",
+    "work_id": 29,
+    "edition": "oss_globe",
+    "act": 5,
+    "scene": 0,
+    "line_number": 14,
+    "confidence": 0.5,
+    "reason": "Perseus ref says Titus (shak. tit) but quote 'on the sea tumbled and tossed' is from Per. V Prol; textual variant — standard text has 'We there him lost'",
+    "notes": "Toss: Per. V Prol. 14 'Where we left him, on the sea. We there him lost' — Schmidt's edition had 'tumbled and tossed' instead of 'We there him lost'."
+  },
+  {
+    "headword": "Tumble",
+    "raw_bibl": "Per. V Prol.",
+    "work_id": 29,
+    "edition": "oss_globe",
+    "act": 5,
+    "scene": 0,
+    "line_number": 14,
+    "confidence": 0.5,
+    "reason": "textual variant; Schmidt's edition had 'tumbled and tost' but standard editions have 'We there him lost'",
+    "notes": "Tumble: Per. V Prol. 14 'Where we left him, on the sea. We there him lost' — Schmidt read 'tumbled and tost' per Q1."
   }
 ]
