@@ -1,5 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { dev } from '$app/environment';
+
+export const prerender = false;
 import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 

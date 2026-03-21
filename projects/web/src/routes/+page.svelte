@@ -5,24 +5,32 @@
 
 	let { data } = $props();
 
+	const PAGE_SIZE = 100;
 	let query = $state('');
-	let entries = $state([] as typeof data.entries);
-	let loading = $state(false);
-	let loadingMore = $state(false);
+	let visibleCount = $state(PAGE_SIZE);
 	let loadingEntry = $state(false);
-	let hasMore = $state(true);
-	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-	// Initialize with first page of entries
-	$effect(() => {
-		if (query === '') {
-			entries = data.entries.slice();
-			hasMore = data.entries.length >= data.pageSize;
-		}
-	});
 
 	let selectedEntry = $state<LexiconEntryDetail | null>(null);
 	let selectedEntryId = $state<number | null>(null);
+
+	// Client-side filtering: all entries are pre-loaded from build time
+	let filtered = $derived.by(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return data.entries;
+		// Prefix match first, then substring fallback
+		const prefix = data.entries.filter((e) => e.key.toLowerCase().startsWith(q));
+		if (prefix.length > 0) return prefix;
+		return data.entries.filter((e) => e.key.toLowerCase().includes(q));
+	});
+
+	let displayEntries = $derived(filtered.slice(0, visibleCount));
+	let hasMore = $derived(visibleCount < filtered.length);
+
+	// Reset visible count when query changes
+	$effect(() => {
+		query;
+		visibleCount = PAGE_SIZE;
+	});
 
 	let searchInput: HTMLInputElement;
 	let sentinel: HTMLDivElement;
@@ -30,11 +38,10 @@
 	onMount(() => {
 		searchInput?.focus();
 
-		// IntersectionObserver for infinite scroll
 		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && query === '') {
-					loadMore();
+			(items) => {
+				if (items[0].isIntersecting && hasMore) {
+					visibleCount += PAGE_SIZE;
 				}
 			},
 			{ rootMargin: '200px' }
@@ -44,50 +51,8 @@
 		return () => observer.disconnect();
 	});
 
-	async function loadMore() {
-		if (loadingMore || !hasMore || query !== '') return;
-		loadingMore = true;
-		try {
-			const res = await fetch(`/api/lexicon/entries?offset=${entries.length}&limit=${data.pageSize}`);
-			const json = await res.json();
-			if (json.entries.length > 0) {
-				entries = [...entries, ...json.entries];
-			}
-			hasMore = json.hasMore;
-		} finally {
-			loadingMore = false;
-		}
-	}
-
-	function handleSearch(e: Event) {
-		const value = (e.target as HTMLInputElement).value;
-		query = value;
-
-		if (searchTimeout) clearTimeout(searchTimeout);
-
-		if (value.trim() === '') {
-			entries = data.entries.slice();
-			hasMore = data.entries.length >= data.pageSize;
-			return;
-		}
-
-		hasMore = false;
-		searchTimeout = setTimeout(async () => {
-			loading = true;
-			try {
-				const res = await fetch(`/api/lexicon/search?q=${encodeURIComponent(value.trim())}&limit=100`);
-				const json = await res.json();
-				entries = json.entries;
-			} finally {
-				loading = false;
-			}
-		}, 150);
-	}
-
 	function clearSearch() {
 		query = '';
-		entries = data.entries.slice();
-		hasMore = data.entries.length >= data.pageSize;
 		searchInput?.focus();
 	}
 
@@ -130,8 +95,7 @@
 			type="text"
 			class="search-input"
 			placeholder="Search words..."
-			value={query}
-			oninput={handleSearch}
+			bind:value={query}
 			aria-label="Search lexicon entries"
 		/>
 		{#if query}
@@ -145,22 +109,20 @@
 		</div>
 	</div>
 
-	{#if loading}
-		<div class="status-text">Searching&hellip;</div>
-	{:else if query && entries.length === 0}
+	{#if query && filtered.length === 0}
 		<div class="status-text">No entries found for "{query}"</div>
-	{:else if entries.length > 0}
+	{:else}
 		<div class="result-count">
 			{#if query}
-				{entries.length} results
+				{filtered.length} results
 			{:else}
-				{entries.length} of {data.total} entries
+				{data.entries.length} entries
 			{/if}
 		</div>
 	{/if}
 
 	<ul class="entry-list" role="list" aria-label="Lexicon entries">
-		{#each entries as entry (entry.id)}
+		{#each displayEntries as entry (entry.id)}
 			<li>
 				<button
 					class="entry-item"
@@ -174,8 +136,8 @@
 		{/each}
 	</ul>
 
-	{#if loadingMore}
-		<div class="status-text">Loading more&hellip;</div>
+	{#if hasMore}
+		<div class="status-text">Loading&hellip;</div>
 	{/if}
 
 	<!-- Infinite scroll sentinel -->

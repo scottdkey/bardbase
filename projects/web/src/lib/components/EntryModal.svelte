@@ -159,11 +159,8 @@
 		sceneLoading = true;
 		sceneCitation = c;
 		try {
-			let url = `/api/text/scene?workId=${c.work_id}&act=${c.act}`;
-			if (c.scene != null) url += `&scene=${c.scene}`;
-			if (c.line != null) url += `&line=${c.line}`;
-			if (c.matched_edition_id != null) url += `&editionId=${c.matched_edition_id}`;
-			const res = await fetch(url);
+			const scene = c.scene ?? 1;
+			const res = await fetch(`/api/text/scene/${c.work_id}/${c.act}/${scene}`);
 			if (res.ok) {
 				const data: SceneTextResult = await res.json();
 				sceneData = data;
