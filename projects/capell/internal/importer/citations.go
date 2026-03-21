@@ -1107,88 +1107,151 @@ func expandQuoteAbbreviation(quote, headword string) (string, bool) {
 // findBestMatch finds the best matching text line for a citation.
 // Returns the matched line, match type, and confidence score.
 // This function is safe for concurrent use — it has no side effects.
+//
+// Performance: all text normalization is done ONCE up front. The previous
+// implementation re-normalized each line's content 5-9 times across the
+// different matching strategies, dominating CPU time.
 func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, float64) {
 	if len(lines) == 0 {
 		return nil, "", 0
 	}
 
-	// Strategy 1: Exact quote match (highest confidence)
-	if cit.QuoteText != "" {
-		cleanQuote := strings.ReplaceAll(cit.QuoteText, "--", "")
-		cleanQuote = strings.TrimSpace(cleanQuote)
+	// === Pre-compute all normalizations ONCE ===
+	// This eliminates millions of redundant NormalizeForMatch calls.
+	// Each line is normalized exactly once; each quote variant is normalized once.
 
-		// Also prepare an expanded quote where Schmidt's headword abbreviation
-		// (e.g., "b." for "betake", "--s" for "doctors") is expanded.
+	// Normalized text for each line (used by substring search and word containment).
+	lineNorms := make([]string, len(lines))
+	for i := range lines {
+		lineNorms[i] = parser.NormalizeForMatch(lines[i].Content)
+	}
+
+	// Pre-compute word sets for each line (used by Jaccard similarity).
+	lineWordSets := make([]map[string]bool, len(lines))
+	for i, norm := range lineNorms {
+		words := strings.Fields(norm)
+		set := make(map[string]bool, len(words))
+		for _, w := range words {
+			set[w] = true
+		}
+		lineWordSets[i] = set
+	}
+
+	// Line-number index for O(1) lookup (used by Strategy 2).
+	lineNumIdx := make(map[int]int, len(lines))
+	for i, line := range lines {
+		lineNumIdx[line.LineNumber] = i
+	}
+
+	// Pre-compute quote variants (normalized).
+	var normQuote, normExpanded string
+	var quoteWordSet map[string]bool
+	wasExpanded := false
+
+	if cit.QuoteText != "" {
+		cleanQuote := strings.TrimSpace(strings.ReplaceAll(cit.QuoteText, "--", ""))
+		normQuote = parser.NormalizeForMatch(cleanQuote)
+
 		headword := stripSenseNumber(cit.Headword)
-		expandedQuote, wasExpanded := expandQuoteAbbreviation(cit.QuoteText, headword)
-		if wasExpanded {
-			expandedQuote = strings.ReplaceAll(expandedQuote, "--", "")
-			expandedQuote = strings.TrimSpace(expandedQuote)
+		expanded, exp := expandQuoteAbbreviation(cit.QuoteText, headword)
+		if exp {
+			wasExpanded = true
+			expanded = strings.TrimSpace(strings.ReplaceAll(expanded, "--", ""))
+			normExpanded = parser.NormalizeForMatch(expanded)
 		}
 
-		if len(cleanQuote) > 3 {
-			// 1a: Single-line substring match (original quote).
-			for i, line := range lines {
-				if parser.ContainsNormalized(line.Content, cleanQuote) {
-					return &lines[i], "exact_quote", 1.0
+		// Word set for quote (used by Jaccard and word containment).
+		qwords := strings.Fields(normQuote)
+		quoteWordSet = make(map[string]bool, len(qwords))
+		for _, w := range qwords {
+			quoteWordSet[w] = true
+		}
+	}
+
+	// jaccardFromSets computes Jaccard index from pre-computed word sets.
+	jaccardSets := func(lineIdx int) float64 {
+		setA := lineWordSets[lineIdx]
+		setB := quoteWordSet
+		if len(setA) == 0 && len(setB) == 0 {
+			return 1.0
+		}
+		if len(setA) == 0 || len(setB) == 0 {
+			return 0.0
+		}
+		intersection := 0
+		for w := range setA {
+			if setB[w] {
+				intersection++
+			}
+		}
+		union := len(setA) + len(setB) - intersection
+		if union == 0 {
+			return 0.0
+		}
+		return float64(intersection) / float64(union)
+	}
+
+	// Strategy 1: Exact quote match (highest confidence)
+	if normQuote != "" && len(normQuote) > 3 {
+		// 1a: Single-line substring match (original quote).
+		for i := range lines {
+			if strings.Contains(lineNorms[i], normQuote) {
+				return &lines[i], "exact_quote", 1.0
+			}
+		}
+
+		// 1b: Single-line match with expanded abbreviation.
+		if wasExpanded && len(normExpanded) > 3 {
+			for i := range lines {
+				if strings.Contains(lineNorms[i], normExpanded) {
+					return &lines[i], "exact_quote", 0.95
 				}
 			}
+		}
 
-			// 1b: Single-line match with expanded abbreviation.
-			if wasExpanded && len(expandedQuote) > 3 {
-				for i, line := range lines {
-					if parser.ContainsNormalized(line.Content, expandedQuote) {
-						return &lines[i], "exact_quote", 0.95
+		// 1c: Multi-line match — Schmidt quotes often span two verse lines.
+		if len(lines) > 1 {
+			for i := 0; i < len(lines)-1; i++ {
+				combined := lineNorms[i] + " " + lineNorms[i+1]
+				if strings.Contains(combined, normQuote) {
+					return &lines[i], "exact_quote", 0.95
+				}
+				if wasExpanded && strings.Contains(combined, normExpanded) {
+					return &lines[i], "exact_quote", 0.90
+				}
+			}
+		}
+
+		// 1d: Ellipsis split — Schmidt uses "..." to elide text within quotes.
+		fragments := splitOnEllipsis(normQuote)
+		if len(fragments) > 1 {
+			for _, frag := range fragments {
+				frag = strings.TrimSpace(frag)
+				if len(frag) <= 3 {
+					continue
+				}
+				for i := range lines {
+					if strings.Contains(lineNorms[i], frag) {
+						return &lines[i], "exact_quote", 0.85
 					}
 				}
 			}
+		}
 
-			// 1c: Multi-line match — Schmidt quotes often span two verse lines.
-			if len(lines) > 1 {
-				for i := 0; i < len(lines)-1; i++ {
-					combined := lines[i].Content + " " + lines[i+1].Content
-					if parser.ContainsNormalized(combined, cleanQuote) {
-						return &lines[i], "exact_quote", 0.95
-					}
-					if wasExpanded && parser.ContainsNormalized(combined, expandedQuote) {
-						return &lines[i], "exact_quote", 0.90
+		// 1e: Word-set containment — for short quotes (2–6 words), check whether
+		// every word in the quote appears somewhere in the line (any order).
+		quoteWords := strings.Fields(normQuote)
+		if len(quoteWords) >= 2 && len(quoteWords) <= 6 {
+			for i := range lines {
+				allFound := true
+				for _, w := range quoteWords {
+					if !strings.Contains(lineNorms[i], w) {
+						allFound = false
+						break
 					}
 				}
-			}
-
-			// 1d: Ellipsis split — Schmidt uses "..." to elide text within quotes.
-			// Try each fragment independently as a substring match.
-			fragments := splitOnEllipsis(cleanQuote)
-			if len(fragments) > 1 {
-				for _, frag := range fragments {
-					if len(frag) <= 3 {
-						continue
-					}
-					for i, line := range lines {
-						if parser.ContainsNormalized(line.Content, frag) {
-							return &lines[i], "exact_quote", 0.85
-						}
-					}
-				}
-			}
-
-			// 1e: Word-set containment — for short quotes (2–6 words), check whether
-			// every word in the quote appears somewhere in the line (any order).
-			// Catches cases where the quote is not a contiguous substring.
-			quoteWords := strings.Fields(parser.NormalizeForMatch(cleanQuote))
-			if len(quoteWords) >= 2 && len(quoteWords) <= 6 {
-				for i, line := range lines {
-					lineNorm := parser.NormalizeForMatch(line.Content)
-					allFound := true
-					for _, w := range quoteWords {
-						if !strings.Contains(lineNorm, w) {
-							allFound = false
-							break
-						}
-					}
-					if allFound {
-						return &lines[i], "exact_quote", 0.80
-					}
+				if allFound {
+					return &lines[i], "exact_quote", 0.80
 				}
 			}
 		}
@@ -1196,37 +1259,31 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 
 	// Strategy 2: Line number match
 	if cit.Line != nil {
-		for i, line := range lines {
-			if line.LineNumber == *cit.Line {
-				if cit.QuoteText != "" {
-					sim := parser.JaccardSimilarity(line.Content, cit.QuoteText)
-					if sim > 0.15 {
-						return &lines[i], "line_number", 0.9
-					}
-					return &lines[i], "line_number", 0.7
+		// O(1) exact line-number lookup instead of O(n) scan.
+		if idx, ok := lineNumIdx[*cit.Line]; ok {
+			if quoteWordSet != nil {
+				sim := jaccardSets(idx)
+				if sim > 0.15 {
+					return &lines[idx], "line_number", 0.9
 				}
-				return &lines[i], "line_number", 0.9
+				return &lines[idx], "line_number", 0.7
 			}
+			return &lines[idx], "line_number", 0.9
 		}
 
 		// Try nearby lines if exact line number didn't match.
-		// With a quote: scan ±20 and return the best-scoring candidate (handles
-		// Globe vs SE line-number offset caused by stage directions).
-		// Without a quote: scan ±10 with decreasing confidence.
-		if cit.QuoteText != "" {
+		if quoteWordSet != nil {
 			const maxDeltaQuote = 20
 			bestSim := 0.0
 			bestIdx := -1
-			for i, line := range lines {
-				d := line.LineNumber - *cit.Line
-				if d < 0 {
-					d = -d
-				}
-				if d > 0 && d <= maxDeltaQuote {
-					sim := parser.JaccardSimilarity(line.Content, cit.QuoteText)
-					if sim > bestSim {
-						bestSim = sim
-						bestIdx = i
+			for delta := 1; delta <= maxDeltaQuote; delta++ {
+				for _, d := range []int{delta, -delta} {
+					if idx, ok := lineNumIdx[*cit.Line+d]; ok {
+						sim := jaccardSets(idx)
+						if sim > bestSim {
+							bestSim = sim
+							bestIdx = idx
+						}
 					}
 				}
 			}
@@ -1234,23 +1291,23 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				return &lines[bestIdx], "line_number", 0.7
 			}
 		} else {
+			// O(1) lookup for each delta instead of O(20×n) nested scan.
+			// Check -delta before +delta to match slice-order behavior of
+			// the original scan (lower line numbers appear first in sorted slices).
 			for delta := 1; delta <= 20; delta++ {
-				for i, line := range lines {
-					if line.LineNumber == *cit.Line+delta || line.LineNumber == *cit.Line-delta {
+				for _, d := range []int{-delta, delta} {
+					if idx, ok := lineNumIdx[*cit.Line+d]; ok {
 						conf := 0.6 - float64(delta)*0.1
 						if conf < 0.1 {
 							conf = 0.1
 						}
-						return &lines[i], "line_number", conf
+						return &lines[idx], "line_number", conf
 					}
 				}
 			}
 
-			// Final fallback: when Schmidt's line number exceeds the scene's range
-			// (e.g., citing Troilus line 268 in a scene that only has 168 lines),
-			// return the line with the smallest absolute distance from the target.
-			// This handles plays where Schmidt uses continuous line numbering across
-			// scenes while Perseus resets per scene. Confidence is very low (0.1).
+			// Final fallback: closest line number when Schmidt's number
+			// exceeds the scene's range.
 			closestIdx := -1
 			closestDelta := -1
 			for i, line := range lines {
@@ -1269,12 +1326,12 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 		}
 	}
 
-	// Strategy 3: Fuzzy text match (last resort)
-	if cit.QuoteText != "" {
+	// Strategy 3: Fuzzy text match (last resort) — uses pre-computed word sets.
+	if quoteWordSet != nil {
 		bestScore := 0.0
 		bestIdx := -1
-		for i, line := range lines {
-			score := parser.JaccardSimilarity(line.Content, cit.QuoteText)
+		for i := range lines {
+			score := jaccardSets(i)
 			if score > bestScore {
 				bestScore = score
 				bestIdx = i
