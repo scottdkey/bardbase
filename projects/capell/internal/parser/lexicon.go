@@ -323,11 +323,14 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 		orthography = orthElem.GetText()
 	}
 
-	// Full text (all text content, whitespace normalized)
+	// Full text (all text content, whitespace normalized) — used for citation position matching
 	fullText := normalizeWhitespace(entryFree.GetText())
 
-	// Senses
-	senses := ParseSenses(fullText)
+	// Definition text excludes bibl references — used for sense definitions shown to users
+	defText := normalizeWhitespace(entryFree.GetTextExcluding("bibl"))
+
+	// Senses parsed from definition text (without inline references)
+	senses := ParseSenses(defText)
 
 	// Citations from bibl elements
 	var citations []Citation
@@ -349,6 +352,13 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 
 		parsed := ParsePerseusRef(biblN)
 		if parsed != nil {
+			// Supplement incomplete Perseus refs with data from display text
+			workType := ""
+			if sw, ok := constants.SchmidtWorks[parsed.SchmidtAbbrev]; ok {
+				workType = sw.WorkType
+			}
+			supplementFromDisplayText(parsed, displayText, workType)
+
 			citations = append(citations, Citation{
 				WorkAbbrev:  parsed.SchmidtAbbrev,
 				Act:         parsed.Act,
@@ -389,6 +399,100 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 	assignSensesToCitations(entry)
 
 	return entry, nil
+}
+
+// displayTextNumbers extracts location numbers from Schmidt display text.
+// Display text format examples: "H6B I, 2, 15", "Tp. IV, 56", "Ven. 654"
+// Handles both Roman (I-X) and Arabic numerals, comma-separated.
+var displayTextNumbers = regexp.MustCompile(`([IVXLC]+|\d+)(?:\s*,\s*(\d+))?(?:\s*,\s*(\d+))?\s*\.?\s*$`)
+
+// supplementFromDisplayText fills in missing location data (act/scene/line) on a
+// PerseusRef by parsing the display text from the <bibl> element. This handles
+// cases where the Perseus n= attribute is incomplete (e.g. "shak. 2h6 1.2") but
+// the display text has the full reference (e.g. "H6B I, 2, 15").
+func supplementFromDisplayText(ref *PerseusRef, displayText string, workType string) {
+	if ref == nil || displayText == "" {
+		return
+	}
+
+	m := displayTextNumbers.FindStringSubmatch(displayText)
+	if m == nil {
+		return
+	}
+
+	// Collect the matched numbers (first may be Roman numeral)
+	var nums []int
+	for _, s := range m[1:] {
+		if s == "" {
+			break
+		}
+		v, err := strconv.Atoi(s)
+		if err != nil {
+			// Try Roman numeral
+			v = parseRoman(s)
+			if v == 0 {
+				break
+			}
+		}
+		nums = append(nums, v)
+	}
+
+	if len(nums) == 0 {
+		return
+	}
+
+	switch workType {
+	case "sonnet_sequence":
+		// Display: "Sonn. 112, 9" → sonnet=112, line=9
+		if len(nums) >= 2 && ref.Scene != nil && ref.Line == nil {
+			ref.Line = &nums[1]
+		}
+	case "poem":
+		// Display: "Lucr. 452" → line=452
+		if len(nums) >= 1 && ref.Line == nil {
+			ref.Line = &nums[len(nums)-1]
+		}
+	default:
+		// Play: display "H6B I, 2, 15" → act=1, scene=2, line=15
+		if len(nums) == 3 {
+			if ref.Act == nil {
+				ref.Act = &nums[0]
+			}
+			if ref.Scene == nil {
+				ref.Scene = &nums[1]
+			}
+			if ref.Line == nil {
+				ref.Line = &nums[2]
+			}
+		} else if len(nums) == 2 {
+			// Display has 2 numbers (e.g. "Tp. IV, 56" = act, line).
+			// If Perseus gave us act+scene from a 2-part ref like "4.56",
+			// the "scene" is actually a line number. Correct it.
+			if ref.Act != nil && ref.Scene != nil && ref.Line == nil {
+				line := *ref.Scene
+				ref.Scene = nil
+				ref.Line = &line
+			}
+		}
+	}
+}
+
+var romanValues = map[byte]int{'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100}
+
+func parseRoman(s string) int {
+	total := 0
+	for i := 0; i < len(s); i++ {
+		v := romanValues[s[i]]
+		if v == 0 {
+			return 0
+		}
+		if i+1 < len(s) && romanValues[s[i+1]] > v {
+			total -= v
+		} else {
+			total += v
+		}
+	}
+	return total
 }
 
 func normalizeWhitespace(s string) string {

@@ -111,6 +111,16 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 	totalCitations := 0
 	totalSenses := 0
 
+	// Prepared statement to resolve missing scene from act+line
+	sceneLookup, err := database.Prepare(`
+		SELECT DISTINCT scene FROM text_lines
+		WHERE work_id = ? AND act = ? AND line_number = ? AND edition_id = 1
+		LIMIT 1`)
+	if err != nil {
+		return fmt.Errorf("preparing scene lookup: %w", err)
+	}
+	defer sceneLookup.Close()
+
 	for _, letterDir := range sortedDirs {
 		letter := filepath.Base(letterDir)
 		entries := letterEntries[letter]

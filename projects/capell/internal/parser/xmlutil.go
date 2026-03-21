@@ -91,6 +91,30 @@ func (n *XMLNode) collectText(b *strings.Builder) {
 	}
 }
 
+// GetTextExcluding returns text content, skipping elements with names in the exclude set.
+// Tail text of excluded elements is still included (it belongs to the parent context).
+func (n *XMLNode) GetTextExcluding(excludeNames ...string) string {
+	exclude := make(map[string]bool, len(excludeNames))
+	for _, name := range excludeNames {
+		exclude[name] = true
+	}
+	var b strings.Builder
+	n.collectTextExcluding(&b, exclude)
+	return b.String()
+}
+
+func (n *XMLNode) collectTextExcluding(b *strings.Builder, exclude map[string]bool) {
+	b.WriteString(n.Text)
+	for _, child := range n.Children {
+		if exclude[child.Name] {
+			// Skip the element's content AND its tail (trailing punctuation between refs)
+		} else {
+			child.collectTextExcluding(b, exclude)
+			b.WriteString(child.Tail)
+		}
+	}
+}
+
 // Attr returns the value of the named attribute, or empty string if not found.
 func (n *XMLNode) Attr(key string) string {
 	return n.Attrs[key]
