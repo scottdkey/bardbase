@@ -117,7 +117,7 @@ type citMatchResult struct {
 // Phase 1 (load + classify) and Phase 3 (insert) are sequential;
 // Phase 2 (findBestMatch) is parallelized across goroutines.
 func ResolveCitations(database *sql.DB) error {
-	stepBanner("STEP 9: Resolve Lexicon Citations → Text Lines")
+	stepBanner("Resolve Lexicon Citations → Text Lines")
 
 	start := time.Now()
 
@@ -451,7 +451,178 @@ func ResolveCitations(database *sql.DB) error {
 	fmt.Printf("    propagated: %d, headword: %d, manual: %d\n", finalPropagated, finalHeadword, finalManual)
 	fmt.Printf("    unmatched citations: %d of %d (%.1f%%)\n",
 		finalUnmatched, len(citations), 100.0*float64(finalUnmatched)/float64(len(citations)))
+
+	// Print unmatched citation details for manual review.
+	if finalUnmatched > 0 {
+		printUnmatchedReport(database, len(citations))
+	}
+
 	return nil
+}
+
+// printUnmatchedReport outputs a breakdown of unmatched lexicon citations
+// grouped by reason, with samples for each category. This helps identify
+// systemic parsing/matching issues during development.
+func printUnmatchedReport(database *sql.DB, totalCitations int) {
+	fmt.Println("\n  === UNMATCHED CITATION REPORT ===")
+
+	// Breakdown by what's missing.
+	type bucket struct {
+		label string
+		query string
+	}
+	buckets := []bucket{
+		{
+			"Play citations: have act+scene+line but no match",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type IN ('comedy','history','tragedy')
+			   AND lc.act IS NOT NULL AND lc.scene IS NOT NULL AND lc.line IS NOT NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY w.schmidt_abbrev, lc.act, lc.scene, lc.line`,
+		},
+		{
+			"Play citations: have act+scene but NO line",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type IN ('comedy','history','tragedy')
+			   AND lc.act IS NOT NULL AND lc.scene IS NOT NULL AND lc.line IS NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY w.schmidt_abbrev, lc.act, lc.scene`,
+		},
+		{
+			"Play citations: have act+line but NO scene",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type IN ('comedy','history','tragedy')
+			   AND lc.act IS NOT NULL AND lc.scene IS NULL AND lc.line IS NOT NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY w.schmidt_abbrev, lc.act, lc.line`,
+		},
+		{
+			"Play citations: have act only (no scene, no line)",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type IN ('comedy','history','tragedy')
+			   AND lc.act IS NOT NULL AND lc.scene IS NULL AND lc.line IS NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY w.schmidt_abbrev, lc.act`,
+		},
+		{
+			"Sonnet citations: missing scene (sonnet number)",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type = 'sonnet_sequence'
+			   AND lc.scene IS NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY le.key`,
+		},
+		{
+			"Poem citations: missing line",
+			`SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 JOIN works w ON w.id = lc.work_id
+			 WHERE w.work_type = 'poem' AND lc.line IS NULL
+			   AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+			 ORDER BY le.key`,
+		},
+		{
+			"Citations with no work_id",
+			`SELECT le.key, lc.raw_bibl, '' as abbrev, lc.act, lc.scene, lc.line, lc.quote_text
+			 FROM lexicon_citations lc
+			 JOIN lexicon_entries le ON le.id = lc.entry_id
+			 WHERE lc.work_id IS NULL
+			 ORDER BY le.key`,
+		},
+	}
+
+	for _, b := range buckets {
+		rows, err := database.Query(b.query)
+		if err != nil {
+			continue
+		}
+		var samples []string
+		count := 0
+		for rows.Next() {
+			var key, rawBibl, abbrev string
+			var act, scene, line sql.NullInt64
+			var quote sql.NullString
+			rows.Scan(&key, &rawBibl, &abbrev, &act, &scene, &line, &quote)
+			count++
+			if count <= 10 {
+				actStr, sceneStr, lineStr := "NULL", "NULL", "NULL"
+				if act.Valid {
+					actStr = fmt.Sprintf("%d", act.Int64)
+				}
+				if scene.Valid {
+					sceneStr = fmt.Sprintf("%d", scene.Int64)
+				}
+				if line.Valid {
+					lineStr = fmt.Sprintf("%d", line.Int64)
+				}
+				q := ""
+				if quote.Valid && quote.String != "" {
+					q = quote.String
+					if len(q) > 40 {
+						q = q[:40] + "..."
+					}
+					q = fmt.Sprintf(" quote=%q", q)
+				}
+				samples = append(samples, fmt.Sprintf("      %-20s %-25s %s act=%s scene=%s line=%s%s",
+					key, rawBibl, abbrev, actStr, sceneStr, lineStr, q))
+			}
+		}
+		rows.Close()
+
+		if count == 0 {
+			continue
+		}
+
+		fmt.Printf("\n  %s: %d\n", b.label, count)
+		for _, s := range samples {
+			fmt.Println(s)
+		}
+		if count > 10 {
+			fmt.Printf("      ... and %d more\n", count-10)
+		}
+	}
+
+	// Per-work summary of unmatched play citations.
+	fmt.Println("\n  Per-work unmatched play citations:")
+	rows, err := database.Query(`
+		SELECT w.schmidt_abbrev, COUNT(*) as cnt,
+		  SUM(CASE WHEN lc.line IS NULL THEN 1 ELSE 0 END) as no_line,
+		  SUM(CASE WHEN lc.scene IS NULL THEN 1 ELSE 0 END) as no_scene,
+		  SUM(CASE WHEN lc.quote_text IS NOT NULL AND lc.quote_text != '' THEN 1 ELSE 0 END) as has_quote
+		FROM lexicon_citations lc
+		JOIN works w ON w.id = lc.work_id
+		WHERE w.work_type IN ('comedy','history','tragedy')
+		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)
+		GROUP BY w.schmidt_abbrev
+		ORDER BY cnt DESC`)
+	if err == nil {
+		for rows.Next() {
+			var abbrev string
+			var cnt, noLine, noScene, hasQuote int
+			rows.Scan(&abbrev, &cnt, &noLine, &noScene, &hasQuote)
+			fmt.Printf("    %-8s %5d unmatched (no_line=%d, no_scene=%d, has_quote=%d)\n",
+				abbrev, cnt, noLine, noScene, hasQuote)
+		}
+		rows.Close()
+	}
+
+	fmt.Println()
 }
 
 // propagateCrossEdition uses line_mappings to propagate citation matches across editions.
@@ -1257,72 +1428,124 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 		}
 	}
 
-	// Strategy 2: Line number match
+	// Strategy 2: Line number match with headword verification.
+	//
+	// Schmidt uses Globe line numbers, but different editions number lines
+	// differently (stage directions, scene breaks, etc. shift numbering).
+	// When the line at the cited number doesn't contain the headword, we
+	// search nearby lines (±20) for one that does.
 	if cit.Line != nil {
-		// O(1) exact line-number lookup instead of O(n) scan.
+		headword := strings.ToLower(stripSenseNumber(cit.Headword))
+		headwordNorm := parser.NormalizeForMatch(headword)
+
+		// lineContainsHeadword checks if a line contains the headword.
+		lineHasWord := func(idx int) bool {
+			if headwordNorm == "" || len(headwordNorm) < 2 {
+				return false // too short to verify
+			}
+			return strings.Contains(lineNorms[idx], headwordNorm)
+		}
+
+		// Can we verify via headword? Need at least 2 normalized chars.
+		canVerifyHeadword := len(headwordNorm) >= 2
+
+		// Try exact line number first.
 		if idx, ok := lineNumIdx[*cit.Line]; ok {
 			if quoteWordSet != nil {
 				sim := jaccardSets(idx)
 				if sim > 0.15 {
 					return &lines[idx], "line_number", 0.9
 				}
-				return &lines[idx], "line_number", 0.7
 			}
-			return &lines[idx], "line_number", 0.9
+			// If we can't verify by headword, accept the line number match.
+			if !canVerifyHeadword {
+				return &lines[idx], "line_number", 0.9
+			}
+			// Headword is in the line → accept.
+			if lineHasWord(idx) {
+				return &lines[idx], "line_number", 0.9
+			}
+			// Line number matches but headword isn't there.
+			// Don't accept yet — fall through to search nearby lines.
 		}
 
-		// Try nearby lines if exact line number didn't match.
-		if quoteWordSet != nil {
-			const maxDeltaQuote = 20
-			bestSim := 0.0
+		// Search nearby lines for headword or best quote match.
+		if canVerifyHeadword || quoteWordSet != nil {
+			const maxDelta = 20
 			bestIdx := -1
-			for delta := 1; delta <= maxDeltaQuote; delta++ {
-				for _, d := range []int{delta, -delta} {
-					if idx, ok := lineNumIdx[*cit.Line+d]; ok {
-						sim := jaccardSets(idx)
-						if sim > bestSim {
-							bestSim = sim
-							bestIdx = idx
-						}
-					}
-				}
-			}
-			if bestSim > 0.2 && bestIdx >= 0 {
-				return &lines[bestIdx], "line_number", 0.7
-			}
-		} else {
-			// O(1) lookup for each delta instead of O(20×n) nested scan.
-			// Check -delta before +delta to match slice-order behavior of
-			// the original scan (lower line numbers appear first in sorted slices).
-			for delta := 1; delta <= 20; delta++ {
+			bestScore := 0.0
+
+			for delta := 1; delta <= maxDelta; delta++ {
 				for _, d := range []int{-delta, delta} {
-					if idx, ok := lineNumIdx[*cit.Line+d]; ok {
-						conf := 0.6 - float64(delta)*0.1
-						if conf < 0.1 {
-							conf = 0.1
+					idx, ok := lineNumIdx[*cit.Line+d]
+					if !ok {
+						continue
+					}
+
+					hasWord := canVerifyHeadword && lineHasWord(idx)
+					var score float64
+
+					if quoteWordSet != nil {
+						sim := jaccardSets(idx)
+						if hasWord {
+							score = sim + 0.5 // bonus for headword match
+						} else {
+							score = sim
 						}
-						return &lines[idx], "line_number", conf
+					} else if hasWord {
+						// No quote — headword presence is the signal.
+						score = 1.0 - float64(delta)*0.02
+					}
+
+					if score > bestScore {
+						bestScore = score
+						bestIdx = idx
 					}
 				}
 			}
 
-			// Final fallback: closest line number when Schmidt's number
-			// exceeds the scene's range.
-			closestIdx := -1
-			closestDelta := -1
-			for i, line := range lines {
-				d := line.LineNumber - *cit.Line
-				if d < 0 {
-					d = -d
+			if bestIdx >= 0 && bestScore > 0.2 {
+				if bestScore > 0.5 {
+					return &lines[bestIdx], "line_number", 0.8
 				}
-				if closestIdx == -1 || d < closestDelta {
-					closestDelta = d
-					closestIdx = i
+				return &lines[bestIdx], "line_number", 0.6
+			}
+		}
+
+		// Fall back to exact line number (headword not verified or not found nearby).
+		if idx, ok := lineNumIdx[*cit.Line]; ok {
+			return &lines[idx], "line_number", 0.7
+		}
+
+		// No exact match — try nearby lines without headword verification.
+		for delta := 1; delta <= 20; delta++ {
+			for _, d := range []int{-delta, delta} {
+				if idx, ok := lineNumIdx[*cit.Line+d]; ok {
+					conf := 0.6 - float64(delta)*0.1
+					if conf < 0.1 {
+						conf = 0.1
+					}
+					return &lines[idx], "line_number", conf
 				}
 			}
-			if closestIdx >= 0 {
-				return &lines[closestIdx], "line_number", 0.1
+		}
+
+		// Final fallback: closest line number, but only if reasonably close.
+		// Don't match line 999 to a 100-line poem.
+		closestIdx := -1
+		closestDelta := -1
+		for i, line := range lines {
+			d := line.LineNumber - *cit.Line
+			if d < 0 {
+				d = -d
 			}
+			if closestIdx == -1 || d < closestDelta {
+				closestDelta = d
+				closestIdx = i
+			}
+		}
+		if closestIdx >= 0 && closestDelta <= 50 {
+			return &lines[closestIdx], "line_number", 0.1
 		}
 	}
 

@@ -15,15 +15,23 @@ import (
 	"unicode"
 )
 
-// stepBanner prints a formatted step header for pipeline progress output.
-// Example: stepBanner("STEP 1: Import OSS Data") prints:
+// stepCounter tracks the current pipeline step number for auto-incrementing banners.
+var stepCounter int
+
+// ResetStepCounter resets the step counter to 0. Called at the start of each
+// pipeline run so that single-step (-step) runs start at 1.
+func ResetStepCounter() { stepCounter = 0 }
+
+// stepBanner prints a formatted, auto-numbered step header.
+// Example: stepBanner("Import OSS Data") prints:
 //
 //	============================================================
 //	STEP 1: Import OSS Data
 //	============================================================
 func stepBanner(title string) {
+	stepCounter++
 	printBar()
-	fmt.Println(title)
+	fmt.Printf("STEP %d: %s\n", stepCounter, title)
 	printBar()
 }
 

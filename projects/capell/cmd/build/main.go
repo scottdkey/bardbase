@@ -83,6 +83,9 @@ func main() {
 	}
 	defer database.Close()
 
+	// Reset step counter for auto-numbered banners.
+	importer.ResetStepCounter()
+
 	// Create schema
 	fmt.Println("Creating schema...")
 	if err := db.CreateSchema(database); err != nil {

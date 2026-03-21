@@ -83,7 +83,7 @@ func splitOSSLines(text string) []string {
 
 // ImportOSS imports the OSS/Moby Shakespeare data from a MySQL dump file.
 func ImportOSS(database *sql.DB, sqlPath string) error {
-	stepBanner("STEP 1: Import OSS/Moby Shakespeare")
+	stepBanner("Import OSS/Moby Shakespeare")
 
 	content, err := os.ReadFile(sqlPath)
 	if err != nil {

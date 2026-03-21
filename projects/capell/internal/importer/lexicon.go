@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 
 // ImportLexicon imports Schmidt lexicon XML entries from the given directory.
 func ImportLexicon(database *sql.DB, entriesDir string) error {
-	stepBanner("STEP 2: Import Schmidt Lexicon")
+	stepBanner("Import Schmidt Lexicon")
 
 	info, err := os.Stat(entriesDir)
 	if err != nil || !info.IsDir() {
@@ -111,10 +112,22 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 	totalCitations := 0
 	totalSenses := 0
 
-	// Prepared statement to resolve missing scene from act+line
+	// Look up the Perseus Globe edition ID — the primary edition for lexicon
+	// citations since Schmidt's Lexicon is sourced from Perseus Digital Library.
+	// Falls back to any edition if Perseus isn't available.
+	var perseusEditionID int64
+	err = database.QueryRow(
+		"SELECT id FROM editions WHERE short_code = 'perseus_globe'").Scan(&perseusEditionID)
+	if err != nil || perseusEditionID == 0 {
+		// Fallback: use whichever edition has the most text lines.
+		database.QueryRow(
+			"SELECT edition_id FROM text_lines GROUP BY edition_id ORDER BY COUNT(*) DESC LIMIT 1").Scan(&perseusEditionID)
+	}
+
+	// Prepared statement to resolve missing scene from act+line using Perseus Globe.
 	sceneLookup, err := database.Prepare(`
 		SELECT DISTINCT scene FROM text_lines
-		WHERE work_id = ? AND act = ? AND line_number = ? AND edition_id = 1
+		WHERE work_id = ? AND act = ? AND line_number = ? AND edition_id = ?
 		LIMIT 1`)
 	if err != nil {
 		return fmt.Errorf("preparing scene lookup: %w", err)
@@ -135,10 +148,14 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 
 		letterCount := 0
 		for _, entry := range entries {
+			// Split key into base_key + sense_group:
+			// "Abandon" → ("Abandon", NULL), "A1" → ("A", 1), "Like3" → ("Like", 3)
+			baseKey, senseGroup := splitSenseKey(entry.Key)
+
 			result, err := tx.Exec(`
-				INSERT OR IGNORE INTO lexicon_entries (key, letter, orthography, entry_type, full_text, source_file)
-				VALUES (?, ?, ?, ?, ?, ?)`,
-				entry.Key, entry.Letter, entry.Orthography, entry.EntryType,
+				INSERT OR IGNORE INTO lexicon_entries (key, base_key, sense_group, letter, orthography, entry_type, full_text, source_file)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				entry.Key, baseKey, senseGroup, entry.Letter, entry.Orthography, entry.EntryType,
 				entry.FullText, entry.SourceFile)
 			if err != nil {
 				continue
@@ -154,13 +171,19 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 
 			senseIDMap := make(map[int]int64)
 			for _, sense := range entry.Senses {
-				sResult, sErr := tx.Exec(`INSERT OR IGNORE INTO lexicon_senses (entry_id, sense_number, definition_text) VALUES (?, ?, ?)`,
-					entryID, sense.Number, sense.Text)
+				var subSense interface{}
+				if sense.SubSense != "" {
+					subSense = sense.SubSense
+				}
+				sResult, sErr := tx.Exec(
+					`INSERT OR IGNORE INTO lexicon_senses (entry_id, sense_number, sub_sense, definition_text) VALUES (?, ?, ?, ?)`,
+					entryID, sense.Number, subSense, sense.Text)
 				if sErr == nil {
 					senseID, _ := sResult.LastInsertId()
 					if senseID == 0 {
-						tx.QueryRow("SELECT id FROM lexicon_senses WHERE entry_id = ? AND sense_number = ?",
-							entryID, sense.Number).Scan(&senseID)
+						tx.QueryRow(
+							"SELECT id FROM lexicon_senses WHERE entry_id = ? AND sense_number = ? AND COALESCE(sub_sense, '') = COALESCE(?, '')",
+							entryID, sense.Number, subSense).Scan(&senseID)
 					}
 					if senseID > 0 {
 						senseIDMap[sense.Number] = senseID
@@ -171,9 +194,11 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 
 			for _, cit := range entry.Citations {
 				var workID interface{}
+				var workIDInt int64
 				if cit.WorkAbbrev != "" {
 					if id, ok := workMap[cit.WorkAbbrev]; ok {
 						workID = id
+						workIDInt = id
 					}
 				}
 
@@ -181,6 +206,17 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 				if cit.SenseNumber > 0 {
 					if sid, ok := senseIDMap[cit.SenseNumber]; ok {
 						senseID = sid
+					}
+				}
+
+				// Resolve missing scene from act+line using the Perseus Globe edition.
+				// Many citations have act and line but no scene — the scene can be
+				// determined by looking up which scene contains that line number.
+				if workIDInt > 0 && cit.Act != nil && cit.Scene == nil && cit.Line != nil {
+					var scene int
+					err := sceneLookup.QueryRow(workIDInt, *cit.Act, *cit.Line, perseusEditionID).Scan(&scene)
+					if err == nil {
+						cit.Scene = &scene
 					}
 				}
 
@@ -222,6 +258,26 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 }
 
 // buildWorkMap creates a map from Schmidt abbreviation → database work ID.
+// splitSenseKey splits a lexicon key like "A1" into base key "A" and sense group 1.
+// Keys without trailing digits (e.g., "Abandon") return the key unchanged and nil.
+func splitSenseKey(key string) (string, interface{}) {
+	// Find where trailing digits start.
+	i := len(key)
+	for i > 0 && key[i-1] >= '0' && key[i-1] <= '9' {
+		i--
+	}
+	if i == len(key) || i == 0 {
+		// No trailing digits, or entire key is digits.
+		return key, nil
+	}
+	base := key[:i]
+	num, err := strconv.Atoi(key[i:])
+	if err != nil {
+		return key, nil
+	}
+	return base, num
+}
+
 func buildWorkMap(database *sql.DB) map[string]int64 {
 	workMap := make(map[string]int64)
 	rows, err := database.Query("SELECT id, schmidt_abbrev FROM works WHERE schmidt_abbrev IS NOT NULL")

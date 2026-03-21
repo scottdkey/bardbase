@@ -14,7 +14,9 @@ import (
 
 // PrintSummary prints the final database build summary.
 func PrintSummary(database *sql.DB, dbPath string) {
-	stepBanner("BUILD COMPLETE")
+	printBar()
+	fmt.Println("BUILD COMPLETE")
+	printBar()
 
 	tables := []struct {
 		table string

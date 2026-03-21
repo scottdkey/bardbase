@@ -33,7 +33,7 @@ type sePlayData struct {
 // When forceDownload is true, play downloads and parsing run in parallel
 // (network I/O + CPU), then DB inserts happen sequentially.
 func ImportSEPlays(database *sql.DB, cacheDir string, forceDownload bool) error {
-	stepBanner("STEP 3: Import Standard Ebooks Plays")
+	stepBanner("Import Standard Ebooks Plays")
 
 	start := time.Now()
 	os.MkdirAll(cacheDir, 0755)

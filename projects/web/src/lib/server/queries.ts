@@ -159,6 +159,7 @@ export interface LexiconCitationDetail {
 export interface LexiconSenseDetail {
 	id: number;
 	sense_number: number;
+	sub_sense: string | null;
 	definition_text: string | null;
 }
 
@@ -173,45 +174,71 @@ export interface LexiconEntryDetail {
 }
 
 export function getLexiconEntryFull(db: Database.Database, id: number): LexiconEntryDetail | null {
+	// Find the entry and its base_key so we can load all related entries
+	// (e.g., A1-A7 all grouped under base_key "A").
 	const entry = db
-		.prepare('SELECT id, key, orthography, entry_type, full_text FROM lexicon_entries WHERE id = ?')
-		.get(id) as Pick<LexiconEntries, 'id' | 'key' | 'orthography' | 'entry_type' | 'full_text'> | undefined;
+		.prepare('SELECT id, key, base_key, orthography, entry_type, full_text FROM lexicon_entries WHERE id = ?')
+		.get(id) as (Pick<LexiconEntries, 'id' | 'key' | 'orthography' | 'entry_type' | 'full_text'> & { base_key: string }) | undefined;
 
 	if (!entry) return null;
 
+	// Get all entry IDs in this group (e.g., all entries with base_key = "A").
+	const groupEntries = db
+		.prepare('SELECT id, sense_group FROM lexicon_entries WHERE base_key = ? ORDER BY sense_group, id')
+		.all(entry.base_key) as { id: number; sense_group: number | null }[];
+
+	const entryIds = groupEntries.map(e => e.id);
+	const placeholders = entryIds.map(() => '?').join(',');
+
+	// Load senses from ALL entries in the group.
+	// For grouped entries (A1, A2, ...), use the sense_group as the top-level sense number
+	// so A1's senses become 1.a, 1.b, etc. and A2's become 2.a, 2.b, etc.
 	const senses = db
 		.prepare(
-			`SELECT id, sense_number, definition_text
-       FROM lexicon_senses
-       WHERE entry_id = ?
-       ORDER BY sense_number`
+			`SELECT ls.id,
+			        COALESCE(le.sense_group, ls.sense_number) as sense_number,
+			        ls.sub_sense, ls.definition_text
+			 FROM lexicon_senses ls
+			 JOIN lexicon_entries le ON le.id = ls.entry_id
+			 WHERE ls.entry_id IN (${placeholders})
+			 ORDER BY COALESCE(le.sense_group, ls.sense_number), ls.sense_number, COALESCE(ls.sub_sense, '')`
 		)
-		.all(id) as LexiconSenseDetail[];
+		.all(...entryIds) as LexiconSenseDetail[];
 
+	// Load citations from ALL entries in the group.
 	const citations = db
 		.prepare(
 			`SELECT lc.id, lc.sense_id, lc.work_id, lc.work_abbrev,
-              w.title AS work_title,
-              lc.act, lc.scene, lc.line,
-              lc.quote_text, lc.display_text, lc.raw_bibl,
-              tl.content AS matched_line,
-              tl.char_name AS matched_character
-       FROM lexicon_citations lc
-       LEFT JOIN works w ON w.id = lc.work_id
-       LEFT JOIN citation_matches cm ON cm.citation_id = lc.id
-         AND cm.id = (
-           SELECT cm2.id FROM citation_matches cm2
-           WHERE cm2.citation_id = lc.id
-           ORDER BY cm2.confidence DESC
-           LIMIT 1
-         )
-       LEFT JOIN text_lines tl ON tl.id = cm.text_line_id
-       WHERE lc.entry_id = ?
-       ORDER BY w.title, lc.act, lc.scene, lc.line`
+			        w.title AS work_title,
+			        lc.act, lc.scene, lc.line,
+			        lc.quote_text, lc.display_text, lc.raw_bibl,
+			        tl.content AS matched_line,
+			        tl.char_name AS matched_character
+			 FROM lexicon_citations lc
+			 LEFT JOIN works w ON w.id = lc.work_id
+			 LEFT JOIN citation_matches cm ON cm.citation_id = lc.id
+			   AND cm.id = (
+			     SELECT cm2.id FROM citation_matches cm2
+			     WHERE cm2.citation_id = lc.id
+			     ORDER BY cm2.confidence DESC
+			     LIMIT 1
+			   )
+			 LEFT JOIN text_lines tl ON tl.id = cm.text_line_id
+			 WHERE lc.entry_id IN (${placeholders})
+			 ORDER BY w.title, lc.act, lc.scene, lc.line`
 		)
-		.all(id) as LexiconCitationDetail[];
+		.all(...entryIds) as LexiconCitationDetail[];
 
-	return { ...entry, senses, citations };
+	// Use base_key as the display key (not "A1", just "A").
+	return {
+		id: entry.id,
+		key: entry.base_key,
+		orthography: entry.orthography,
+		entry_type: entry.entry_type,
+		full_text: entry.full_text,
+		senses,
+		citations
+	};
 }
 
 // ─── Scene text ──────────────────────────────────────────────────────────────

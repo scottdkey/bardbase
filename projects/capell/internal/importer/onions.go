@@ -27,7 +27,7 @@ import (
 // The raw entry text is stored as-is; no attempt is made to parse individual
 // senses or citations in this pass.
 func ImportOnions(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP: Import Onions Shakespeare Glossary")
+	stepBanner("Import Onions Shakespeare Glossary")
 
 	txtPath := filepath.Join(sourcesDir, "onions", "shakespeare-glossary-1911.txt")
 	if _, err := os.Stat(txtPath); err != nil {

@@ -46,7 +46,7 @@ type standaloneFile struct {
 //
 // This step must run before the citations step.
 func ImportStandalonePassages(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP 9b: Import Standalone Passages")
+	stepBanner("Import Standalone Passages")
 	start := time.Now()
 
 	// Locate standalone_passages.json relative to the data directory.

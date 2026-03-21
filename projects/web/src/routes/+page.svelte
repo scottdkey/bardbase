@@ -5,67 +5,55 @@
 
 	let { data } = $props();
 
-	let activeLetter = $state('A');
+	let query = $state('');
 	let entries = $state([] as typeof data.entries);
-	let offset = $state(0);
-	let hasMore = $state(true);
 	let loading = $state(false);
 	let loadingEntry = $state(false);
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	// Initialize from server data
+	// Initialize with first page of entries
 	$effect(() => {
-		entries = data.entries.slice();
-		offset = data.entries.length;
-		hasMore = data.entries.length === 50;
+		if (query === '') {
+			entries = data.entries.slice();
+		}
 	});
 
 	let selectedEntry = $state<LexiconEntryDetail | null>(null);
 	let selectedEntryId = $state<number | null>(null);
 
-	let sentinel: HTMLDivElement;
+	let searchInput: HTMLInputElement;
 
 	onMount(() => {
-		const observer = new IntersectionObserver(
-			(items) => {
-				if (items[0].isIntersecting && hasMore && !loading) {
-					loadMore();
-				}
-			},
-			{ rootMargin: '200px' }
-		);
-		observer.observe(sentinel);
-		return () => observer.disconnect();
+		searchInput?.focus();
 	});
 
-	async function switchLetter(letter: string) {
-		if (letter === activeLetter) return;
-		activeLetter = letter;
-		loading = true;
-		try {
-			const res = await fetch(`/api/lexicon/entries?letter=${letter}&offset=0&limit=50`);
-			const json = await res.json();
-			entries = json.entries;
-			offset = json.entries.length;
-			hasMore = json.hasMore;
-		} finally {
-			loading = false;
+	function handleSearch(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		query = value;
+
+		if (searchTimeout) clearTimeout(searchTimeout);
+
+		if (value.trim() === '') {
+			entries = data.entries.slice();
+			return;
 		}
+
+		searchTimeout = setTimeout(async () => {
+			loading = true;
+			try {
+				const res = await fetch(`/api/lexicon/search?q=${encodeURIComponent(value.trim())}&limit=100`);
+				const json = await res.json();
+				entries = json.entries;
+			} finally {
+				loading = false;
+			}
+		}, 150);
 	}
 
-	async function loadMore() {
-		if (loading || !hasMore) return;
-		loading = true;
-		try {
-			const res = await fetch(
-				`/api/lexicon/entries?letter=${activeLetter}&offset=${offset}&limit=50`
-			);
-			const json = await res.json();
-			entries = [...entries, ...json.entries];
-			offset += json.entries.length;
-			hasMore = json.hasMore;
-		} finally {
-			loading = false;
-		}
+	function clearSearch() {
+		query = '';
+		entries = data.entries.slice();
+		searchInput?.focus();
 	}
 
 	async function openEntry(id: number) {
@@ -92,24 +80,43 @@
 </svelte:head>
 
 <div class="lexicon-page">
-	<header class="page-header">
-		<h1 class="page-title">Lexicon</h1>
-		<p class="page-subtitle">Shakespeare's complete vocabulary</p>
-	</header>
+	<div class="sticky-header">
+		<header class="page-header">
+			<h1 class="page-title">Lexicon</h1>
+		</header>
 
-	<nav class="letter-bar" aria-label="Filter by letter">
-		{#each data.letters as { letter, count }}
-			<button
-				class="letter-btn"
-				class:active={letter === activeLetter}
-				onclick={() => switchLetter(letter)}
-				aria-label="{letter} ({count} entries)"
-				aria-pressed={letter === activeLetter}
-			>
-				{letter}
+		<div class="search-bar">
+		<svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<circle cx="11" cy="11" r="8" />
+			<line x1="21" y1="21" x2="16.65" y2="16.65" />
+		</svg>
+		<input
+			bind:this={searchInput}
+			type="text"
+			class="search-input"
+			placeholder="Search words..."
+			value={query}
+			oninput={handleSearch}
+			aria-label="Search lexicon entries"
+		/>
+		{#if query}
+			<button class="clear-btn" onclick={clearSearch} aria-label="Clear search">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<line x1="18" y1="6" x2="6" y2="18" />
+					<line x1="6" y1="6" x2="18" y2="18" />
+				</svg>
 			</button>
-		{/each}
-	</nav>
+		{/if}
+		</div>
+	</div>
+
+	{#if loading}
+		<div class="status-text">Searching&hellip;</div>
+	{:else if query && entries.length === 0}
+		<div class="status-text">No entries found for "{query}"</div>
+	{:else if entries.length > 0}
+		<div class="result-count">{entries.length} {query ? 'results' : 'entries'}</div>
+	{/if}
 
 	<ul class="entry-list" role="list" aria-label="Lexicon entries">
 		{#each entries as entry (entry.id)}
@@ -125,12 +132,6 @@
 			</li>
 		{/each}
 	</ul>
-
-	<div bind:this={sentinel} class="sentinel" aria-hidden="true">
-		{#if loading}
-			<span class="loading-text">Loading&hellip;</span>
-		{/if}
-	</div>
 </div>
 
 <EntryModal entry={selectedEntry} onclose={closeEntry} />
@@ -142,68 +143,94 @@
 		padding: 0 16px;
 	}
 
+	.sticky-header {
+		position: sticky;
+		top: var(--top-bar-height, 48px);
+		z-index: 50;
+		background: var(--color-bg);
+		padding-bottom: 8px;
+	}
+
 	.page-header {
-		padding: 24px 0 16px;
+		padding: 12px 0 8px;
 	}
 
 	.page-title {
 		margin: 0;
-		font-size: 1.6rem;
+		font-size: 1.3rem;
 		font-weight: 700;
 		color: var(--color-text);
 	}
 
-	.page-subtitle {
-		margin: 4px 0 0;
-		font-size: 0.85rem;
+	/* ─── Search Bar ─── */
+	.search-bar {
+		position: relative;
+	}
+
+	.search-icon {
+		position: absolute;
+		left: 14px;
+		top: 50%;
+		transform: translateY(-50%);
+		color: var(--color-text-muted);
+		pointer-events: none;
+	}
+
+	.search-input {
+		width: 100%;
+		padding: 12px 40px 12px 42px;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font-family: inherit;
+		font-size: 1rem;
+		border-radius: 12px;
+		outline: none;
+		transition: border-color 0.15s, box-shadow 0.15s;
+		box-sizing: border-box;
+	}
+
+	.search-input::placeholder {
 		color: var(--color-text-muted);
 	}
 
-	/* ─── Letter Bar ─── */
-	.letter-bar {
-		display: flex;
-		gap: 4px;
-		overflow-x: auto;
-		padding: 0 0 12px;
-		scrollbar-width: none;
-		-webkit-overflow-scrolling: touch;
+	.search-input:focus {
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.15);
 	}
 
-	.letter-bar::-webkit-scrollbar {
-		display: none;
-	}
-
-	.letter-btn {
-		flex-shrink: 0;
-		width: 36px;
-		height: 36px;
+	.clear-btn {
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		border: 1px solid transparent;
-		background: none;
-		color: var(--color-text-muted);
-		font-family: inherit;
-		font-size: 0.85rem;
-		font-weight: 600;
-		cursor: pointer;
-		border-radius: 8px;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
 	}
 
-	.letter-btn:hover {
-		background: var(--color-hover);
+	.clear-btn:hover {
 		color: var(--color-text);
+		background: var(--color-hover);
 	}
 
-	.letter-btn:active {
-		background: var(--color-active);
+	/* ─── Status ─── */
+	.status-text {
+		padding: 12px 0;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		text-align: center;
 	}
 
-	.letter-btn.active {
-		background: var(--color-accent);
-		color: var(--color-bg);
-		border-color: var(--color-accent);
+	.result-count {
+		padding: 4px 0 8px;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
 	}
 
 	/* ─── Entry List ─── */
@@ -244,17 +271,5 @@
 	.entry-key {
 		font-size: 1.05rem;
 		font-weight: 500;
-	}
-
-	/* ─── Loading ─── */
-	.sentinel {
-		padding: 24px;
-		text-align: center;
-		min-height: 48px;
-	}
-
-	.loading-text {
-		font-size: 0.85rem;
-		color: var(--color-text-muted);
 	}
 </style>

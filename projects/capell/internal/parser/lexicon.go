@@ -26,9 +26,11 @@ type LexiconEntry struct {
 }
 
 // Sense represents a numbered sense/definition within a lexicon entry.
+// Sub-senses (a, b, c, etc.) are stored with SubSense set to the letter.
 type Sense struct {
-	Number int
-	Text   string
+	Number   int    // top-level sense number (1, 2, 3, ...)
+	SubSense string // sub-sense letter ("a", "b", "c", ...) or "" for top-level
+	Text     string
 }
 
 // Citation represents a work reference within a lexicon entry.
@@ -54,6 +56,7 @@ type PerseusRef struct {
 }
 
 var sensePattern = regexp.MustCompile(`(?:^|\s)(\d+)\)\s`)
+var subSensePattern = regexp.MustCompile(`(?:^|\s)([a-z])\)\s`)
 
 // ParsePerseusRef parses a Perseus bibl n= attribute into structured components.
 // Returns nil if the reference is not a valid Shakespeare reference.
@@ -161,7 +164,16 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 			}
 		}
 	default:
-		// Play: 3-part → act.scene.line, 2-part → act.scene, 1-part → line
+		// Play references from Perseus:
+		//   3-part "5.1.56" → act=5, scene=1, line=56
+		//   2-part "4.60"   → ambiguous: could be act.scene OR act.line
+		//   1-part "56"     → line only
+		//
+		// For 2-part refs, Shakespeare plays have at most ~10 scenes per act.
+		// If the second number is > 15, it's almost certainly a line number,
+		// not a scene number. Perseus format "shak.tmp 4.60" means act 4, line 60.
+		// supplementFromDisplayText will refine further using the display text.
+		const maxReasonableScene = 15
 		switch len(numParts) {
 		case 3:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
@@ -178,7 +190,15 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 				ref.Act = &v
 			}
 			if v, err := strconv.Atoi(numParts[1]); err == nil {
-				ref.Scene = &v
+				if v > maxReasonableScene {
+					// Too high to be a scene → treat as line number.
+					ref.Line = &v
+				} else {
+					// Could be scene or line — store as scene for now.
+					// supplementFromDisplayText will correct if display text
+					// shows only 2 numbers (act, line) format.
+					ref.Scene = &v
+				}
 			}
 		case 1:
 			if v, err := strconv.Atoi(numParts[0]); err == nil {
@@ -190,28 +210,70 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 	return ref
 }
 
-// ParseSenses splits entry full text into numbered senses.
+// ParseSenses splits entry full text into numbered senses and sub-senses.
+//
+// Schmidt uses two levels:
+//   - Numbered senses:    "1) first meaning  2) second meaning"
+//   - Lettered sub-senses: "a) to stay  b) to remain  c) to continue"
+//
+// Sub-senses are children of the most recent numbered sense.
 // If no numbered senses are found, returns a single sense with the full text.
 func ParseSenses(fullText string) []Sense {
-	matches := sensePattern.FindAllStringSubmatchIndex(fullText, -1)
-	if len(matches) == 0 {
+	senseMatches := sensePattern.FindAllStringSubmatchIndex(fullText, -1)
+	if len(senseMatches) == 0 {
 		return []Sense{{Number: 1, Text: fullText}}
 	}
 
-	var senses []Sense
-	for i, match := range matches {
+	// Split into numbered sense chunks first.
+	type senseChunk struct {
+		number int
+		text   string
+	}
+	var chunks []senseChunk
+	for i, match := range senseMatches {
 		num, _ := strconv.Atoi(fullText[match[2]:match[3]])
 		start := match[1] // end of the "N) " pattern
 		var end int
-		if i+1 < len(matches) {
-			end = matches[i+1][0]
+		if i+1 < len(senseMatches) {
+			end = senseMatches[i+1][0]
 		} else {
 			end = len(fullText)
 		}
-		senses = append(senses, Sense{
-			Number: num,
-			Text:   strings.TrimSpace(fullText[start:end]),
-		})
+		chunks = append(chunks, senseChunk{num, strings.TrimSpace(fullText[start:end])})
+	}
+
+	var senses []Sense
+	for _, chunk := range chunks {
+		// Look for sub-senses (a), b), c), etc.) within this sense.
+		subMatches := subSensePattern.FindAllStringSubmatchIndex(chunk.text, -1)
+		if len(subMatches) == 0 {
+			// No sub-senses — single sense.
+			senses = append(senses, Sense{Number: chunk.number, Text: chunk.text})
+			continue
+		}
+
+		// Text before the first sub-sense is the sense's preamble.
+		preamble := strings.TrimSpace(chunk.text[:subMatches[0][0]])
+		if preamble != "" {
+			senses = append(senses, Sense{Number: chunk.number, Text: preamble})
+		}
+
+		// Each sub-sense.
+		for j, sub := range subMatches {
+			letter := chunk.text[sub[2]:sub[3]]
+			start := sub[1]
+			var end int
+			if j+1 < len(subMatches) {
+				end = subMatches[j+1][0]
+			} else {
+				end = len(chunk.text)
+			}
+			senses = append(senses, Sense{
+				Number:   chunk.number,
+				SubSense: letter,
+				Text:     strings.TrimSpace(chunk.text[start:end]),
+			})
+		}
 	}
 	return senses
 }
@@ -326,8 +388,20 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 	// Full text (all text content, whitespace normalized) — used for citation position matching
 	fullText := normalizeWhitespace(entryFree.GetText())
 
-	// Definition text excludes bibl references — used for sense definitions shown to users
-	defText := normalizeWhitespace(entryFree.GetTextExcluding("bibl"))
+	// Definition text excludes elements that are displayed separately in the UI:
+	//   - "orth": the headword (shown in the entry header)
+	//   - "cit":  full citation blocks (quote + bibl, shown in references section)
+	//   - "bibl": standalone references without a <cit> wrapper
+	defText := normalizeWhitespace(entryFree.GetTextExcluding("orth", "cit", "bibl"))
+
+	// Clean up artifacts from citation stripping: sequences of periods/commas
+	// left behind where inline references were removed (e.g. "a name: . ."
+	// from two consecutive <bibl> elements with ". " tails).
+	defText = cleanDefinitionText(defText)
+
+	// Expand Schmidt's headword abbreviations ("--ed", "--ing", etc.) in
+	// the definition text so the stored definitions are human-readable.
+	defText = expandAbbreviations(defText, key)
 
 	// Senses parsed from definition text (without inline references)
 	senses := ParseSenses(defText)
@@ -338,13 +412,16 @@ func ParseEntryXML(xmlContent []byte, sourceFile string) (*LexiconEntry, error) 
 		biblN := bibl.Attr("n")
 		displayText := strings.TrimSpace(bibl.GetText())
 
-		// Find quote text from parent cit element
+		// Find quote text from parent cit element.
+		// Expand headword abbreviations ("--ed" → "abandoned", etc.)
+		// so the stored quote is human-readable and searchable.
 		var quoteText string
 		for _, cit := range entryFree.FindAll("cit") {
 			if cit.ContainsChild(bibl) {
 				quoteElem := cit.Find("quote")
 				if quoteElem != nil {
 					quoteText = strings.TrimSpace(quoteElem.GetText())
+					quoteText = expandAbbreviations(quoteText, key)
 				}
 				break
 			}
@@ -453,7 +530,10 @@ func supplementFromDisplayText(ref *PerseusRef, displayText string, workType str
 			ref.Line = &nums[len(nums)-1]
 		}
 	default:
-		// Play: display "H6B I, 2, 15" → act=1, scene=2, line=15
+		// Play display text patterns:
+		//   3 numbers: "H6B I, 2, 15" → act=1, scene=2, line=15
+		//   2 numbers: "Tp. IV, 56"   → act=4, line=56 (Schmidt's format: act, line)
+		//   1 number:  rare, usually just a line
 		if len(nums) == 3 {
 			if ref.Act == nil {
 				ref.Act = &nums[0]
@@ -465,13 +545,16 @@ func supplementFromDisplayText(ref *PerseusRef, displayText string, workType str
 				ref.Line = &nums[2]
 			}
 		} else if len(nums) == 2 {
-			// Display has 2 numbers (e.g. "Tp. IV, 56" = act, line).
-			// If Perseus gave us act+scene from a 2-part ref like "4.56",
-			// the "scene" is actually a line number. Correct it.
+			// Schmidt's 2-number play format is always "Act, Line" (never Act, Scene).
+			// If we have act+scene but no line, the "scene" is actually the line.
 			if ref.Act != nil && ref.Scene != nil && ref.Line == nil {
 				line := *ref.Scene
 				ref.Scene = nil
 				ref.Line = &line
+			}
+			// If we only have act (no scene, no line), second number is the line.
+			if ref.Act != nil && ref.Scene == nil && ref.Line == nil {
+				ref.Line = &nums[1]
 			}
 		}
 	}
@@ -498,4 +581,107 @@ func parseRoman(s string) int {
 func normalizeWhitespace(s string) string {
 	fields := strings.Fields(s)
 	return strings.Join(fields, " ")
+}
+
+// expandAbbreviations expands Schmidt's headword abbreviations in text.
+//
+// Schmidt systematically abbreviates the headword being defined:
+//   - "--ed" → headword + "ed" (e.g., for "abandon": "--ed" → "abandoned")
+//   - "--ing" → headword + "ing"
+//   - "--s" → headword + "s"
+//   - "--ies" → headword stem + "ies" (for words ending in y: "ability" → "abilities")
+//
+// The headword is the lexicon entry key with trailing sense numbers stripped
+// (e.g., "Ability" not "Ability1").
+func expandAbbreviations(text, headword string) string {
+	if headword == "" || !strings.Contains(text, "--") {
+		return text
+	}
+	hw := strings.ToLower(headword)
+
+	// Find each "--" and expand with the headword + suffix.
+	var b strings.Builder
+	i := 0
+	for i < len(text) {
+		dashIdx := strings.Index(text[i:], "--")
+		if dashIdx < 0 {
+			b.WriteString(text[i:])
+			break
+		}
+		dashIdx += i
+
+		// Write everything before the "--".
+		b.WriteString(text[i:dashIdx])
+
+		// Collect the suffix after "--" (letters until non-letter).
+		suffixStart := dashIdx + 2
+		suffixEnd := suffixStart
+		for suffixEnd < len(text) {
+			c := text[suffixEnd]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '\'' {
+				suffixEnd++
+			} else {
+				break
+			}
+		}
+		suffix := text[suffixStart:suffixEnd]
+
+		if suffix == "" {
+			// Bare "--" with no suffix → just the headword.
+			b.WriteString(hw)
+		} else {
+			// Handle stem changes for common English inflection:
+			// ability + ies → abilities (drop trailing y, add ies)
+			// abide + s → abides
+			stem := hw
+			suffixLower := strings.ToLower(suffix)
+			if strings.HasSuffix(suffixLower, "ies") && strings.HasSuffix(stem, "y") {
+				stem = stem[:len(stem)-1] // drop y, suffix provides "ies"
+			} else if strings.HasSuffix(suffixLower, "ied") && strings.HasSuffix(stem, "y") {
+				stem = stem[:len(stem)-1]
+			} else if (suffixLower == "ed" || suffixLower == "ing" || suffixLower == "er" || suffixLower == "est") && strings.HasSuffix(stem, "e") {
+				stem = stem[:len(stem)-1] // abate + ed → abated (not abateed)
+			}
+			b.WriteString(stem)
+			b.WriteString(suffix)
+		}
+
+		i = suffixEnd
+	}
+	return b.String()
+}
+
+// cleanDefinitionText removes artifacts left after stripping <cit> and <bibl>
+// elements from definition text. When citations are removed, their surrounding
+// punctuation (periods, commas between consecutive refs) remains as orphaned
+// tokens like ". . ." or trailing ". ." at end of definitions.
+//
+// Rules:
+//   - Collapse runs of orphaned periods/commas: ". . ." → nothing
+//   - Preserve colons (they introduce subcategories like "With from:")
+//   - Clean trailing punctuation artifacts at end of text
+//   - Clean punctuation before sense markers: ". . 2)" → "2)"
+var (
+	// Matches sequences of orphaned periods/commas (with spaces between them).
+	// These are artifacts from stripped citation references.
+	// Matches: ". . .", ". .", ", .", etc. (2+ punctuation marks separated by spaces)
+	orphanedPunct = regexp.MustCompile(`(?:\s*[.,]){2,}\s*`)
+	// Matches a single orphaned period/comma (possibly with space) that follows
+	// a colon or semicolon: "for: ." → "for:"
+	colonThenDot = regexp.MustCompile(`([:;])\s*[.,]\s+`)
+	// Trailing punctuation artifacts at end of string.
+	trailingArtifacts = regexp.MustCompile(`[\s.,;:]+$`)
+)
+
+func cleanDefinitionText(s string) string {
+	// Collapse runs of orphaned periods: ". . . ." → " "
+	s = orphanedPunct.ReplaceAllString(s, " ")
+
+	// Clean orphaned dot after colon: "for: ." → "for: "
+	s = colonThenDot.ReplaceAllString(s, "$1 ")
+
+	// Remove trailing punctuation artifacts.
+	s = trailingArtifacts.ReplaceAllString(s, "")
+
+	return normalizeWhitespace(s)
 }

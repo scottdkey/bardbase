@@ -212,7 +212,7 @@
 				</button>
 			</div>
 
-			{#if entry.orthography}
+			{#if entry.orthography && entry.orthography.replace(/[,.\s]+$/g, '') !== entry.key}
 				<p class="orthography">{entry.orthography}</p>
 			{/if}
 
@@ -220,9 +220,13 @@
 				{#if entry.senses.length > 0}
 					<section class="senses" aria-label="Definitions">
 						{#each entry.senses as sense}
-							<div class="sense-block">
+							<div class="sense-block" class:sub-sense={sense.sub_sense}>
 								<div class="sense">
-									<span class="sense-num">{sense.sense_number})</span>
+									{#if sense.sub_sense}
+										<span class="sense-num sub">{sense.sub_sense})</span>
+									{:else}
+										<span class="sense-num">{sense.sense_number})</span>
+									{/if}
 									<p class="sense-def">{sense.definition_text}</p>
 								</div>
 								{#if citationsBySense.bySense.has(sense.id)}
@@ -268,7 +272,7 @@
 		width: 92%;
 		max-width: 640px;
 		max-height: 85dvh;
-		background: var(--color-surface);
+		background: var(--color-elevated);
 		border: 1px solid var(--color-border);
 		border-radius: 16px;
 		z-index: 500;
@@ -390,6 +394,15 @@
 		font-weight: 600;
 		flex-shrink: 0;
 		min-width: 24px;
+	}
+
+	.sense-num.sub {
+		font-weight: 500;
+		font-style: italic;
+	}
+
+	.sense-block.sub-sense {
+		margin-left: 20px;
 	}
 
 	.sense-def {

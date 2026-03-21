@@ -50,8 +50,8 @@ func TestParsePerseusRef_TwoPartSonnet(t *testing.T) {
 	}
 }
 
-func TestParsePerseusRef_TwoPartPlay(t *testing.T) {
-	// Plays: two-part = act.scene (no line number)
+func TestParsePerseusRef_TwoPartPlay_LowScene(t *testing.T) {
+	// "5.1" → act=5, scene=1 (scene number is plausible)
 	ref := ParsePerseusRef("shak. ayl 5.1")
 	if ref == nil {
 		t.Fatal("expected non-nil ref")
@@ -66,7 +66,24 @@ func TestParsePerseusRef_TwoPartPlay(t *testing.T) {
 		t.Errorf("expected scene 1, got %v", ref.Scene)
 	}
 	if ref.Line != nil {
-		t.Errorf("expected nil line for two-part play ref, got %v", ref.Line)
+		t.Errorf("expected nil line for two-part play ref with low scene, got %v", ref.Line)
+	}
+}
+
+func TestParsePerseusRef_TwoPartPlay_HighNumber(t *testing.T) {
+	// "4.60" → act=4, line=60 (60 is too high to be a scene number)
+	ref := ParsePerseusRef("shak. tmp 4.60")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.Act == nil || *ref.Act != 4 {
+		t.Errorf("expected act 4, got %v", ref.Act)
+	}
+	if ref.Scene != nil {
+		t.Errorf("expected nil scene (60 is a line, not a scene), got %v", *ref.Scene)
+	}
+	if ref.Line == nil || *ref.Line != 60 {
+		t.Errorf("expected line 60, got %v", ref.Line)
 	}
 }
 

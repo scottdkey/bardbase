@@ -19,7 +19,7 @@ import (
 //
 // Data is loaded from projects/data/attributions.json via the constants package.
 func PopulateAttributions(database *sql.DB) error {
-	stepBanner("STEP 7: Populate Attribution Rules")
+	stepBanner("Populate Attribution Rules")
 
 	start := time.Now()
 

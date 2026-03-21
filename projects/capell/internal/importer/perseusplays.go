@@ -21,7 +21,7 @@ import (
 // The Perseus texts are the Clark & Wright Globe edition (1864), which is the
 // standard scholarly reference for line numbers in Shakespeare studies.
 func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP 5: Import Perseus Play Texts")
+	stepBanner("Import Perseus Play Texts")
 	start := time.Now()
 
 	perseusDir := filepath.Join(sourcesDir, "perseus-plays")

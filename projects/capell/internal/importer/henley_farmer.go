@@ -25,7 +25,7 @@ import (
 // until the next all-caps headword. The raw entry text is stored as-is;
 // citations are extracted later by ResolveReferenceCitations.
 func ImportHenleyFarmer(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP: Import Henley & Farmer's Slang Dictionary")
+	stepBanner("Import Henley & Farmer's Slang Dictionary")
 
 	srcID, err := db.GetSourceID(database,
 		"Henley & Farmer's Slang and Its Analogues (1890-1904)", "henley_farmer",

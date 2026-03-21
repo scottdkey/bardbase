@@ -23,7 +23,7 @@ import (
 // with long-s (ſ) normalized to s by the parser. Verse lines are per-<l> element;
 // prose speeches are per-<p> element. Attribution: Text Creation Partnership, CC0.
 func ImportFirstFolio(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP 6: Import First Folio (EEBO-TCP A11954)")
+	stepBanner("Import First Folio (EEBO-TCP A11954)")
 	start := time.Now()
 
 	folioPath := filepath.Join(sourcesDir, "eebo-tcp", "A11954.xml")

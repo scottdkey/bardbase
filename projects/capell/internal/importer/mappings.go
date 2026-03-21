@@ -93,7 +93,7 @@ type lineKey struct {
 // Alignment computation is parallelized across goroutines since it is CPU-bound,
 // while DB reads (loading lines) and writes (inserting mappings) remain sequential.
 func BuildLineMappings(database *sql.DB) error {
-	stepBanner("STEP 8: Build Cross-Edition Line Mappings")
+	stepBanner("Build Cross-Edition Line Mappings")
 
 	start := time.Now()
 

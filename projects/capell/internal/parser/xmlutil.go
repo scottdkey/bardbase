@@ -107,7 +107,14 @@ func (n *XMLNode) collectTextExcluding(b *strings.Builder, exclude map[string]bo
 	b.WriteString(n.Text)
 	for _, child := range n.Children {
 		if exclude[child.Name] {
-			// Skip the element's content AND its tail (trailing punctuation between refs)
+			// Skip the element's content but keep its tail — tail text belongs
+			// to the parent context (e.g. ". 2) second meaning:" between two <cit> blocks).
+			b.WriteString(child.Tail)
+		} else if child.Name == "lb" {
+			// <lb/> is Schmidt's line break — emit a space so sense markers
+			// like "2)" at the start of the next line get proper word boundaries.
+			b.WriteString(" ")
+			b.WriteString(child.Tail)
 		} else {
 			child.collectTextExcluding(b, exclude)
 			b.WriteString(child.Tail)

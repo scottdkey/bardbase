@@ -19,7 +19,7 @@ import (
 
 // ImportSEPoetry imports Standard Ebooks poetry, sonnets, and Folger URLs.
 func ImportSEPoetry(database *sql.DB, cacheDir string, forceDownload bool) error {
-	stepBanner("STEP 4: Import Poetry + Folger URLs")
+	stepBanner("Import Poetry + Folger URLs")
 
 	start := time.Now()
 	os.MkdirAll(cacheDir, 0755)

@@ -95,7 +95,7 @@ func (td *testDB) insertTextLine(t *testing.T, workID, editionID int64, act, sce
 func (td *testDB) insertLexiconEntry(t *testing.T, key, letter string) int64 {
 	t.Helper()
 	res, err := td.DB.Exec(
-		`INSERT INTO lexicon_entries (key, letter) VALUES (?, ?)`, key, letter)
+		`INSERT INTO lexicon_entries (key, base_key, letter) VALUES (?, ?, ?)`, key, key, letter)
 	if err != nil {
 		t.Fatalf("insertLexiconEntry: %v", err)
 	}

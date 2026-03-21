@@ -26,7 +26,7 @@ import (
 //  5. Match line numbers against text_lines; insert reference_citation_matches.
 //  6. Propagate matches to other editions via line_mappings.
 func ResolveReferenceCitations(database *sql.DB) error {
-	stepBanner("STEP 10: Resolve Reference Citations → Text Lines")
+	stepBanner("Resolve Reference Citations → Text Lines")
 	start := time.Now()
 
 	// Clear previous run for idempotent rebuild.
@@ -200,6 +200,14 @@ func resolveOnionsAbbrev(abbrev string) string {
 func resolveAbbottAbbrev(abbrev string) string {
 	if mapped, ok := constants.AbbottAbbrevs[abbrev]; ok {
 		return mapped
+	}
+	// Normalize whitespace — the Abbott parser sometimes produces double spaces
+	// (e.g. "V.  and  A." instead of "V. and A.").
+	normalized := strings.Join(strings.Fields(abbrev), " ")
+	if normalized != abbrev {
+		if mapped, ok := constants.AbbottAbbrevs[normalized]; ok {
+			return mapped
+		}
 	}
 	return abbrev
 }

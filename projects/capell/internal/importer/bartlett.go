@@ -25,7 +25,7 @@ import (
 // lines are OCR column headers and are skipped. Each headword group's raw text
 // is stored as-is; citations are extracted later by ResolveReferenceCitations.
 func ImportBartlett(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP: Import Bartlett's Shakespeare Concordance")
+	stepBanner("Import Bartlett's Shakespeare Concordance")
 
 	txtPath := filepath.Join(sourcesDir, "bartlett", "concordance-1896.txt")
 	if _, err := os.Stat(txtPath); err != nil {

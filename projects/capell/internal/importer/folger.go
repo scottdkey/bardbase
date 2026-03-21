@@ -24,7 +24,7 @@ import (
 // license_tier="cc-by-nc" so it can be excluded from commercial/paid features.
 // Use --exclude folger to omit this step from the build entirely.
 func ImportFolger(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP 7: Import Folger Shakespeare (TEIsimple)")
+	stepBanner("Import Folger Shakespeare (TEIsimple)")
 	start := time.Now()
 
 	teisimpleDir := filepath.Join(sourcesDir, "folger", "teisimple")

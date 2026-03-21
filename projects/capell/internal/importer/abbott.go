@@ -24,7 +24,7 @@ import (
 // begins with a number and period at column 0. The raw paragraph text is stored
 // as-is; citations are extracted later by ResolveReferenceCitations.
 func ImportAbbott(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP: Import Abbott Shakespearian Grammar")
+	stepBanner("Import Abbott Shakespearian Grammar")
 
 	txtPath := filepath.Join(sourcesDir, "abbott", "shakespearian-grammar-1877.txt")
 	if _, err := os.Stat(txtPath); err != nil {

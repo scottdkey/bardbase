@@ -32,7 +32,7 @@ type quartoMeta struct {
 // The quarto files are identified by EEBO-TCP IDs (e.g., A11959 = Q1 Hamlet).
 // Each quarto gets its own edition short_code (e.g., "q1_hamlet_1603").
 func ImportEEBOQuartos(database *sql.DB, sourcesDir string) error {
-	stepBanner("STEP 8: Import EEBO-TCP Early Quartos")
+	stepBanner("Import EEBO-TCP Early Quartos")
 	start := time.Now()
 
 	eeboDir := filepath.Join(sourcesDir, "eebo-tcp")
