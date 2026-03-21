@@ -239,6 +239,49 @@ func TestParseSenses_MultipleSenses(t *testing.T) {
 	}
 }
 
+func TestParseSenses_IgnoresNumbersInsideParens(t *testing.T) {
+	// "4)" inside "(cf. def. 4)" should NOT be treated as a sense boundary
+	text := "1) reckoning: (== store). 2) computation: (cf. def. 4). 3) estimation: something. 4) explanation:"
+	senses := ParseSenses(text)
+	if len(senses) != 4 {
+		t.Fatalf("expected 4 senses, got %d: %+v", len(senses), senses)
+	}
+	for i, s := range senses {
+		if s.Number != i+1 {
+			t.Errorf("sense %d: expected number %d, got %d (text: %q)", i, i+1, s.Number, s.Text)
+		}
+	}
+	// Sense 2 should contain "(cf. def. 4)" as part of its text, not split on it
+	if !strings.Contains(senses[1].Text, "cf. def. 4") {
+		t.Errorf("sense 2 should contain 'cf. def. 4', got: %q", senses[1].Text)
+	}
+}
+
+func TestParseSenses_IgnoresNonSequentialNumbers(t *testing.T) {
+	// Random "4)" without preceding 3) should be ignored
+	text := "1) first definition. 2) second (see 4) for more). 3) third."
+	senses := ParseSenses(text)
+	if len(senses) != 3 {
+		t.Fatalf("expected 3 senses, got %d: %+v", len(senses), senses)
+	}
+}
+
+func TestParseSenses_SubSensesInsideParens(t *testing.T) {
+	// Letters inside parens should not be treated as sub-senses
+	text := "1) definition (see a) for details). a) first sub. b) second sub."
+	senses := ParseSenses(text)
+	// Should have: preamble "definition (see a) for details).", sub a), sub b)
+	found := 0
+	for _, s := range senses {
+		if s.SubSense != "" {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Errorf("expected 2 sub-senses, got %d: %+v", found, senses)
+	}
+}
+
 func TestParseEntryXML_BasicEntry(t *testing.T) {
 	xml := `<?xml version="1.0" encoding="UTF-8"?>
 <TEI.2>

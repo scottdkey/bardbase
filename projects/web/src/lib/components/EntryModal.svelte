@@ -1,5 +1,7 @@
 <script lang="ts">
-	import type { LexiconEntryDetail, LexiconCitationDetail, SceneTextResult } from '$lib/server/queries';
+	import type { LexiconEntryDetail, LexiconCitationDetail, LexiconSubEntryDetail, SceneTextResult } from '$lib/server/queries';
+	import CorrectionForm from './CorrectionForm.svelte';
+	import { corrections } from '$lib/stores/corrections.svelte';
 
 	let {
 		entry,
@@ -12,14 +14,20 @@
 	let expandedCitations = $state<Set<number>>(new Set());
 	let sceneData = $state<SceneTextResult | null>(null);
 	let sceneHighlightLine = $state<number | null>(null);
+	let sceneMatchQuality = $state<'exact' | 'nearby' | 'scene' | 'unmatched'>('exact');
+	let sceneCitation = $state<LexiconCitationDetail | null>(null);
 	let sceneLoading = $state(false);
+	let savedScrollTop = $state(0);
+	let correctionLine = $state<{ lineNumber: number; content: string; characterName: string | null } | null>(null);
+	let correctionEntry = $state<{ type: 'entry' | 'citation'; currentText: string; senseNumber?: number; subSense?: string; citationRef?: string } | null>(null);
 
-	// Group citations by sense_id
-	let citationsBySense = $derived.by(() => {
-		if (!entry) return { bySense: new Map<number, LexiconCitationDetail[]>(), unassigned: [] as LexiconCitationDetail[] };
+	let hasMultipleSubEntries = $derived(entry ? entry.subEntries.length > 1 : false);
+
+	// Group citations by sense_id for a given sub-entry
+	function getCitationsBySense(sub: LexiconSubEntryDetail) {
 		const bySense = new Map<number, LexiconCitationDetail[]>();
 		const unassigned: LexiconCitationDetail[] = [];
-		for (const c of entry.citations) {
+		for (const c of sub.citations) {
 			if (c.sense_id != null) {
 				const list = bySense.get(c.sense_id) ?? [];
 				list.push(c);
@@ -29,7 +37,19 @@
 			}
 		}
 		return { bySense, unassigned };
-	});
+	}
+
+	// Group citations by work/play
+	function groupByWork(citations: LexiconCitationDetail[]): Map<string, LexiconCitationDetail[]> {
+		const groups = new Map<string, LexiconCitationDetail[]>();
+		for (const c of citations) {
+			const key = c.work_title || c.work_abbrev || 'Other';
+			const list = groups.get(key) ?? [];
+			list.push(c);
+			groups.set(key, list);
+		}
+		return groups;
+	}
 
 	function toggleCitation(id: number) {
 		const next = new Set(expandedCitations);
@@ -57,6 +77,16 @@
 		return parts.join(' ') || c.raw_bibl || '';
 	}
 
+	function formatCitationLoc(c: LexiconCitationDetail): string {
+		if (c.act != null) {
+			let loc = `${c.act}`;
+			if (c.scene != null) loc += `.${c.scene}`;
+			if (c.line != null) loc += `.${c.line}`;
+			return loc;
+		}
+		return c.raw_bibl || '';
+	}
+
 	function citationText(c: LexiconCitationDetail): string {
 		if (c.matched_line) return c.matched_line;
 		return c.quote_text || c.display_text || '';
@@ -74,14 +104,67 @@
 		});
 	}
 
+	/**
+	 * Find the best line to highlight by validating the headword is present.
+	 * Returns the line number and match quality.
+	 */
+	function findHeadwordLine(
+		lines: { line_number: number | null; content: string }[],
+		targetLine: number | null,
+		headword: string
+	): { line: number | null; quality: 'exact' | 'nearby' | 'scene' | 'unmatched' } {
+		if (!headword || lines.length === 0) return { line: targetLine, quality: 'unmatched' };
+
+		const hw = headword.replace(/\d+$/, '').toLowerCase();
+		const hwEscaped = hw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const hwPattern = new RegExp(`\\b${hwEscaped}`, 'i');
+
+		// Check if target line already contains the headword
+		if (targetLine != null) {
+			const targetLineData = lines.find(l => l.line_number === targetLine);
+			if (targetLineData && hwPattern.test(targetLineData.content)) {
+				return { line: targetLine, quality: 'exact' };
+			}
+		}
+
+		// Search nearby lines (±5)
+		const targetIdx = targetLine != null ? lines.findIndex(l => l.line_number === targetLine) : -1;
+		if (targetIdx >= 0) {
+			for (let offset = 1; offset <= 5; offset++) {
+				for (const idx of [targetIdx - offset, targetIdx + offset]) {
+					if (idx >= 0 && idx < lines.length && lines[idx].line_number != null && hwPattern.test(lines[idx].content)) {
+						return { line: lines[idx].line_number, quality: 'nearby' };
+					}
+				}
+			}
+		}
+
+		// Fall back: any line in scene — flag for review
+		const match = lines.find(l => l.line_number != null && hwPattern.test(l.content));
+		if (match) return { line: match.line_number, quality: 'scene' };
+
+		// Nothing found — flag for review
+		return { line: targetLine, quality: 'unmatched' };
+	}
+
 	async function openScene(c: LexiconCitationDetail) {
 		if (!c.work_id || c.act == null || c.scene == null) return;
+		// Save scroll position of the entry body
+		const body = document.querySelector('.modal-body');
+		if (body) savedScrollTop = body.scrollTop;
 		sceneLoading = true;
+		sceneCitation = c;
 		try {
-			const res = await fetch(`/api/text/scene?workId=${c.work_id}&act=${c.act}&scene=${c.scene}`);
+			let url = `/api/text/scene?workId=${c.work_id}&act=${c.act}&scene=${c.scene}`;
+			if (c.matched_edition_id != null) url += `&editionId=${c.matched_edition_id}`;
+			const res = await fetch(url);
 			if (res.ok) {
-				sceneData = await res.json();
-				sceneHighlightLine = c.line;
+				const data: SceneTextResult = await res.json();
+				sceneData = data;
+				const candidateLine = c.matched_line_number ?? c.line;
+				const result = findHeadwordLine(data.lines, candidateLine, entry?.key ?? '');
+				sceneHighlightLine = result.line;
+				sceneMatchQuality = result.quality;
 				scrollToHighlight();
 			}
 		} finally {
@@ -92,6 +175,12 @@
 	function closeScene() {
 		sceneData = null;
 		sceneHighlightLine = null;
+		sceneCitation = null;
+		// Restore scroll position after the entry view re-renders
+		requestAnimationFrame(() => {
+			const body = document.querySelector('.modal-body');
+			if (body) body.scrollTop = savedScrollTop;
+		});
 	}
 
 	// Reset state when entry changes
@@ -115,29 +204,38 @@
 </script>
 
 {#snippet citationList(citations: LexiconCitationDetail[])}
-	<ul class="citation-list">
-		{#each citations as citation (citation.id)}
-			<li>
-				<button
-					class="citation-item"
-					class:clickable={citation.work_id != null && citation.act != null && citation.scene != null}
-					onclick={() => {
-						if (citation.work_id != null && citation.act != null && citation.scene != null) {
-							openScene(citation);
-						} else {
-							toggleCitation(citation.id);
-						}
-					}}
-				>
-					<span class="citation-ref">{formatRef(citation)}</span>
-					{#if citationSpeaker(citation)}
-						<span class="citation-speaker">{citationSpeaker(citation)}</span>
-					{/if}
-					<p class="citation-quote">{citationText(citation)}</p>
-				</button>
-			</li>
+	{@const byWork = groupByWork(citations)}
+	<div class="citation-groups">
+		{#each [...byWork.entries()] as [workName, workCitations] (workName)}
+			<div class="citation-work-group">
+				<h4 class="work-group-title">{workName}</h4>
+				<ul class="citation-list">
+					{#each workCitations as citation (citation.id)}
+						<li>
+							<button
+								class="citation-item"
+								class:clickable={citation.work_id != null && citation.act != null && citation.scene != null}
+								onclick={() => {
+									if (citation.work_id != null && citation.act != null && citation.scene != null) {
+										openScene(citation);
+									} else {
+										toggleCitation(citation.id);
+									}
+								}}
+								oncontextmenu={(e) => { e.preventDefault(); correctionEntry = { type: 'citation', currentText: citationText(citation), citationRef: formatRef(citation) }; }}
+							>
+								<span class="citation-ref">{formatCitationLoc(citation)}</span>
+								{#if citationSpeaker(citation)}
+									<span class="citation-speaker">{citationSpeaker(citation)}</span>
+								{/if}
+								<p class="citation-quote">{citationText(citation)}</p>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
 		{/each}
-	</ul>
+	</div>
 {/snippet}
 
 {#if entry}
@@ -169,8 +267,13 @@
 					<span class="scene-location">Act {sceneData.act}, Scene {sceneData.scene}</span>
 				</div>
 				{#if sceneHighlightLine != null}
-					<button class="jump-btn" onclick={scrollToHighlight} aria-label="Jump to referenced line">
+					<button class="jump-btn" class:review={sceneMatchQuality === 'scene' || sceneMatchQuality === 'unmatched'} onclick={scrollToHighlight} aria-label="Jump to referenced line">
 						Line {sceneHighlightLine}
+						{#if sceneMatchQuality === 'scene'}
+							<span class="match-flag" title="Headword found elsewhere in scene — needs review">?</span>
+						{:else if sceneMatchQuality === 'unmatched'}
+							<span class="match-flag" title="Headword not found in scene — needs review">!</span>
+						{/if}
 					</button>
 				{/if}
 				<button class="close-btn" onclick={onclose} aria-label="Close">
@@ -180,6 +283,15 @@
 					</svg>
 				</button>
 			</div>
+			{#if sceneCitation}
+				<div class="scene-citation-context">
+					<span class="context-ref">{formatRef(sceneCitation)}</span>
+					{#if citationSpeaker(sceneCitation)}
+						<span class="context-speaker">{citationSpeaker(sceneCitation)}</span>
+					{/if}
+					<p class="context-quote">{citationText(sceneCitation)}</p>
+				</div>
+			{/if}
 			<div class="modal-body scene-body">
 				<div class="scene-lines">
 					{#each sceneData.lines as line, i (line.id)}
@@ -192,10 +304,24 @@
 							id="scene-line-{line.line_number}"
 							class="text-line"
 							class:highlighted={line.line_number === sceneHighlightLine}
+							class:needs-review={line.line_number === sceneHighlightLine && (sceneMatchQuality === 'scene' || sceneMatchQuality === 'unmatched')}
+							class:flagged={line.line_number != null && sceneData && corrections.isFlagged(sceneData.work_title, sceneData.act, sceneData.scene, line.line_number)}
 							class:stage-direction={line.content_type === 'stage_direction'}
 						>
 							<span class="line-number">{line.line_number ?? ''}</span>
 							<span class="line-content">{line.content}</span>
+							{#if line.line_number != null}
+								<button
+									class="flag-btn"
+									title="Flag for correction"
+									onclick={(e) => { e.stopPropagation(); correctionLine = { lineNumber: line.line_number!, content: line.content, characterName: line.character_name }; }}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+										<line x1="4" y1="22" x2="4" y2="15" />
+									</svg>
+								</button>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -204,6 +330,16 @@
 			<!-- Entry detail view -->
 			<div class="modal-header">
 				<h2 class="entry-word">{entry.key}</h2>
+				<button
+					class="entry-flag-btn"
+					title="Flag this entry for correction"
+					onclick={() => correctionEntry = { type: 'entry', currentText: entry.senses.map(s => `${s.sense_number}${s.sub_sense || ''}) ${s.definition_text}`).join('\n') || entry.full_text || entry.key }}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+						<line x1="4" y1="22" x2="4" y2="15" />
+					</svg>
+				</button>
 				<button class="close-btn" onclick={onclose} aria-label="Close">
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<line x1="18" y1="6" x2="6" y2="18" />
@@ -217,43 +353,82 @@
 			{/if}
 
 			<div class="modal-body">
-				{#if entry.senses.length > 0}
-					<section class="senses" aria-label="Definitions">
-						{#each entry.senses as sense}
-							<div class="sense-block" class:sub-sense={sense.sub_sense}>
-								<div class="sense">
-									{#if sense.sub_sense}
-										<span class="sense-num sub">{sense.sub_sense})</span>
-									{:else}
-										<span class="sense-num">{sense.sense_number})</span>
-									{/if}
-									<p class="sense-def">{sense.definition_text}</p>
-								</div>
-								{#if citationsBySense.bySense.has(sense.id)}
-									{@const senseCitations = citationsBySense.bySense.get(sense.id)!}
-									<details class="sense-citations">
-										<summary class="refs-toggle">References ({senseCitations.length})</summary>
-										{@render citationList(senseCitations)}
-									</details>
-								{/if}
-							</div>
-						{/each}
-					</section>
-				{:else if entry.full_text}
-					<section class="full-text" aria-label="Definition">
-						<p>{entry.full_text}</p>
-					</section>
-				{/if}
+				{#each entry.subEntries as sub, subIdx (sub.id)}
+					{@const citGroups = getCitationsBySense(sub)}
+					{#if hasMultipleSubEntries}
+						<div class="sub-entry-header" class:first={subIdx === 0}>
+							<h3 class="sub-entry-key">{sub.key}</h3>
+							{#if sub.entry_type}
+								<span class="sub-entry-type">{sub.entry_type}</span>
+							{/if}
+						</div>
+					{/if}
 
-				{#if citationsBySense.unassigned.length > 0}
-					<details class="citations-section">
-						<summary class="refs-toggle">References ({citationsBySense.unassigned.length})</summary>
-						{@render citationList(citationsBySense.unassigned)}
-					</details>
-				{/if}
+					{#if sub.senses.length > 0}
+						<section class="senses" aria-label="Definitions">
+							{#each sub.senses as sense}
+								<div class="sense-block" class:sub-sense={sense.sub_sense}>
+									<div class="sense">
+										{#if sense.sub_sense}
+											<span class="sense-num sub">{sense.sub_sense})</span>
+										{:else}
+											<span class="sense-num">{sense.sense_number})</span>
+										{/if}
+										<p class="sense-def">{sense.definition_text}</p>
+									</div>
+									{#if citGroups.bySense.has(sense.id)}
+										{@const senseCitations = citGroups.bySense.get(sense.id)!}
+										<details class="sense-citations">
+											<summary class="refs-toggle">References ({senseCitations.length})</summary>
+											{@render citationList(senseCitations)}
+										</details>
+									{/if}
+								</div>
+							{/each}
+						</section>
+					{:else if sub.full_text}
+						<section class="full-text" aria-label="Definition">
+							<p>{sub.full_text}</p>
+						</section>
+					{/if}
+
+					{#if citGroups.unassigned.length > 0}
+						<details class="citations-section">
+							<summary class="refs-toggle">References ({citGroups.unassigned.length})</summary>
+							{@render citationList(citGroups.unassigned)}
+						</details>
+					{/if}
+				{/each}
 			</div>
 		{/if}
 	</div>
+{/if}
+
+{#if correctionLine && sceneData && entry}
+	<CorrectionForm
+		type="line"
+		entryKey={entry.key}
+		workTitle={sceneData.work_title}
+		act={sceneData.act}
+		scene={sceneData.scene}
+		lineNumber={correctionLine.lineNumber}
+		currentText={correctionLine.content}
+		characterName={correctionLine.characterName}
+		editionName={sceneData.edition_name}
+		onclose={() => correctionLine = null}
+	/>
+{/if}
+
+{#if correctionEntry && entry}
+	<CorrectionForm
+		type={correctionEntry.type}
+		entryKey={entry.key}
+		currentText={correctionEntry.currentText}
+		senseNumber={correctionEntry.senseNumber}
+		subSense={correctionEntry.subSense}
+		citationRef={correctionEntry.citationRef}
+		onclose={() => correctionEntry = null}
+	/>
 {/if}
 
 <style>
@@ -371,6 +546,40 @@
 		padding: 16px 20px 20px;
 	}
 
+	/* ─── Sub-entries ─── */
+	.sub-entry-header {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		margin-top: 20px;
+		padding-bottom: 6px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.sub-entry-header.first {
+		margin-top: 0;
+	}
+
+	.sub-entry-key {
+		margin: 0;
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--color-accent);
+	}
+
+	.sub-entry-type {
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--color-text-muted);
+	}
+
+	.sub-entry-text {
+		margin: 6px 0 12px;
+		font-size: 0.85rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+	}
+
 	/* ─── Senses ─── */
 	.senses {
 		margin-bottom: 24px;
@@ -457,6 +666,24 @@
 	}
 
 	/* ─── Citations ─── */
+	.citation-groups {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.citation-work-group {
+		/* nothing extra needed */
+	}
+
+	.work-group-title {
+		margin: 0 0 2px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-accent);
+		opacity: 0.8;
+	}
+
 	.citation-list {
 		list-style: none;
 		padding: 0;
@@ -526,8 +753,58 @@
 		white-space: nowrap;
 	}
 
+	.jump-btn.review {
+		border-color: #e8a735;
+		color: #e8a735;
+	}
+
+	.match-flag {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		margin-left: 4px;
+		border-radius: 50%;
+		background: #e8a735;
+		color: #1a1a2e;
+		font-size: 0.6rem;
+		font-weight: 800;
+	}
+
 	.jump-btn:hover {
 		background: var(--color-hover);
+	}
+
+	/* ─── Citation context in scene viewer ─── */
+	.scene-citation-context {
+		padding: 8px 20px;
+		background: var(--color-hover);
+		border-bottom: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+
+	.context-ref {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-accent);
+	}
+
+	.context-speaker {
+		font-size: 0.65rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		margin-left: 8px;
+	}
+
+	.context-quote {
+		margin: 2px 0 0;
+		font-size: 0.8rem;
+		color: var(--color-text-secondary);
+		font-style: italic;
+		line-height: 1.4;
 	}
 
 	/* ─── Scene text viewer ─── */
@@ -574,6 +851,82 @@
 		border-left: 3px solid var(--color-accent);
 		padding-left: 5px;
 	}
+
+	.text-line.needs-review {
+		border-left-color: #e8a735;
+		background: rgba(232, 167, 53, 0.1);
+	}
+
+	.text-line.flagged {
+		border-left: 3px solid #e85535;
+		padding-left: 5px;
+		background: rgba(232, 85, 53, 0.08);
+	}
+
+	/* ─── Line flag button (always in DOM, invisible until hover) ─── */
+	.flag-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		min-width: 36px;
+		border: none;
+		background: none;
+		color: transparent;
+		cursor: pointer;
+		border-radius: 6px;
+		padding: 0;
+		margin-left: auto;
+		flex-shrink: 0;
+		transition: color 0.1s;
+	}
+
+	.text-line:hover .flag-btn {
+		color: var(--color-text-muted);
+	}
+
+	/* On touch devices, always subtly visible */
+	@media (pointer: coarse) {
+		.flag-btn {
+			color: var(--color-text-muted);
+			opacity: 0.3;
+		}
+
+		.text-line:active .flag-btn {
+			opacity: 1;
+		}
+	}
+
+	.flag-btn:hover {
+		color: #e85535 !important;
+		background: rgba(232, 85, 53, 0.1);
+	}
+
+	/* ─── Entry flag button (always visible, small) ─── */
+	.entry-flag-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		border-radius: 8px;
+		flex-shrink: 0;
+		padding: 0;
+		opacity: 0.4;
+		transition: opacity 0.15s;
+	}
+
+	.entry-flag-btn:hover {
+		opacity: 1;
+		color: #e85535;
+		background: rgba(232, 85, 53, 0.1);
+	}
+
 
 	.text-line.stage-direction {
 		font-style: italic;

@@ -2,7 +2,9 @@ import { getDb } from '$lib/server/db';
 
 export function load() {
 	const db = getDb();
-	// Load first 50 base keys (grouped — A1-A7 show as one "A" entry).
+	const pageSize = 50;
+
+	// Load first page of base keys (grouped — A1-A7 show as one "A" entry).
 	const entries = db
 		.prepare(
 			`SELECT MIN(id) as id, base_key as key, MIN(orthography) as orthography,
@@ -10,9 +12,11 @@ export function load() {
 			 FROM lexicon_entries
 			 GROUP BY base_key
 			 ORDER BY base_key
-			 LIMIT 50`
+			 LIMIT ?`
 		)
-		.all() as { id: number; key: string; orthography: string | null; variant_count: number }[];
+		.all(pageSize) as { id: number; key: string; orthography: string | null; variant_count: number }[];
 
-	return { entries };
+	const totalRow = db.prepare('SELECT COUNT(DISTINCT base_key) as count FROM lexicon_entries').get() as { count: number };
+
+	return { entries, total: totalRow.count, pageSize };
 }

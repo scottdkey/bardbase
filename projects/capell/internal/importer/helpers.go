@@ -243,6 +243,57 @@ func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cach
 	return id
 }
 
+// expandCharacterName resolves an abbreviated character name (e.g., "Cal.",
+// "Pros.") to its full form (e.g., "Caliban", "Prospero") using the characters
+// table. Returns the original name if no match is found.
+func expandCharacterName(database *sql.DB, workID int64, abbrev string) string {
+	if abbrev == "" {
+		return abbrev
+	}
+	// Try exact match first
+	var name string
+	err := database.QueryRow(
+		"SELECT name FROM characters WHERE work_id = ? AND UPPER(name) = UPPER(?)",
+		workID, abbrev).Scan(&name)
+	if err == nil {
+		return name
+	}
+
+	// Try abbreviation match (OSS uses UPPER abbreviations like "CALIBAN")
+	err = database.QueryRow(
+		"SELECT name FROM characters WHERE work_id = ? AND UPPER(abbrev) = UPPER(?)",
+		workID, abbrev).Scan(&name)
+	if err == nil {
+		return name
+	}
+
+	// Try prefix match: strip trailing "." and match against the start of name
+	prefix := strings.TrimRight(abbrev, ".")
+	if prefix != "" {
+		err = database.QueryRow(
+			"SELECT name FROM characters WHERE work_id = ? AND LOWER(name) LIKE LOWER(?) || '%' LIMIT 1",
+			workID, prefix).Scan(&name)
+		if err == nil {
+			return name
+		}
+	}
+
+	return abbrev
+}
+
+// cachedExpandCharName expands abbreviated character names with caching.
+func cachedExpandCharName(database *sql.DB, workID int64, abbrev string, cache map[string]string) string {
+	if abbrev == "" {
+		return ""
+	}
+	if cached, ok := cache[abbrev]; ok {
+		return cached
+	}
+	full := expandCharacterName(database, workID, abbrev)
+	cache[abbrev] = full
+	return full
+}
+
 // ─── Reference-entry helpers ────────────────────────────────────────────────
 
 // referenceEntry holds a parsed headword, letter category, and raw text for

@@ -142,6 +142,7 @@ export function getLexiconEntriesPage(
 
 export interface LexiconCitationDetail {
 	id: number;
+	entry_id: number;
 	sense_id: number | null;
 	work_id: number | null;
 	work_abbrev: string | null;
@@ -153,14 +154,27 @@ export interface LexiconCitationDetail {
 	display_text: string | null;
 	raw_bibl: string | null;
 	matched_line: string | null;
+	matched_line_number: number | null;
 	matched_character: string | null;
+	matched_edition_id: number | null;
 }
 
 export interface LexiconSenseDetail {
 	id: number;
+	entry_id: number;
 	sense_number: number;
 	sub_sense: string | null;
 	definition_text: string | null;
+}
+
+export interface LexiconSubEntryDetail {
+	id: number;
+	key: string;
+	entry_type: string | null;
+	full_text: string | null;
+	orthography: string | null;
+	senses: LexiconSenseDetail[];
+	citations: LexiconCitationDetail[];
 }
 
 export interface LexiconEntryDetail {
@@ -169,6 +183,7 @@ export interface LexiconEntryDetail {
 	orthography: string | null;
 	entry_type: string | null;
 	full_text: string | null;
+	subEntries: LexiconSubEntryDetail[];
 	senses: LexiconSenseDetail[];
 	citations: LexiconCitationDetail[];
 }
@@ -184,50 +199,141 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 
 	// Get all entry IDs in this group (e.g., all entries with base_key = "A").
 	const groupEntries = db
-		.prepare('SELECT id, sense_group FROM lexicon_entries WHERE base_key = ? ORDER BY sense_group, id')
-		.all(entry.base_key) as { id: number; sense_group: number | null }[];
+		.prepare('SELECT id, key, sense_group, orthography, entry_type, full_text FROM lexicon_entries WHERE base_key = ? ORDER BY sense_group, id')
+		.all(entry.base_key) as { id: number; key: string; sense_group: number | null; orthography: string | null; entry_type: string | null; full_text: string | null }[];
 
 	const entryIds = groupEntries.map(e => e.id);
 	const placeholders = entryIds.map(() => '?').join(',');
 
-	// Load senses from ALL entries in the group.
-	// For grouped entries (A1, A2, ...), use the sense_group as the top-level sense number
-	// so A1's senses become 1.a, 1.b, etc. and A2's become 2.a, 2.b, etc.
+	// Load senses from ALL entries in the group, keeping entry_id for grouping.
 	const senses = db
 		.prepare(
-			`SELECT ls.id,
-			        COALESCE(le.sense_group, ls.sense_number) as sense_number,
+			`SELECT ls.id, ls.entry_id,
+			        ls.sense_number,
 			        ls.sub_sense, ls.definition_text
 			 FROM lexicon_senses ls
 			 JOIN lexicon_entries le ON le.id = ls.entry_id
 			 WHERE ls.entry_id IN (${placeholders})
-			 ORDER BY COALESCE(le.sense_group, ls.sense_number), ls.sense_number, COALESCE(ls.sub_sense, '')`
-		)
+			 ORDER BY le.sense_group, ls.sense_number, COALESCE(ls.sub_sense, '')`)
 		.all(...entryIds) as LexiconSenseDetail[];
 
-	// Load citations from ALL entries in the group.
+	// Load citations from ALL entries in the group, deduplicating by location.
 	const citations = db
 		.prepare(
-			`SELECT lc.id, lc.sense_id, lc.work_id, lc.work_abbrev,
+			`SELECT MIN(lc.id) AS id, lc.entry_id, lc.sense_id, lc.work_id, lc.work_abbrev,
 			        w.title AS work_title,
 			        lc.act, lc.scene, lc.line,
-			        lc.quote_text, lc.display_text, lc.raw_bibl,
+			        MAX(lc.quote_text) AS quote_text, lc.display_text, lc.raw_bibl,
 			        tl.content AS matched_line,
-			        tl.char_name AS matched_character
+			        tl.line_number AS matched_line_number,
+			        tl.char_name AS matched_character,
+			        cm.edition_id AS matched_edition_id
 			 FROM lexicon_citations lc
 			 LEFT JOIN works w ON w.id = lc.work_id
 			 LEFT JOIN citation_matches cm ON cm.citation_id = lc.id
 			   AND cm.id = (
 			     SELECT cm2.id FROM citation_matches cm2
 			     WHERE cm2.citation_id = lc.id
-			     ORDER BY cm2.confidence DESC
+			     ORDER BY CASE WHEN cm2.edition_id = 3 THEN 0 ELSE 1 END, cm2.confidence DESC
 			     LIMIT 1
 			   )
 			 LEFT JOIN text_lines tl ON tl.id = cm.text_line_id
 			 WHERE lc.entry_id IN (${placeholders})
+			 GROUP BY lc.entry_id, lc.work_id, COALESCE(lc.act, -1), COALESCE(lc.scene, -1), COALESCE(lc.line, -1)
 			 ORDER BY w.title, lc.act, lc.scene, lc.line`
 		)
-		.all(...entryIds) as LexiconCitationDetail[];
+		.all(...entryIds) as (LexiconCitationDetail & { entry_id: number })[];
+
+	// Validate and correct citation line matches against the headword.
+	// Group citations by scene to batch lookups.
+	const headword = entry.base_key.replace(/\d+$/, '').toLowerCase();
+	const hwEscaped = headword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const hwPattern = new RegExp(`\\b${hwEscaped}`, 'i');
+
+	// Batch: group citations needing correction by (work_id, edition_id, act, scene)
+	type SceneKey = string;
+	const needsCorrection = new Map<SceneKey, typeof citations>();
+	for (const c of citations) {
+		if (c.matched_line && hwPattern.test(c.matched_line)) continue;
+		if (c.work_id == null || c.act == null || c.scene == null) continue;
+		const edId = c.matched_edition_id ?? 3; // default to Perseus
+		const key: SceneKey = `${c.work_id}:${edId}:${c.act}:${c.scene}`;
+		const list = needsCorrection.get(key) ?? [];
+		list.push(c);
+		needsCorrection.set(key, list);
+	}
+
+	// For each scene with citations needing correction, load a window of lines
+	const nearbyStmt = db.prepare(
+		`SELECT line_number, content, char_name
+		 FROM text_lines
+		 WHERE work_id = ? AND edition_id = ? AND act = ? AND scene = ?
+		   AND line_number BETWEEN ? AND ?
+		 ORDER BY line_number`
+	);
+
+	for (const [key, cits] of needsCorrection) {
+		const [workId, edId, act, scene] = key.split(':').map(Number);
+		// Find the range we need to cover
+		const lineNums = cits.map(c => c.matched_line_number ?? c.line ?? 0);
+		const minLine = Math.min(...lineNums) - 5;
+		const maxLine = Math.max(...lineNums) + 5;
+
+		const nearbyLines = nearbyStmt.all(workId, edId, act, scene, minLine, maxLine) as {
+			line_number: number;
+			content: string;
+			char_name: string | null;
+		}[];
+
+		for (const c of cits) {
+			const target = c.matched_line_number ?? c.line ?? 0;
+			// Search nearby first (±5 from target), closest first
+			let found: typeof nearbyLines[0] | null = null;
+			for (let offset = 0; offset <= 5; offset++) {
+				for (const delta of offset === 0 ? [0] : [-offset, offset]) {
+					const candidate = nearbyLines.find(l => l.line_number === target + delta);
+					if (candidate && hwPattern.test(candidate.content)) {
+						found = candidate;
+						break;
+					}
+				}
+				if (found) break;
+			}
+
+			if (found) {
+				c.matched_line = found.content;
+				c.matched_line_number = found.line_number;
+				c.matched_character = found.char_name;
+				c.line = found.line_number;
+			}
+		}
+	}
+
+	// Build sub-entries: group senses and citations by their parent entry
+	const sensesByEntry = new Map<number, LexiconSenseDetail[]>();
+	for (const s of senses) {
+		const list = sensesByEntry.get(s.entry_id) ?? [];
+		list.push(s);
+		sensesByEntry.set(s.entry_id, list);
+	}
+
+	const citationsByEntry = new Map<number, LexiconCitationDetail[]>();
+	for (const c of citations) {
+		const eid = (c as any).entry_id as number;
+		const list = citationsByEntry.get(eid) ?? [];
+		list.push(c);
+		citationsByEntry.set(eid, list);
+	}
+
+	const subEntries: LexiconSubEntryDetail[] = groupEntries.map(ge => ({
+		id: ge.id,
+		key: ge.key,
+		entry_type: ge.entry_type,
+		full_text: ge.full_text,
+		orthography: ge.orthography,
+		senses: sensesByEntry.get(ge.id) ?? [],
+		citations: citationsByEntry.get(ge.id) ?? []
+	}));
 
 	// Use base_key as the display key (not "A1", just "A").
 	return {
@@ -236,6 +342,7 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 		orthography: entry.orthography,
 		entry_type: entry.entry_type,
 		full_text: entry.full_text,
+		subEntries,
 		senses,
 		citations
 	};
@@ -259,14 +366,15 @@ export interface SceneTextResult {
 	lines: SceneTextLine[];
 }
 
-/** Default edition preference order (by id): OSS Globe first */
-const PREFERRED_EDITION_IDS = [1, 5, 3, 2];
+/** Default edition preference order: Perseus Globe first (matches Schmidt citations) */
+const PREFERRED_EDITION_IDS = [3, 4, 5, 1, 2];
 
 export function getSceneText(
 	db: Database.Database,
 	workId: number,
 	act: number,
-	scene: number
+	scene: number,
+	preferredEditionId?: number
 ): SceneTextResult | null {
 	const work = db.prepare('SELECT title FROM works WHERE id = ?').get(workId) as { title: string } | undefined;
 	if (!work) return null;
@@ -274,7 +382,13 @@ export function getSceneText(
 	// Pick best available edition for this work
 	let editionId: number | null = null;
 	let editionName = '';
-	for (const eid of PREFERRED_EDITION_IDS) {
+
+	// Try the citation's matched edition first, then fall back to preference order
+	const editionOrder = preferredEditionId
+		? [preferredEditionId, ...PREFERRED_EDITION_IDS.filter((id) => id !== preferredEditionId)]
+		: PREFERRED_EDITION_IDS;
+
+	for (const eid of editionOrder) {
 		const row = db
 			.prepare('SELECT e.id, e.name FROM editions e WHERE e.id = ? AND EXISTS (SELECT 1 FROM text_lines WHERE work_id = ? AND edition_id = ? LIMIT 1)')
 			.get(eid, workId, eid) as { id: number; name: string } | undefined;
@@ -289,11 +403,23 @@ export function getSceneText(
 	const lines = db
 		.prepare(
 			`SELECT tl.id, tl.line_number, tl.content, tl.content_type,
-              c.name AS character_name
+              COALESCE(
+                c.name,
+                (SELECT c2.name FROM characters c2
+                 WHERE c2.work_id = tl.work_id
+                   AND LOWER(c2.name) LIKE LOWER(REPLACE(tl.char_name, '.', '')) || '%'
+                 LIMIT 1),
+                tl.char_name
+              ) AS character_name
        FROM text_lines tl
        LEFT JOIN characters c ON c.id = tl.character_id
        WHERE tl.work_id = ? AND tl.edition_id = ? AND tl.act = ? AND tl.scene = ?
-       ORDER BY tl.line_number`
+         AND tl.id = (
+           SELECT MIN(t2.id) FROM text_lines t2
+           WHERE t2.work_id = tl.work_id AND t2.edition_id = tl.edition_id
+             AND t2.act = tl.act AND t2.scene = tl.scene AND t2.line_number = tl.line_number
+         )
+       ORDER BY tl.line_number, tl.id`
 		)
 		.all(workId, editionId, act, scene) as SceneTextLine[];
 

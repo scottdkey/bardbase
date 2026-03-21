@@ -125,10 +125,11 @@ func ImportFirstFolio(database *sql.DB, sourcesDir string) error {
 		}
 
 		charCache := make(map[string]any)
+		charNameCache := make(map[string]string)
 		actScenes := make([][2]int, 0, len(playLineSlice))
 
 		for i, line := range playLineSlice {
-			charName := line.Character
+			charName := cachedExpandCharName(database, work.ID, line.Character, charNameCache)
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := contentType(line.IsStageDirection)

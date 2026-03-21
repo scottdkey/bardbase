@@ -219,7 +219,7 @@ func ParsePerseusRef(biblN string) *PerseusRef {
 // Sub-senses are children of the most recent numbered sense.
 // If no numbered senses are found, returns a single sense with the full text.
 func ParseSenses(fullText string) []Sense {
-	senseMatches := sensePattern.FindAllStringSubmatchIndex(fullText, -1)
+	senseMatches := findSenseMarkers(fullText)
 	if len(senseMatches) == 0 {
 		return []Sense{{Number: 1, Text: fullText}}
 	}
@@ -230,22 +230,21 @@ func ParseSenses(fullText string) []Sense {
 		text   string
 	}
 	var chunks []senseChunk
-	for i, match := range senseMatches {
-		num, _ := strconv.Atoi(fullText[match[2]:match[3]])
-		start := match[1] // end of the "N) " pattern
+	for i, m := range senseMatches {
+		start := m.textStart // first char after the "N) " pattern
 		var end int
 		if i+1 < len(senseMatches) {
-			end = senseMatches[i+1][0]
+			end = senseMatches[i+1].matchStart
 		} else {
 			end = len(fullText)
 		}
-		chunks = append(chunks, senseChunk{num, strings.TrimSpace(fullText[start:end])})
+		chunks = append(chunks, senseChunk{m.number, strings.TrimSpace(fullText[start:end])})
 	}
 
 	var senses []Sense
 	for _, chunk := range chunks {
 		// Look for sub-senses (a), b), c), etc.) within this sense.
-		subMatches := subSensePattern.FindAllStringSubmatchIndex(chunk.text, -1)
+		subMatches := findSubSenseMarkers(chunk.text)
 		if len(subMatches) == 0 {
 			// No sub-senses — single sense.
 			senses = append(senses, Sense{Number: chunk.number, Text: chunk.text})
@@ -253,29 +252,138 @@ func ParseSenses(fullText string) []Sense {
 		}
 
 		// Text before the first sub-sense is the sense's preamble.
-		preamble := strings.TrimSpace(chunk.text[:subMatches[0][0]])
+		preamble := strings.TrimSpace(chunk.text[:subMatches[0].matchStart])
 		if preamble != "" {
 			senses = append(senses, Sense{Number: chunk.number, Text: preamble})
 		}
 
 		// Each sub-sense.
 		for j, sub := range subMatches {
-			letter := chunk.text[sub[2]:sub[3]]
-			start := sub[1]
+			start := sub.textStart
 			var end int
 			if j+1 < len(subMatches) {
-				end = subMatches[j+1][0]
+				end = subMatches[j+1].matchStart
 			} else {
 				end = len(chunk.text)
 			}
 			senses = append(senses, Sense{
 				Number:   chunk.number,
-				SubSense: letter,
+				SubSense: sub.letter,
 				Text:     strings.TrimSpace(chunk.text[start:end]),
 			})
 		}
 	}
 	return senses
+}
+
+// senseMarker represents a found sense boundary position.
+type senseMarker struct {
+	number     int
+	matchStart int // start of the match (including leading whitespace)
+	textStart  int // start of definition text (after "N) ")
+}
+
+// subSenseMarker represents a found sub-sense boundary position.
+type subSenseMarker struct {
+	letter     string
+	matchStart int
+	textStart  int
+}
+
+// isInsideParens checks whether position pos is inside parentheses in text.
+func isInsideParens(text string, pos int) bool {
+	depth := 0
+	for i := 0; i < pos && i < len(text); i++ {
+		switch text[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth > 0
+}
+
+// findSenseMarkers finds valid numbered sense boundaries (1), 2), 3), etc.)
+// in the text. Filters out false positives inside parentheses and enforces
+// sequential numbering: sense N+1 can only appear after sense N.
+func findSenseMarkers(text string) []senseMarker {
+	allMatches := sensePattern.FindAllStringSubmatchIndex(text, -1)
+	if len(allMatches) == 0 {
+		return nil
+	}
+
+	var markers []senseMarker
+	expectedNext := 1
+
+	for _, match := range allMatches {
+		num, _ := strconv.Atoi(text[match[2]:match[3]])
+
+		// Must be the next expected sense number
+		if num != expectedNext {
+			continue
+		}
+
+		// Must not be inside parentheses
+		if isInsideParens(text, match[2]) {
+			continue
+		}
+
+		markers = append(markers, senseMarker{
+			number:     num,
+			matchStart: match[0],
+			textStart:  match[1],
+		})
+		expectedNext = num + 1
+	}
+
+	// Need at least sense 1 for the result to be valid
+	if len(markers) == 0 || markers[0].number != 1 {
+		return nil
+	}
+	return markers
+}
+
+// findSubSenseMarkers finds valid lettered sub-sense boundaries (a), b), c), etc.)
+// in the text. Filters out false positives inside parentheses and enforces
+// sequential lettering.
+func findSubSenseMarkers(text string) []subSenseMarker {
+	allMatches := subSensePattern.FindAllStringSubmatchIndex(text, -1)
+	if len(allMatches) == 0 {
+		return nil
+	}
+
+	var markers []subSenseMarker
+	expectedNext := byte('a')
+
+	for _, match := range allMatches {
+		letter := text[match[2]:match[3]]
+
+		// Must be the next expected letter
+		if len(letter) != 1 || letter[0] != expectedNext {
+			continue
+		}
+
+		// Must not be inside parentheses
+		if isInsideParens(text, match[2]) {
+			continue
+		}
+
+		markers = append(markers, subSenseMarker{
+			letter:     letter,
+			matchStart: match[0],
+			textStart:  match[1],
+		})
+		expectedNext++
+	}
+
+	// Need at least sub-sense "a" for results to be valid
+	if len(markers) == 0 || markers[0].letter != "a" {
+		return nil
+	}
+	return markers
 }
 
 // assignSensesToCitations determines which sense each citation belongs to

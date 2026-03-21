@@ -8,13 +8,16 @@
 	let query = $state('');
 	let entries = $state([] as typeof data.entries);
 	let loading = $state(false);
+	let loadingMore = $state(false);
 	let loadingEntry = $state(false);
+	let hasMore = $state(true);
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Initialize with first page of entries
 	$effect(() => {
 		if (query === '') {
 			entries = data.entries.slice();
+			hasMore = data.entries.length >= data.pageSize;
 		}
 	});
 
@@ -22,10 +25,39 @@
 	let selectedEntryId = $state<number | null>(null);
 
 	let searchInput: HTMLInputElement;
+	let sentinel: HTMLDivElement;
 
 	onMount(() => {
 		searchInput?.focus();
+
+		// IntersectionObserver for infinite scroll
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && query === '') {
+					loadMore();
+				}
+			},
+			{ rootMargin: '200px' }
+		);
+
+		if (sentinel) observer.observe(sentinel);
+		return () => observer.disconnect();
 	});
+
+	async function loadMore() {
+		if (loadingMore || !hasMore || query !== '') return;
+		loadingMore = true;
+		try {
+			const res = await fetch(`/api/lexicon/entries?offset=${entries.length}&limit=${data.pageSize}`);
+			const json = await res.json();
+			if (json.entries.length > 0) {
+				entries = [...entries, ...json.entries];
+			}
+			hasMore = json.hasMore;
+		} finally {
+			loadingMore = false;
+		}
+	}
 
 	function handleSearch(e: Event) {
 		const value = (e.target as HTMLInputElement).value;
@@ -35,9 +67,11 @@
 
 		if (value.trim() === '') {
 			entries = data.entries.slice();
+			hasMore = data.entries.length >= data.pageSize;
 			return;
 		}
 
+		hasMore = false;
 		searchTimeout = setTimeout(async () => {
 			loading = true;
 			try {
@@ -53,6 +87,7 @@
 	function clearSearch() {
 		query = '';
 		entries = data.entries.slice();
+		hasMore = data.entries.length >= data.pageSize;
 		searchInput?.focus();
 	}
 
@@ -115,7 +150,13 @@
 	{:else if query && entries.length === 0}
 		<div class="status-text">No entries found for "{query}"</div>
 	{:else if entries.length > 0}
-		<div class="result-count">{entries.length} {query ? 'results' : 'entries'}</div>
+		<div class="result-count">
+			{#if query}
+				{entries.length} results
+			{:else}
+				{entries.length} of {data.total} entries
+			{/if}
+		</div>
 	{/if}
 
 	<ul class="entry-list" role="list" aria-label="Lexicon entries">
@@ -132,6 +173,13 @@
 			</li>
 		{/each}
 	</ul>
+
+	{#if loadingMore}
+		<div class="status-text">Loading more&hellip;</div>
+	{/if}
+
+	<!-- Infinite scroll sentinel -->
+	<div bind:this={sentinel} class="scroll-sentinel"></div>
 </div>
 
 <EntryModal entry={selectedEntry} onclose={closeEntry} />
@@ -145,7 +193,7 @@
 
 	.sticky-header {
 		position: sticky;
-		top: var(--top-bar-height, 48px);
+		top: 0;
 		z-index: 50;
 		background: var(--color-bg);
 		padding-bottom: 8px;
@@ -271,5 +319,11 @@
 	.entry-key {
 		font-size: 1.05rem;
 		font-weight: 500;
+	}
+
+	.scroll-sentinel {
+		height: 1px;
+		/* pad below list so footer doesn't cover last entries */
+		margin-bottom: 48px;
 	}
 </style>

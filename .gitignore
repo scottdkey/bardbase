@@ -30,6 +30,9 @@ coverage.html
 # OS
 .DS_Store
 
+# Corrections (local review files)
+/corrections/
+
 # Archives
 sql.zip
 projects/capell/build

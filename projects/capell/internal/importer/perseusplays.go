@@ -122,6 +122,7 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 		}
 
 		charCache := make(map[string]any)
+		charNameCache := make(map[string]string)
 
 		// Assign Globe line numbers to every line. Perseus only marks Globe
 		// numbers on milestone lines (every 5th/10th), so we interpolate
@@ -132,7 +133,7 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 		actScenes := make([][2]int, 0, len(r.lines))
 
 		for _, line := range r.lines {
-			charName := line.Character
+			charName := cachedExpandCharName(database, work.ID, line.Character, charNameCache)
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := contentType(line.IsStageDirection)
