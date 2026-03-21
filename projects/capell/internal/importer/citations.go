@@ -6,7 +6,8 @@ package importer
 import (
 	"database/sql"
 	"fmt"
-	"runtime"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -271,7 +272,7 @@ func ResolveCitations(database *sql.DB) error {
 			lines = wls.byAct[key.Act]
 		}
 
-		// Fallback: scene lookup returned nothing → the 2-part Perseus reference
+		// Fallback 1: scene lookup returned nothing → the 2-part Perseus reference
 		// (e.g., "shak. tmp 5.169") was probably act.line, not act.scene.
 		// Use the whole-act lines and promote the scene value to a line number.
 		if len(lines) == 0 && key.Scene > 0 {
@@ -284,8 +285,38 @@ func ResolveCitations(database *sql.DB) error {
 			}
 		}
 
+		// Fallback 2: if any citation's line number doesn't exist in the
+		// current line set, widen the search progressively:
+		//   scene → act → entire play
+		// This handles Globe numbering mismatches where Schmidt's act/scene
+		// structure doesn't match the Perseus edition.
 		for _, cit := range sceneCitations {
-			tasks = append(tasks, citMatchTask{cit: cit, lines: lines})
+			searchLines := lines
+			if cit.Line != nil && len(searchLines) > 0 {
+				found := false
+				for _, line := range searchLines {
+					if line.LineNumber == *cit.Line {
+						found = true
+						break
+					}
+				}
+				if !found {
+					// Try whole act.
+					searchLines = wls.byAct[key.Act]
+					found = false
+					for _, line := range searchLines {
+						if line.LineNumber == *cit.Line {
+							found = true
+							break
+						}
+					}
+					if !found {
+						// Try entire play — the act might also be wrong.
+						searchLines = wls.all
+					}
+				}
+			}
+			tasks = append(tasks, citMatchTask{cit: cit, lines: searchLines})
 		}
 	}
 
@@ -315,7 +346,7 @@ func ResolveCitations(database *sql.DB) error {
 	fmt.Printf("  Match tasks: %d (built in %.1fs)\n", len(tasks), time.Since(start).Seconds())
 
 	// === Phase 2: Run findBestMatch in parallel (CPU-bound, no DB access) ===
-	workers := runtime.NumCPU()
+	workers := workerCount()
 	if workers < 1 {
 		workers = 1
 	}
@@ -419,17 +450,25 @@ func ResolveCitations(database *sql.DB) error {
 	fallbackMatches := matchByHeadwordFallback(database)
 	totalMatches += fallbackMatches
 
-	// === Phase 7: Apply manual corrections from citation_corrections/*.json ===
+	// === Phase 7: Cross-play search for remaining unmatched citations ===
+	// Some citations have the wrong play attribution in the Perseus source data.
+	// For each unmatched citation that has a line number, search ALL plays for
+	// a text line near that number containing the headword.
+	crossPlayMatches := matchByCrossPlaySearch(database)
+	totalMatches += crossPlayMatches
+
+	// === Phase 8: Apply manual corrections from citation_corrections/*.json ===
 	manualMatches := applyManualCorrections(database)
 	totalMatches += manualMatches
 
 	// Final stats from database
-	var finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalManual, finalTotal int
+	var finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalCrossPlay, finalManual, finalTotal int
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'exact_quote'").Scan(&finalExact)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'line_number'").Scan(&finalLine)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'fuzzy_text'").Scan(&finalFuzzy)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'propagated'").Scan(&finalPropagated)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'headword'").Scan(&finalHeadword)
+	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'cross_play'").Scan(&finalCrossPlay)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches WHERE match_type = 'manual'").Scan(&finalManual)
 	database.QueryRow("SELECT COUNT(*) FROM citation_matches").Scan(&finalTotal)
 
@@ -442,19 +481,20 @@ func ResolveCitations(database *sql.DB) error {
 
 	elapsed := time.Since(start).Seconds()
 	db.LogImport(database, "citations", "resolve_complete",
-		fmt.Sprintf("%d matches (exact=%d, line=%d, fuzzy=%d, propagated=%d, headword=%d, manual=%d, unmatched_citations=%d)",
-			finalTotal, finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalManual, finalUnmatched),
+		fmt.Sprintf("%d matches (exact=%d, line=%d, fuzzy=%d, propagated=%d, headword=%d, cross_play=%d, manual=%d, unmatched=%d)",
+			finalTotal, finalExact, finalLine, finalFuzzy, finalPropagated, finalHeadword, finalCrossPlay, finalManual, finalUnmatched),
 		finalTotal, elapsed)
 
 	fmt.Printf("  ✓ %d total matches in %.1fs\n", finalTotal, elapsed)
 	fmt.Printf("    exact_quote: %d, line_number: %d, fuzzy_text: %d\n", finalExact, finalLine, finalFuzzy)
-	fmt.Printf("    propagated: %d, headword: %d, manual: %d\n", finalPropagated, finalHeadword, finalManual)
+	fmt.Printf("    propagated: %d, headword: %d, cross_play: %d, manual: %d\n", finalPropagated, finalHeadword, finalCrossPlay, finalManual)
 	fmt.Printf("    unmatched citations: %d of %d (%.1f%%)\n",
 		finalUnmatched, len(citations), 100.0*float64(finalUnmatched)/float64(len(citations)))
 
-	// Print unmatched citation details for manual review.
+	// Print unmatched citation details for manual review and write TSV to build dir.
 	if finalUnmatched > 0 {
 		printUnmatchedReport(database, len(citations))
+		writeUnmatchedTSV(database)
 	}
 
 	return nil
@@ -623,6 +663,74 @@ func printUnmatchedReport(database *sql.DB, totalCitations int) {
 	}
 
 	fmt.Println()
+}
+
+// writeUnmatchedTSV writes all unmatched lexicon citations to a TSV file
+// in the same directory as the database (build/unmatched_citations.tsv).
+func writeUnmatchedTSV(database *sql.DB) {
+	// Derive the build directory from the database path.
+	var seq int
+	var name, dbPath string
+	row := database.QueryRow("PRAGMA database_list")
+	if err := row.Scan(&seq, &name, &dbPath); err != nil || dbPath == "" {
+		fmt.Println("  WARNING: could not determine database path for TSV output")
+		return
+	}
+	outPath := filepath.Join(filepath.Dir(dbPath), "unmatched_citations.tsv")
+
+	rows, err := database.Query(`
+		SELECT le.key, lc.raw_bibl, w.schmidt_abbrev, w.work_type,
+		       lc.act, lc.scene, lc.line, lc.quote_text
+		FROM lexicon_citations lc
+		JOIN lexicon_entries le ON le.id = lc.entry_id
+		LEFT JOIN works w ON w.id = lc.work_id
+		WHERE lc.id NOT IN (SELECT citation_id FROM citation_matches)
+		  AND lc.work_id IS NOT NULL
+		ORDER BY w.schmidt_abbrev, lc.act, lc.scene, lc.line, le.key`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		fmt.Printf("  WARNING: could not write %s: %v\n", outPath, err)
+		return
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "headword\traw_bibl\twork\twork_type\tact\tscene\tline\tquote\n")
+	count := 0
+	for rows.Next() {
+		var key, rawBibl string
+		var abbrev, workType sql.NullString
+		var act, scene, line sql.NullInt64
+		var quote sql.NullString
+		rows.Scan(&key, &rawBibl, &abbrev, &workType, &act, &scene, &line, &quote)
+
+		actStr, sceneStr, lineStr := "", "", ""
+		if act.Valid {
+			actStr = fmt.Sprintf("%d", act.Int64)
+		}
+		if scene.Valid {
+			sceneStr = fmt.Sprintf("%d", scene.Int64)
+		}
+		if line.Valid {
+			lineStr = fmt.Sprintf("%d", line.Int64)
+		}
+		q := ""
+		if quote.Valid {
+			q = quote.String
+		}
+
+		fmt.Fprintf(f, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			key, rawBibl,
+			abbrev.String, workType.String,
+			actStr, sceneStr, lineStr, q)
+		count++
+	}
+
+	fmt.Printf("  Wrote %d unmatched citations to %s\n", count, outPath)
 }
 
 // propagateCrossEdition uses line_mappings to propagate citation matches across editions.
@@ -822,7 +930,7 @@ func runHeadwordSearch(database *sql.DB, citQuery string, confidence float64, ca
 		content   string
 	}
 
-	workers := max(1, runtime.NumCPU())
+	workers := max(1, workerCount())
 	taskCh := make(chan hwTask, 256)
 	resultCh := make(chan hwResult, 256)
 
@@ -907,6 +1015,126 @@ func runHeadwordSearch(database *sql.DB, citQuery string, confidence float64, ca
 // applyManualCorrections inserts citation matches from the manually curated
 // corrections files (projects/data/citation_corrections/*.json). These handle
 // citations that can't be matched automatically due to spelling variants,
+// matchByCrossPlaySearch resolves remaining unmatched citations by searching
+// across ALL plays. Some citations in the Perseus source data have the wrong
+// play attribution (e.g., "Tooth: H4A IV, 4, 375" is actually in Wint.).
+//
+// For each unmatched citation with a line number, this searches every play's
+// text for a line near that number containing the headword.
+func matchByCrossPlaySearch(database *sql.DB) int {
+	// Load unmatched citations that have a line number.
+	rows, err := database.Query(`
+		SELECT lc.id, le.key, lc.line, lc.act
+		FROM lexicon_citations lc
+		JOIN lexicon_entries le ON le.id = lc.entry_id
+		WHERE lc.work_id IS NOT NULL
+		  AND lc.line IS NOT NULL
+		  AND lc.id NOT IN (SELECT citation_id FROM citation_matches)`)
+	if err != nil {
+		return 0
+	}
+
+	type crossCit struct {
+		id       int64
+		headword string
+		line     int
+		act      int
+	}
+	var cits []crossCit
+	for rows.Next() {
+		var c crossCit
+		var act sql.NullInt64
+		rows.Scan(&c.id, &c.headword, &c.line, &act)
+		if act.Valid {
+			c.act = int(act.Int64)
+		}
+		cits = append(cits, c)
+	}
+	rows.Close()
+
+	if len(cits) == 0 {
+		return 0
+	}
+
+	fmt.Printf("  Cross-play search: %d candidates\n", len(cits))
+
+	tx, err := database.Begin()
+	if err != nil {
+		return 0
+	}
+
+	insertStmt, err := tx.Prepare(`
+		INSERT INTO citation_matches (citation_id, text_line_id, edition_id, match_type, confidence, matched_text)
+		SELECT ?, tl.id, tl.edition_id, 'cross_play', 0.6, tl.content
+		FROM text_lines tl
+		WHERE tl.id = ?
+		  AND NOT EXISTS (
+			SELECT 1 FROM citation_matches cm
+			WHERE cm.citation_id = ? AND cm.edition_id = tl.edition_id
+		  )`)
+	if err != nil {
+		tx.Rollback()
+		return 0
+	}
+
+	matched := 0
+	for _, c := range cits {
+		headNorm := parser.NormalizeForMatch(stripSenseNumber(c.headword))
+		if len(headNorm) < 2 {
+			continue
+		}
+
+		// Search all plays for lines near this line number containing the headword.
+		// Use a ±10 window around the cited line number.
+		searchRows, err := database.Query(`
+			SELECT tl.id, tl.content, tl.line_number, tl.edition_id
+			FROM text_lines tl
+			JOIN editions e ON e.id = tl.edition_id
+			WHERE e.short_code = 'perseus_globe'
+			  AND tl.line_number BETWEEN ? AND ?
+			  AND (? = 0 OR tl.act = ?)
+			ORDER BY ABS(tl.line_number - ?)
+			LIMIT 100`, c.line-10, c.line+10, c.act, c.act, c.line)
+		if err != nil {
+			continue
+		}
+
+		bestLineID := int64(0)
+		bestDelta := 999
+		for searchRows.Next() {
+			var lineID int64
+			var content string
+			var lineNum int
+			var editionID int64
+			searchRows.Scan(&lineID, &content, &lineNum, &editionID)
+
+			contentNorm := parser.NormalizeForMatch(content)
+			if strings.Contains(contentNorm, headNorm) {
+				delta := lineNum - c.line
+				if delta < 0 {
+					delta = -delta
+				}
+				if delta < bestDelta {
+					bestDelta = delta
+					bestLineID = lineID
+				}
+			}
+		}
+		searchRows.Close()
+
+		if bestLineID > 0 {
+			insertStmt.Exec(c.id, bestLineID, c.id)
+			matched++
+		}
+	}
+
+	insertStmt.Close()
+	tx.Commit()
+
+	fmt.Printf("  Cross-play matches: %d\n", matched)
+	return matched
+}
+
 // line number mismatches, or missing text in all editions.
 //
 // Citations are identified by (headword, raw_bibl) rather than database row ID,

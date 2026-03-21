@@ -123,8 +123,12 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 
 		charCache := make(map[string]any)
 
-		type sceneKey struct{ act, scene int }
-		verseCounters := make(map[sceneKey]int)
+		// Assign Globe line numbers to every line. Perseus only marks Globe
+		// numbers on milestone lines (every 5th/10th), so we interpolate
+		// for lines in between. Schmidt's lexicon citations use Globe
+		// numbering, so preserving these is essential for citation matching.
+		interpolateGlobeNumbers(r.lines)
+
 		actScenes := make([][2]int, 0, len(r.lines))
 
 		for _, line := range r.lines {
@@ -132,15 +136,10 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := contentType(line.IsStageDirection)
-			sk := sceneKey{line.Act, line.Scene}
-			var lineNum int
+			lineNum := line.GlobeLine
 
 			if line.IsStageDirection {
 				charName = ""
-				lineNum = verseCounters[sk]
-			} else {
-				verseCounters[sk]++
-				lineNum = verseCounters[sk]
 			}
 
 			insertStmt.Exec(
@@ -177,5 +176,64 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 
 	fmt.Printf("\n  ✓ %d lines from %d plays in %.1fs\n", totalLines, totalPlays, elapsed)
 	return nil
+}
+
+// interpolateGlobeNumbers fills in Globe line numbers for all lines.
+// Perseus only marks Globe numbers on milestone lines (every 5th/10th via
+// <lb ed="G" n="10"/>). Lines between milestones get GlobeLine=0.
+//
+// This function walks through the lines and interpolates: between two
+// milestones at Globe numbers G1 and G2 with N lines between them,
+// each line gets G1+1, G1+2, etc. Lines before the first milestone
+// count backwards. Stage directions share the number of the preceding line.
+func interpolateGlobeNumbers(lines []parser.PerseusLine) {
+	if len(lines) == 0 {
+		return
+	}
+
+	// Pass 1: assign Globe numbers to speech lines (not stage directions)
+	// using milestones as anchors.
+	current := 0
+	for i := range lines {
+		if lines[i].GlobeLine > 0 {
+			// This is a milestone — use its number as the anchor.
+			current = lines[i].GlobeLine
+		} else if !lines[i].IsStageDirection {
+			// Increment from last known Globe number.
+			current++
+			lines[i].GlobeLine = current
+		}
+	}
+
+	// Pass 2: fill in lines before the first milestone by counting backwards.
+	firstMilestone := -1
+	for i := range lines {
+		if lines[i].GlobeLine > 0 {
+			firstMilestone = i
+			break
+		}
+	}
+	if firstMilestone > 0 {
+		num := lines[firstMilestone].GlobeLine
+		for i := firstMilestone - 1; i >= 0; i-- {
+			if !lines[i].IsStageDirection {
+				num--
+				if num < 1 {
+					num = 1
+				}
+				lines[i].GlobeLine = num
+			}
+		}
+	}
+
+	// Pass 3: stage directions get the same number as the preceding speech line.
+	lastNum := 0
+	for i := range lines {
+		if lines[i].IsStageDirection {
+			lines[i].GlobeLine = lastNum
+		} else if lines[i].GlobeLine > 0 {
+			lastNum = lines[i].GlobeLine
+		}
+	}
 }
 

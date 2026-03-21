@@ -132,14 +132,24 @@ func buildWorksMapByColumn(database *sql.DB, keyColumn string) (map[string]workI
 
 // ─── Parallel helpers ────────────────────────────────────────────────────────
 
-// parallelProcess applies fn to each item using up to runtime.NumCPU() goroutines
+// workerCount returns the number of parallel workers to use.
+// Reserves 6 cores for the OS and other tasks to keep the system responsive.
+func workerCount() int {
+	w := runtime.NumCPU() - 6
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// parallelProcess applies fn to each item using up to workerCount() goroutines
 // (capped at len(items)). Results are returned in unspecified order; callers that
 // need ordered output should key results by a field in O.
 func parallelProcess[I, O any](items []I, fn func(I) O) []O {
 	if len(items) == 0 {
 		return nil
 	}
-	workers := max(1, min(runtime.NumCPU(), len(items)))
+	workers := max(1, min(workerCount(), len(items)))
 
 	ch := make(chan I, len(items))
 	for _, item := range items {

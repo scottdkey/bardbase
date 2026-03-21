@@ -187,10 +187,7 @@ func BuildLineMappings(database *sql.DB) error {
 		len(tasks), bigTasks, time.Since(start).Seconds())
 
 	// Phase 2: Run alignments in parallel (CPU-bound, no DB access).
-	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
-	}
+	workers := workerCount()
 
 	// Sort tasks largest-first so big tasks start early and don't become tail latency.
 	sort.Slice(tasks, func(i, j int) bool {
