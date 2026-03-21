@@ -106,12 +106,13 @@ func seedE2EData(t *testing.T, database *sql.DB) {
 	}
 
 	// Text lines: Sonnet 18 — both editions (act=0, scene=sonnet number)
+	// Line 1 contains "question" to match the test headword.
 	sonnetLines := []struct {
 		lineNum int
 		ossText string
 		seText  string
 	}{
-		{1, "Shall I compare thee to a summer's day?", "Shall I compare thee to a summer's day?"},
+		{1, "Shall I question thee to a summer's day?", "Shall I question thee to a summer's day?"},
 		{2, "Thou art more lovely and more temperate:", "Thou art more lovely and more temperate:"},
 		{3, "Rough winds do shake the darling buds of May,", "Rough winds do shake the darling buds of May,"},
 		{4, "And summer's lease hath all too short a date:", "And summer's lease hath all too short a date;"},

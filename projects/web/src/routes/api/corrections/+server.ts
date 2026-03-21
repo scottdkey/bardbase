@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { dev } from '$app/environment';
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const CORRECTIONS_DIR = resolve(import.meta.dirname, '../../../../../../corrections');
@@ -28,8 +28,6 @@ export function GET() {
 
 	mkdirSync(CORRECTIONS_DIR, { recursive: true });
 
-	// List all correction files
-	const { readdirSync } = require('node:fs');
 	const files = readdirSync(CORRECTIONS_DIR).filter((f: string) => f.endsWith('.json'));
 	const corrections = files.map((f: string) => {
 		const content = readFileSync(resolve(CORRECTIONS_DIR, f), 'utf-8');

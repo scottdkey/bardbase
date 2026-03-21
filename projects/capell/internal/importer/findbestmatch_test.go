@@ -15,6 +15,18 @@ func makeCitation(quoteText string, line *int) citationRow {
 		WorkID:    1,
 		Line:      line,
 		QuoteText: quoteText,
+		Headword:  "test", // default headword for tests
+	}
+}
+
+func makeCitationWithHeadword(quoteText string, line *int, headword string) citationRow {
+	return citationRow{
+		ID:        1,
+		EntryID:   1,
+		WorkID:    1,
+		Line:      line,
+		QuoteText: quoteText,
+		Headword:  headword,
 	}
 }
 
@@ -101,7 +113,7 @@ func TestFindBestMatch_LineNumberExact_NoQuote(t *testing.T) {
 		{ID: 2, Content: "Second line", LineNumber: 2, EditionID: 1},
 		{ID: 3, Content: "Third line", LineNumber: 3, EditionID: 1},
 	}
-	cit := makeCitation("", intPtr(2))
+	cit := makeCitationWithHeadword("", intPtr(2), "Second")
 
 	line, matchType, confidence := findBestMatch(lines, cit)
 
@@ -145,15 +157,14 @@ func TestFindBestMatch_LineNumberExact_WithMismatchingQuote(t *testing.T) {
 	lines := []textLineRow{
 		{ID: 1, Content: "Whether tis nobler in the mind to suffer", LineNumber: 57, EditionID: 1},
 	}
-	// Quote doesn't match content at all → exact_quote skips.
-	// No headword set, so headword verification is skipped → falls back to
-	// accepting line number at 0.7 (exact match, no headword verification).
-	cit := makeCitation("apple banana cherry dog elephant", intPtr(57))
+	// Quote doesn't match content, but headword "nobler" IS in the line →
+	// line number match accepted.
+	cit := makeCitationWithHeadword("apple banana cherry dog elephant", intPtr(57), "nobler")
 
 	line, matchType, confidence := findBestMatch(lines, cit)
 
 	if line == nil {
-		t.Fatal("expected a match (line number still matches)")
+		t.Fatal("expected a match (headword in line)")
 	}
 	if matchType != "line_number" {
 		t.Errorf("expected line_number, got %s", matchType)
@@ -164,15 +175,14 @@ func TestFindBestMatch_LineNumberExact_WithMismatchingQuote(t *testing.T) {
 }
 
 func TestFindBestMatch_LineNumberNearby_WithQuote(t *testing.T) {
-	// Line 56 doesn't exist, but line 55 has partially matching text.
-	// Quote shares words with line 55 but is NOT a substring → won't trigger exact_quote.
+	// Line 56 doesn't exist, but line 55 has partially matching text and the headword.
 	lines := []textLineRow{
 		{ID: 1, Content: "something completely unrelated here today", LineNumber: 54, EditionID: 1},
 		{ID: 2, Content: "the nobler mind suffers slings and arrows", LineNumber: 55, EditionID: 1},
 		{ID: 3, Content: "another unrelated line of text here today", LineNumber: 58, EditionID: 1},
 	}
-	// Quote shares words (nobler, mind, suffers) but isn't a substring
-	cit := makeCitation("nobler mind suffers outrageous fortune", intPtr(56))
+	// Quote shares words and headword "nobler" is in line 55
+	cit := makeCitationWithHeadword("nobler mind suffers outrageous fortune", intPtr(56), "Nobler")
 
 	line, matchType, confidence := findBestMatch(lines, cit)
 
@@ -193,45 +203,40 @@ func TestFindBestMatch_LineNumberNearby_WithQuote(t *testing.T) {
 func TestFindBestMatch_LineNumberNearby_NoQuote(t *testing.T) {
 	lines := []textLineRow{
 		{ID: 1, Content: "some line", LineNumber: 8, EditionID: 1},
-		{ID: 2, Content: "another line", LineNumber: 12, EditionID: 1},
+		{ID: 2, Content: "another test line", LineNumber: 12, EditionID: 1},
 	}
-	// Line 10 doesn't exist. Nearest within ±3 is line 12 (delta=2)
-	cit := makeCitation("", intPtr(10))
+	// Line 10 doesn't exist. Line 12 contains headword "test" (delta=2).
+	cit := makeCitationWithHeadword("", intPtr(10), "test")
 
 	line, matchType, confidence := findBestMatch(lines, cit)
 
 	if line == nil {
 		t.Fatal("expected a nearby match")
 	}
+	if line.ID != 2 {
+		t.Errorf("expected line ID 2 (contains headword), got %d", line.ID)
+	}
 	if matchType != "line_number" {
 		t.Errorf("expected line_number, got %s", matchType)
 	}
-	// delta=2 → confidence = 0.6 - 0.2 = 0.4 (no headword, nearby match)
-	if confidence < 0.1 || confidence > 0.5 {
-		t.Errorf("expected confidence between 0.1-0.5 for delta=2 nearby, got %f", confidence)
+	if confidence < 0.5 {
+		t.Errorf("expected confidence >= 0.5 for headword-verified nearby match, got %f", confidence)
 	}
 }
 
-func TestFindBestMatch_LineNumberNearby_OutOfRange(t *testing.T) {
+func TestFindBestMatch_LineNumberNearby_OutOfRange_NoHeadword(t *testing.T) {
 	lines := []textLineRow{
 		{ID: 1, Content: "some line", LineNumber: 1, EditionID: 1},
 		{ID: 2, Content: "another line", LineNumber: 100, EditionID: 1},
 	}
-	// Line 50 — nothing within ±20, but fallback returns closest line at confidence 0.1.
-	// This handles plays like Troilus where Schmidt's line numbers exceed Perseus's
-	// scene-relative numbering by large fixed offsets.
-	cit := makeCitation("", intPtr(50))
+	// Line 50 — no headword in any line, no match should be returned.
+	// Bad matches are worse than no match — later phases can handle it.
+	cit := makeCitationWithHeadword("", intPtr(50), "assuage")
 
-	line, matchType, confidence := findBestMatch(lines, cit)
+	line, _, _ := findBestMatch(lines, cit)
 
-	if line == nil {
-		t.Fatal("expected closest-line fallback match")
-	}
-	if matchType != "line_number" {
-		t.Errorf("expected line_number, got %s", matchType)
-	}
-	if confidence != 0.1 {
-		t.Errorf("expected confidence 0.1 (fallback), got %f", confidence)
+	if line != nil {
+		t.Errorf("expected no match when headword not found in any line, got line %d", line.ID)
 	}
 }
 
@@ -347,23 +352,21 @@ func TestFindBestMatch_ExactQuoteTakesPriority(t *testing.T) {
 	}
 }
 
-func TestFindBestMatch_LineNumberNearby_PicksFirstInSlice(t *testing.T) {
+func TestFindBestMatch_LineNumberNearby_PicksClosestWithHeadword(t *testing.T) {
 	// Both lines 9 and 11 are delta=1 from target 10.
-	// The loop iterates lines in slice order and checks +delta OR -delta,
-	// so line 9 (index 0) is found first because it matches 10-1=9.
+	// Only line 11 has the headword, so it should be picked.
 	lines := []textLineRow{
 		{ID: 1, Content: "some text here", LineNumber: 9, EditionID: 1},
-		{ID: 2, Content: "other text here", LineNumber: 11, EditionID: 1},
+		{ID: 2, Content: "other test text here", LineNumber: 11, EditionID: 1},
 	}
-	cit := makeCitation("", intPtr(10))
+	cit := makeCitationWithHeadword("", intPtr(10), "test")
 
 	line, _, _ := findBestMatch(lines, cit)
 
 	if line == nil {
 		t.Fatal("expected a match")
 	}
-	// Line 9 (ID 1) comes first in the slice, both are delta=1
-	if line.ID != 1 {
-		t.Errorf("expected line ID 1 (first in slice at delta=1), got %d", line.ID)
+	if line.ID != 2 {
+		t.Errorf("expected line ID 2 (has headword), got %d", line.ID)
 	}
 }

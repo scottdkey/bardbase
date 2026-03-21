@@ -1679,26 +1679,27 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 
 		// Try exact line number first.
 		if idx, ok := lineNumIdx[*cit.Line]; ok {
-			if quoteWordSet != nil {
+			// Headword is in the line → accept.
+			if canVerifyHeadword && lineHasWord(idx) {
+				return &lines[idx], "line_number", 0.9
+			}
+			// Headword check passed via Jaccard similarity with the quote.
+			if !canVerifyHeadword && quoteWordSet != nil {
 				sim := jaccardSets(idx)
-				if sim > 0.15 {
+				if sim > 0.3 {
 					return &lines[idx], "line_number", 0.9
 				}
 			}
-			// If we can't verify by headword, accept the line number match.
-			if !canVerifyHeadword {
-				return &lines[idx], "line_number", 0.9
-			}
-			// Headword is in the line → accept.
-			if lineHasWord(idx) {
+			// If we can't verify by headword at all, accept the line number match.
+			if !canVerifyHeadword && quoteWordSet == nil {
 				return &lines[idx], "line_number", 0.9
 			}
 			// Line number matches but headword isn't there.
 			// Don't accept yet — fall through to search nearby lines.
 		}
 
-		// Search nearby lines for headword or best quote match.
-		if canVerifyHeadword || quoteWordSet != nil {
+		// Search nearby lines (±20) for one containing the headword.
+		if canVerifyHeadword {
 			const maxDelta = 20
 			bestIdx := -1
 			bestScore := 0.0
@@ -1710,18 +1711,14 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 						continue
 					}
 
-					hasWord := canVerifyHeadword && lineHasWord(idx)
-					var score float64
+					if !lineHasWord(idx) {
+						continue // headword must be present
+					}
 
+					var score float64
 					if quoteWordSet != nil {
-						sim := jaccardSets(idx)
-						if hasWord {
-							score = sim + 0.5 // bonus for headword match
-						} else {
-							score = sim
-						}
-					} else if hasWord {
-						// No quote — headword presence is the signal.
+						score = jaccardSets(idx) + 0.5
+					} else {
 						score = 1.0 - float64(delta)*0.02
 					}
 
@@ -1732,7 +1729,7 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				}
 			}
 
-			if bestIdx >= 0 && bestScore > 0.2 {
+			if bestIdx >= 0 {
 				if bestScore > 0.5 {
 					return &lines[bestIdx], "line_number", 0.8
 				}
@@ -1740,49 +1737,30 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 			}
 		}
 
-		// Fall back to exact line number (headword not verified or not found nearby).
-		if idx, ok := lineNumIdx[*cit.Line]; ok {
-			return &lines[idx], "line_number", 0.7
-		}
-
-		// No exact match — try nearby lines without headword verification.
-		for delta := 1; delta <= 20; delta++ {
-			for _, d := range []int{-delta, delta} {
-				if idx, ok := lineNumIdx[*cit.Line+d]; ok {
-					conf := 0.6 - float64(delta)*0.1
-					if conf < 0.1 {
-						conf = 0.1
-					}
-					return &lines[idx], "line_number", conf
-				}
+		// Fall back to exact line number — only if we can't verify headword
+		// (headword too short). If we CAN verify but didn't find it, don't
+		// return a bad match — let later phases (headword search) handle it.
+		if !canVerifyHeadword {
+			if idx, ok := lineNumIdx[*cit.Line]; ok {
+				return &lines[idx], "line_number", 0.7
 			}
-		}
-
-		// Final fallback: closest line number, but only if reasonably close.
-		// Don't match line 999 to a 100-line poem.
-		closestIdx := -1
-		closestDelta := -1
-		for i, line := range lines {
-			d := line.LineNumber - *cit.Line
-			if d < 0 {
-				d = -d
-			}
-			if closestIdx == -1 || d < closestDelta {
-				closestDelta = d
-				closestIdx = i
-			}
-		}
-		if closestIdx >= 0 && closestDelta <= 50 {
-			return &lines[closestIdx], "line_number", 0.1
 		}
 	}
 
 	// Strategy 3: Fuzzy text match (last resort) — uses pre-computed word sets.
+	// Prefer lines that contain the headword.
 	if quoteWordSet != nil {
+		headword := strings.ToLower(stripSenseNumber(cit.Headword))
+		hwNorm := parser.NormalizeForMatch(headword)
+		canVerify := len(hwNorm) >= 2
+
 		bestScore := 0.0
 		bestIdx := -1
 		for i := range lines {
 			score := jaccardSets(i)
+			if canVerify && !strings.Contains(lineNorms[i], hwNorm) {
+				score *= 0.3 // heavy penalty for missing headword
+			}
 			if score > bestScore {
 				bestScore = score
 				bestIdx = i

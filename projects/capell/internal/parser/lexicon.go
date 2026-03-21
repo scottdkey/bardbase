@@ -629,8 +629,20 @@ func supplementFromDisplayText(ref *PerseusRef, displayText string, workType str
 	switch workType {
 	case "sonnet_sequence":
 		// Display: "Sonn. 112, 9" → sonnet=112, line=9
-		if len(nums) >= 2 && ref.Scene != nil && ref.Line == nil {
-			ref.Line = &nums[1]
+		if len(nums) >= 2 {
+			if ref.Scene == nil {
+				ref.Scene = &nums[0]
+			}
+			if ref.Line == nil {
+				ref.Line = &nums[1]
+			}
+		} else if len(nums) == 1 {
+			// Single number: could be sonnet number or line — prefer sonnet if scene missing
+			if ref.Scene == nil {
+				ref.Scene = &nums[0]
+			} else if ref.Line == nil {
+				ref.Line = &nums[0]
+			}
 		}
 	case "poem":
 		// Display: "Lucr. 452" → line=452

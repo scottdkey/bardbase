@@ -317,16 +317,25 @@ func ImportOSS(database *sql.DB, sqlPath string) error {
 	}
 	rows.Close()
 
-	// Insert characters
+	// Insert characters. OSS stores multi-play characters with comma-separated
+	// work IDs (e.g., "henry4p1,henry4p2,henry5,merrywives" for Falstaff).
+	// Insert one row per work so that character name expansion works for each play.
 	fmt.Printf("  Characters: %d\n", len(characters))
 	for _, c := range characters {
-		dbWorkID := workIDMap[c.OSSWorkID]
-		_, err := database.Exec(`
-			INSERT OR IGNORE INTO characters (char_id, name, abbrev, work_id, oss_work_id, description, speech_count)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			c.CharID, c.Name, c.Abbrev, nilIfZero(dbWorkID), c.OSSWorkID, c.Description, c.SpeechCount)
-		if err != nil {
-			return fmt.Errorf("inserting character %s: %w", c.CharID, err)
+		ossWorkIDs := strings.Split(c.OSSWorkID, ",")
+		for _, ossWID := range ossWorkIDs {
+			dbWorkID := workIDMap[ossWID]
+			charID := c.CharID
+			if len(ossWorkIDs) > 1 {
+				charID = c.CharID + "-" + ossWID
+			}
+			_, err := database.Exec(`
+				INSERT OR IGNORE INTO characters (char_id, name, abbrev, work_id, oss_work_id, description, speech_count)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				charID, c.Name, c.Abbrev, nilIfZero(dbWorkID), c.OSSWorkID, c.Description, c.SpeechCount)
+			if err != nil {
+				return fmt.Errorf("inserting character %s: %w", c.CharID, err)
+			}
 		}
 	}
 

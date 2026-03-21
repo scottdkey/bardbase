@@ -133,7 +133,7 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 		actScenes := make([][2]int, 0, len(r.lines))
 
 		for _, line := range r.lines {
-			charName := cachedExpandCharName(database, work.ID, line.Character, charNameCache)
+			charName := cachedExpandCharName(database, work.ID, line.Character, line.CharID, charNameCache)
 			charID := cachedLookupCharacter(database, work.ID, charName, charCache)
 
 			ct := contentType(line.IsStageDirection)
@@ -171,11 +171,81 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 			totalPlays, work.Title, len(r.lines), speeches)
 	}
 
+	// === Phase 3: Import poems and sonnets (different TEI structure) ===
+	poemTypes := map[string]bool{
+		"poem": true, "poem_collection": true, "sonnet_sequence": true,
+	}
+	totalPoems, totalPoemLines := 0, 0
+
+	for _, fname := range xmlFiles {
+		perseusID := fname[:len(fname)-4]
+		work, ok := worksMap[perseusID]
+		if !ok {
+			continue
+		}
+		if !poemTypes[work.WorkType] {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(perseusDir, fname))
+		if err != nil {
+			fmt.Printf("  ERROR reading %s: %v\n", fname, err)
+			continue
+		}
+
+		poem, err := parser.ParsePerseusPoem(data, work.WorkType)
+		if err != nil || poem == nil || len(poem.Lines) == 0 {
+			continue
+		}
+
+		clearWorkEditionData(database, work.ID, editionID)
+
+		tx, err := database.Begin()
+		if err != nil {
+			fmt.Printf("  ERROR starting tx for %s: %v\n", work.Title, err)
+			continue
+		}
+
+		insertStmt, err := tx.Prepare(textLinesInsertSQL)
+		if err != nil {
+			tx.Rollback()
+			continue
+		}
+
+		actScenes := make([][2]int, 0, len(poem.Lines))
+		for _, line := range poem.Lines {
+			// Poems/sonnets: act=1 always, scene=section (sonnet number / 0 for narrative)
+			act := 1
+			scene := line.Section
+
+			insertStmt.Exec(
+				work.ID, editionID,
+				act, scene, line.LineNumber,
+				nil, nil, // no character
+				line.Content, "verse", countWords(line.Content))
+
+			actScenes = append(actScenes, [2]int{act, scene})
+		}
+		insertStmt.Close()
+
+		insertTextDivisions(tx, work.ID, editionID, actScenes)
+
+		if err := tx.Commit(); err != nil {
+			fmt.Printf("  ERROR committing %s: %v\n", work.Title, err)
+			continue
+		}
+
+		totalPoems++
+		totalPoemLines += len(poem.Lines)
+		fmt.Printf("  [%2d] %-35s %5d lines\n", totalPlays+totalPoems, work.Title, len(poem.Lines))
+	}
+
 	elapsed := time.Since(start).Seconds()
 	db.LogImport(database, "perseus_plays", "import_complete",
-		fmt.Sprintf("%d plays", totalPlays), totalLines, elapsed)
+		fmt.Sprintf("%d plays, %d poems", totalPlays, totalPoems), totalLines+totalPoemLines, elapsed)
 
-	fmt.Printf("\n  ✓ %d lines from %d plays in %.1fs\n", totalLines, totalPlays, elapsed)
+	fmt.Printf("\n  ✓ %d lines from %d plays + %d poems in %.1fs\n",
+		totalLines+totalPoemLines, totalPlays, totalPoems, elapsed)
 	return nil
 }
 

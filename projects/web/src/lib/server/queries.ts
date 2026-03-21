@@ -226,7 +226,18 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 			        MAX(lc.quote_text) AS quote_text, lc.display_text, lc.raw_bibl,
 			        tl.content AS matched_line,
 			        tl.line_number AS matched_line_number,
-			        tl.char_name AS matched_character,
+			        COALESCE(
+			          (SELECT ch.name FROM characters ch WHERE ch.id = tl.character_id),
+			          (SELECT ch2.name FROM characters ch2
+			           WHERE ch2.work_id = tl.work_id
+			             AND LOWER(ch2.name) LIKE LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+			           LIMIT 1),
+			          (SELECT ch3.name FROM characters ch3
+			           WHERE ch3.work_id = tl.work_id
+			             AND (' ' || LOWER(ch3.name)) LIKE '% ' || LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+			           LIMIT 1),
+			          tl.char_name
+			        ) AS matched_character,
 			        cm.edition_id AS matched_edition_id
 			 FROM lexicon_citations lc
 			 LEFT JOIN works w ON w.id = lc.work_id
@@ -276,8 +287,8 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 		const [workId, edId, act, scene] = key.split(':').map(Number);
 		// Find the range we need to cover
 		const lineNums = cits.map(c => c.matched_line_number ?? c.line ?? 0);
-		const minLine = Math.min(...lineNums) - 5;
-		const maxLine = Math.max(...lineNums) + 5;
+		const minLine = Math.min(...lineNums) - 10;
+		const maxLine = Math.max(...lineNums) + 10;
 
 		const nearbyLines = nearbyStmt.all(workId, edId, act, scene, minLine, maxLine) as {
 			line_number: number;
@@ -287,9 +298,9 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 
 		for (const c of cits) {
 			const target = c.matched_line_number ?? c.line ?? 0;
-			// Search nearby first (±5 from target), closest first
+			// Search nearby first (±10 from target), closest first
 			let found: typeof nearbyLines[0] | null = null;
-			for (let offset = 0; offset <= 5; offset++) {
+			for (let offset = 0; offset <= 10; offset++) {
 				for (const delta of offset === 0 ? [0] : [-offset, offset]) {
 					const candidate = nearbyLines.find(l => l.line_number === target + delta);
 					if (candidate && hwPattern.test(candidate.content)) {
@@ -305,6 +316,10 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 				c.matched_line_number = found.line_number;
 				c.matched_character = found.char_name;
 				c.line = found.line_number;
+			} else {
+				// No nearby line contains the headword — clear matched_line so the
+				// UI falls back to quote_text instead of showing wrong text.
+				c.matched_line = null;
 			}
 		}
 	}
@@ -366,6 +381,40 @@ export interface SceneTextResult {
 	lines: SceneTextLine[];
 }
 
+/** Resolve which scene a line number belongs to within a given act. */
+export function resolveScene(
+	db: Database.Database,
+	workId: number,
+	act: number,
+	lineNumber: number,
+	preferredEditionId?: number
+): number | null {
+	const editionOrder = preferredEditionId
+		? [preferredEditionId, ...PREFERRED_EDITION_IDS.filter((id) => id !== preferredEditionId)]
+		: PREFERRED_EDITION_IDS;
+
+	for (const eid of editionOrder) {
+		const row = db
+			.prepare(
+				`SELECT scene FROM text_lines
+				 WHERE work_id = ? AND edition_id = ? AND act = ? AND line_number = ?
+				 LIMIT 1`
+			)
+			.get(workId, eid, act, lineNumber) as { scene: number } | undefined;
+		if (row) return row.scene;
+	}
+
+	// Fallback: return the first scene in the act
+	const fallback = db
+		.prepare(
+			`SELECT DISTINCT scene FROM text_lines
+			 WHERE work_id = ? AND act = ? AND scene IS NOT NULL
+			 ORDER BY scene LIMIT 1`
+		)
+		.get(workId, act) as { scene: number } | undefined;
+	return fallback?.scene ?? null;
+}
+
 /** Default edition preference order: Perseus Globe first (matches Schmidt citations) */
 const PREFERRED_EDITION_IDS = [3, 4, 5, 1, 2];
 
@@ -376,10 +425,12 @@ export function getSceneText(
 	scene: number,
 	preferredEditionId?: number
 ): SceneTextResult | null {
-	const work = db.prepare('SELECT title FROM works WHERE id = ?').get(workId) as { title: string } | undefined;
+	const work = db.prepare('SELECT title, work_type FROM works WHERE id = ?').get(workId) as { title: string; work_type: string } | undefined;
 	if (!work) return null;
 
-	// Pick best available edition for this work
+	const isPoem = ['poem', 'poem_collection', 'sonnet_sequence'].includes(work.work_type);
+
+	// Pick best available edition for this work, checking the specific act/scene exists
 	let editionId: number | null = null;
 	let editionName = '';
 
@@ -388,10 +439,19 @@ export function getSceneText(
 		? [preferredEditionId, ...PREFERRED_EDITION_IDS.filter((id) => id !== preferredEditionId)]
 		: PREFERRED_EDITION_IDS;
 
+	// For poems/sonnets, match flexibly on act/scene since editions differ
+	// (OSS uses act=1, SE uses act=NULL, etc.)
+	const editionCheckSql = isPoem
+		? `SELECT e.id, e.name FROM editions e WHERE e.id = ? AND EXISTS (
+			SELECT 1 FROM text_lines WHERE work_id = ? AND edition_id = ?
+			AND (scene = ? OR scene IS NULL OR ? = 0) LIMIT 1)`
+		: `SELECT e.id, e.name FROM editions e WHERE e.id = ? AND EXISTS (
+			SELECT 1 FROM text_lines WHERE work_id = ? AND edition_id = ? LIMIT 1)`;
+
 	for (const eid of editionOrder) {
-		const row = db
-			.prepare('SELECT e.id, e.name FROM editions e WHERE e.id = ? AND EXISTS (SELECT 1 FROM text_lines WHERE work_id = ? AND edition_id = ? LIMIT 1)')
-			.get(eid, workId, eid) as { id: number; name: string } | undefined;
+		const row = isPoem
+			? db.prepare(editionCheckSql).get(eid, workId, eid, scene, scene) as { id: number; name: string } | undefined
+			: db.prepare(editionCheckSql).get(eid, workId, eid) as { id: number; name: string } | undefined;
 		if (row) {
 			editionId = row.id;
 			editionName = row.name;
@@ -400,17 +460,44 @@ export function getSceneText(
 	}
 	if (editionId == null) return null;
 
-	const lines = db
-		.prepare(
-			`SELECT tl.id, tl.line_number, tl.content, tl.content_type,
-              COALESCE(
+	// Character name expansion COALESCE (shared between poem and play queries)
+	const charCoalesce = `COALESCE(
                 c.name,
                 (SELECT c2.name FROM characters c2
                  WHERE c2.work_id = tl.work_id
-                   AND LOWER(c2.name) LIKE LOWER(REPLACE(tl.char_name, '.', '')) || '%'
+                   AND LOWER(c2.name) LIKE LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+                 LIMIT 1),
+                (SELECT c3.name FROM characters c3
+                 WHERE c3.work_id = tl.work_id
+                   AND (' ' || LOWER(c3.name)) LIKE '% ' || LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
                  LIMIT 1),
                 tl.char_name
-              ) AS character_name
+              )`;
+
+	// For poems/sonnets, match flexibly on act/scene since editions vary.
+	// Sonnets: scene = sonnet number (e.g., 20 for Sonnet 20).
+	// Poems: scene=0 means "the whole poem" — match all scenes or NULL.
+	const poemSceneFilter = scene === 0
+		? '1=1'  // scene=0 → get all lines for the poem
+		: '(tl.scene = ? OR tl.scene IS NULL)';
+
+	const lineQuery = isPoem
+		? `SELECT tl.id, tl.line_number, tl.content, tl.content_type,
+              ${charCoalesce} AS character_name
+       FROM text_lines tl
+       LEFT JOIN characters c ON c.id = tl.character_id
+       WHERE tl.work_id = ? AND tl.edition_id = ?
+         AND ${poemSceneFilter}
+         AND tl.id = (
+           SELECT MIN(t2.id) FROM text_lines t2
+           WHERE t2.work_id = tl.work_id AND t2.edition_id = tl.edition_id
+             AND COALESCE(t2.act, 0) = COALESCE(tl.act, 0)
+             AND COALESCE(t2.scene, 0) = COALESCE(tl.scene, 0)
+             AND t2.line_number = tl.line_number
+         )
+       ORDER BY tl.line_number, tl.id`
+		: `SELECT tl.id, tl.line_number, tl.content, tl.content_type,
+              ${charCoalesce} AS character_name
        FROM text_lines tl
        LEFT JOIN characters c ON c.id = tl.character_id
        WHERE tl.work_id = ? AND tl.edition_id = ? AND tl.act = ? AND tl.scene = ?
@@ -419,9 +506,16 @@ export function getSceneText(
            WHERE t2.work_id = tl.work_id AND t2.edition_id = tl.edition_id
              AND t2.act = tl.act AND t2.scene = tl.scene AND t2.line_number = tl.line_number
          )
-       ORDER BY tl.line_number, tl.id`
-		)
-		.all(workId, editionId, act, scene) as SceneTextLine[];
+       ORDER BY tl.line_number, tl.id`;
+
+	let lines: SceneTextLine[];
+	if (isPoem) {
+		lines = scene === 0
+			? db.prepare(lineQuery).all(workId, editionId) as SceneTextLine[]
+			: db.prepare(lineQuery).all(workId, editionId, scene) as SceneTextLine[];
+	} else {
+		lines = db.prepare(lineQuery).all(workId, editionId, act, scene) as SceneTextLine[];
+	}
 
 	return { work_title: work.title, act, scene, edition_name: editionName, lines };
 }

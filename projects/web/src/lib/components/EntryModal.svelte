@@ -88,8 +88,12 @@
 	}
 
 	function citationText(c: LexiconCitationDetail): string {
+		// Prefer quote_text (Schmidt's original fragment) when available —
+		// matched_line is the full line from the text edition and may not
+		// contain the headword if the match confidence was low.
+		if (c.quote_text) return c.quote_text;
 		if (c.matched_line) return c.matched_line;
-		return c.quote_text || c.display_text || '';
+		return c.display_text || '';
 	}
 
 	function citationSpeaker(c: LexiconCitationDetail): string | null {
@@ -148,14 +152,16 @@
 	}
 
 	async function openScene(c: LexiconCitationDetail) {
-		if (!c.work_id || c.act == null || c.scene == null) return;
+		if (!c.work_id || c.act == null) return;
 		// Save scroll position of the entry body
 		const body = document.querySelector('.modal-body');
 		if (body) savedScrollTop = body.scrollTop;
 		sceneLoading = true;
 		sceneCitation = c;
 		try {
-			let url = `/api/text/scene?workId=${c.work_id}&act=${c.act}&scene=${c.scene}`;
+			let url = `/api/text/scene?workId=${c.work_id}&act=${c.act}`;
+			if (c.scene != null) url += `&scene=${c.scene}`;
+			if (c.line != null) url += `&line=${c.line}`;
 			if (c.matched_edition_id != null) url += `&editionId=${c.matched_edition_id}`;
 			const res = await fetch(url);
 			if (res.ok) {
@@ -211,24 +217,33 @@
 				<h4 class="work-group-title">{workName}</h4>
 				<ul class="citation-list">
 					{#each workCitations as citation (citation.id)}
-						<li>
+						<li class="citation-row">
 							<button
 								class="citation-item"
-								class:clickable={citation.work_id != null && citation.act != null && citation.scene != null}
+								class:clickable={citation.work_id != null && citation.act != null}
 								onclick={() => {
-									if (citation.work_id != null && citation.act != null && citation.scene != null) {
+									if (citation.work_id != null && citation.act != null) {
 										openScene(citation);
 									} else {
 										toggleCitation(citation.id);
 									}
 								}}
-								oncontextmenu={(e) => { e.preventDefault(); correctionEntry = { type: 'citation', currentText: citationText(citation), citationRef: formatRef(citation) }; }}
 							>
 								<span class="citation-ref">{formatCitationLoc(citation)}</span>
 								{#if citationSpeaker(citation)}
 									<span class="citation-speaker">{citationSpeaker(citation)}</span>
 								{/if}
 								<p class="citation-quote">{citationText(citation)}</p>
+							</button>
+							<button
+								class="citation-flag-btn"
+								title="Flag this citation for correction"
+								onclick={(e) => { e.stopPropagation(); correctionEntry = { type: 'citation', currentText: citationText(citation), citationRef: formatRef(citation) }; }}
+							>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+									<line x1="4" y1="22" x2="4" y2="15" />
+								</svg>
 							</button>
 						</li>
 					{/each}
@@ -264,7 +279,13 @@
 				</button>
 				<div class="scene-title">
 					<h2>{sceneData.work_title}</h2>
-					<span class="scene-location">Act {sceneData.act}, Scene {sceneData.scene}</span>
+					{#if sceneData.work_title === 'Sonnets'}
+						<span class="scene-location">Sonnet {sceneData.scene}</span>
+					{:else if sceneData.scene === 0}
+						<span class="scene-location">{sceneData.work_title}</span>
+					{:else}
+						<span class="scene-location">Act {sceneData.act}, Scene {sceneData.scene}</span>
+					{/if}
 				</div>
 				{#if sceneHighlightLine != null}
 					<button class="jump-btn" class:review={sceneMatchQuality === 'scene' || sceneMatchQuality === 'unmatched'} onclick={scrollToHighlight} aria-label="Jump to referenced line">
@@ -690,9 +711,44 @@
 		margin: 0;
 	}
 
+	.citation-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 0;
+	}
+
+	.citation-flag-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		min-width: 28px;
+		height: 28px;
+		margin-top: 6px;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		border-radius: 6px;
+		opacity: 0;
+		transition: opacity 0.15s;
+		flex-shrink: 0;
+	}
+
+	.citation-row:hover .citation-flag-btn {
+		opacity: 0.5;
+	}
+
+	.citation-flag-btn:hover {
+		opacity: 1 !important;
+		color: #e85535;
+		background: rgba(232, 85, 53, 0.1);
+	}
+
 	.citation-item {
 		display: block;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		padding: 8px 12px;
 		border: none;
 		background: none;

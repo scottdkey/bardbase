@@ -98,8 +98,9 @@ func countWords(s string) int {
 
 // workInfo holds minimal work metadata for import lookups.
 type workInfo struct {
-	ID    int64
-	Title string
+	ID       int64
+	Title    string
+	WorkType string
 }
 
 // buildWorksMap queries the works table and returns a map from oss_id → workInfo.
@@ -112,7 +113,7 @@ func buildWorksMap(database *sql.DB) (map[string]workInfo, error) {
 // specified column → workInfo. Rows with NULL or empty values are skipped.
 func buildWorksMapByColumn(database *sql.DB, keyColumn string) (map[string]workInfo, error) {
 	query := fmt.Sprintf(
-		"SELECT id, %s, title FROM works WHERE %s IS NOT NULL AND %s != ''",
+		"SELECT id, %s, title, COALESCE(work_type, '') FROM works WHERE %s IS NOT NULL AND %s != ''",
 		keyColumn, keyColumn, keyColumn)
 	rows, err := database.Query(query)
 	if err != nil {
@@ -123,9 +124,9 @@ func buildWorksMapByColumn(database *sql.DB, keyColumn string) (map[string]workI
 	m := make(map[string]workInfo)
 	for rows.Next() {
 		var id int64
-		var key, title string
-		rows.Scan(&id, &key, &title)
-		m[key] = workInfo{ID: id, Title: title}
+		var key, title, workType string
+		rows.Scan(&id, &key, &title, &workType)
+		m[key] = workInfo{ID: id, Title: title, WorkType: workType}
 	}
 	return m, nil
 }
@@ -243,15 +244,41 @@ func cachedLookupCharacter(database *sql.DB, workID int64, charName string, cach
 	return id
 }
 
+// normalizeLigatures replaces common ligatures with their ASCII equivalents
+// so that "Cæs." matches "Caesar", "Œdipus" matches "Oedipus", etc.
+func normalizeLigatures(s string) string {
+	r := strings.NewReplacer(
+		"æ", "ae", "Æ", "Ae",
+		"œ", "oe", "Œ", "Oe",
+		"ſ", "s",
+	)
+	return r.Replace(s)
+}
+
 // expandCharacterName resolves an abbreviated character name (e.g., "Cal.",
-// "Pros.") to its full form (e.g., "Caliban", "Prospero") using the characters
-// table. Returns the original name if no match is found.
-func expandCharacterName(database *sql.DB, workID int64, abbrev string) string {
+// "Pros.", "Cæs.") to its full form (e.g., "Caliban", "Prospero", "Caesar")
+// using the characters table. Handles ligatures (æ→ae) and multi-word names
+// where the abbreviation matches a non-first word (e.g., "Bru." → "Junius Brutus").
+// charID is the TEI "who" attribute (e.g., "cor-13") used for direct lookup.
+// Returns the original name if no match is found.
+func expandCharacterName(database *sql.DB, workID int64, abbrev, charID string) string {
 	if abbrev == "" {
 		return abbrev
 	}
-	// Try exact match first
+
 	var name string
+
+	// Try char_id lookup first (most reliable — directly from TEI cast list)
+	if charID != "" {
+		err := database.QueryRow(
+			"SELECT name FROM characters WHERE work_id = ? AND char_id = ?",
+			workID, charID).Scan(&name)
+		if err == nil {
+			return name
+		}
+	}
+
+	// Try exact match on name
 	err := database.QueryRow(
 		"SELECT name FROM characters WHERE work_id = ? AND UPPER(name) = UPPER(?)",
 		workID, abbrev).Scan(&name)
@@ -267,11 +294,22 @@ func expandCharacterName(database *sql.DB, workID int64, abbrev string) string {
 		return name
 	}
 
-	// Try prefix match: strip trailing "." and match against the start of name
-	prefix := strings.TrimRight(abbrev, ".")
+	// Normalize ligatures for prefix matching (Cæs → Caes)
+	normalized := normalizeLigatures(abbrev)
+	prefix := strings.TrimRight(normalized, ".")
+
 	if prefix != "" {
+		// Try prefix match against the start of name
 		err = database.QueryRow(
 			"SELECT name FROM characters WHERE work_id = ? AND LOWER(name) LIKE LOWER(?) || '%' LIMIT 1",
+			workID, prefix).Scan(&name)
+		if err == nil {
+			return name
+		}
+
+		// Try prefix match against any word in the name (e.g., "Bru" → "Junius Brutus")
+		err = database.QueryRow(
+			"SELECT name FROM characters WHERE work_id = ? AND (' ' || LOWER(name)) LIKE '% ' || LOWER(?) || '%' LIMIT 1",
 			workID, prefix).Scan(&name)
 		if err == nil {
 			return name
@@ -282,15 +320,17 @@ func expandCharacterName(database *sql.DB, workID int64, abbrev string) string {
 }
 
 // cachedExpandCharName expands abbreviated character names with caching.
-func cachedExpandCharName(database *sql.DB, workID int64, abbrev string, cache map[string]string) string {
+// charID is the TEI "who" attribute for direct cast-list lookup.
+func cachedExpandCharName(database *sql.DB, workID int64, abbrev, charID string, cache map[string]string) string {
 	if abbrev == "" {
 		return ""
 	}
-	if cached, ok := cache[abbrev]; ok {
+	cacheKey := abbrev + "\x00" + charID
+	if cached, ok := cache[cacheKey]; ok {
 		return cached
 	}
-	full := expandCharacterName(database, workID, abbrev)
-	cache[abbrev] = full
+	full := expandCharacterName(database, workID, abbrev, charID)
+	cache[cacheKey] = full
 	return full
 }
 

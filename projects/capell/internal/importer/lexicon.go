@@ -124,15 +124,41 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 			"SELECT edition_id FROM text_lines GROUP BY edition_id ORDER BY COUNT(*) DESC LIMIT 1").Scan(&perseusEditionID)
 	}
 
-	// Prepared statement to resolve missing scene from act+line using Perseus Globe.
-	sceneLookup, err := database.Prepare(`
+	// Prepared statements to resolve missing scene from act+line.
+	// sceneLookupExact: tries exact line match across all editions.
+	sceneLookupExact, err := database.Prepare(`
 		SELECT DISTINCT scene FROM text_lines
-		WHERE work_id = ? AND act = ? AND line_number = ? AND edition_id = ?
+		WHERE work_id = ? AND act = ? AND line_number = ?
 		LIMIT 1`)
 	if err != nil {
 		return fmt.Errorf("preparing scene lookup: %w", err)
 	}
-	defer sceneLookup.Close()
+	defer sceneLookupExact.Close()
+
+	// sceneLookupRange: range match against Perseus Globe (marks every ~10th line).
+	// Finds the scene whose line range brackets the target line number.
+	sceneLookupRange, err := database.Prepare(`
+		SELECT scene FROM text_lines
+		WHERE work_id = ? AND act = ? AND edition_id = ?
+		GROUP BY scene
+		HAVING MIN(line_number) <= ? AND MAX(line_number) >= ?
+		LIMIT 1`)
+	if err != nil {
+		return fmt.Errorf("preparing scene range lookup: %w", err)
+	}
+	defer sceneLookupRange.Close()
+
+	// sceneLookupNearest: fallback for lines before the first Globe marker in a scene
+	// (e.g., line 3 in a scene whose first Globe marker is line 10).
+	sceneLookupNearest, err := database.Prepare(`
+		SELECT scene FROM text_lines
+		WHERE work_id = ? AND act = ? AND edition_id = ? AND line_number >= ?
+		ORDER BY line_number
+		LIMIT 1`)
+	if err != nil {
+		return fmt.Errorf("preparing scene nearest lookup: %w", err)
+	}
+	defer sceneLookupNearest.Close()
 
 	for _, letterDir := range sortedDirs {
 		letter := filepath.Base(letterDir)
@@ -209,12 +235,37 @@ func ImportLexicon(database *sql.DB, entriesDir string) error {
 					}
 				}
 
-				// Resolve missing scene from act+line using the Perseus Globe edition.
+				// For poems/sonnets: set act=1 if missing (text_lines always has act=1).
+				// Sonnets: scene = sonnet number. Poems: scene = 0.
+				if workIDInt > 0 && cit.Act == nil {
+					if sw, ok := constants.SchmidtWorks[cit.WorkAbbrev]; ok {
+						one := 1
+						switch sw.WorkType {
+						case "sonnet_sequence":
+							cit.Act = &one
+						case "poem", "poem_collection":
+							cit.Act = &one
+							if cit.Scene == nil {
+								zero := 0
+								cit.Scene = &zero
+							}
+						}
+					}
+				}
+
+				// Resolve missing scene from act+line.
 				// Many citations have act and line but no scene — the scene can be
 				// determined by looking up which scene contains that line number.
+				// Strategy: exact match → range match → nearest line match.
 				if workIDInt > 0 && cit.Act != nil && cit.Scene == nil && cit.Line != nil {
 					var scene int
-					err := sceneLookup.QueryRow(workIDInt, *cit.Act, *cit.Line, perseusEditionID).Scan(&scene)
+					err := sceneLookupExact.QueryRow(workIDInt, *cit.Act, *cit.Line).Scan(&scene)
+					if err != nil {
+						err = sceneLookupRange.QueryRow(workIDInt, *cit.Act, perseusEditionID, *cit.Line, *cit.Line).Scan(&scene)
+					}
+					if err != nil {
+						err = sceneLookupNearest.QueryRow(workIDInt, *cit.Act, perseusEditionID, *cit.Line).Scan(&scene)
+					}
 					if err == nil {
 						cit.Scene = &scene
 					}
