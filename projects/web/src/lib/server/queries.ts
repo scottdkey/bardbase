@@ -152,6 +152,8 @@ export interface LexiconCitationDetail {
 	quote_text: string | null;
 	display_text: string | null;
 	raw_bibl: string | null;
+	matched_line: string | null;
+	matched_character: string | null;
 }
 
 export interface LexiconSenseDetail {
@@ -191,15 +193,84 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 			`SELECT lc.id, lc.sense_id, lc.work_id, lc.work_abbrev,
               w.title AS work_title,
               lc.act, lc.scene, lc.line,
-              lc.quote_text, lc.display_text, lc.raw_bibl
+              lc.quote_text, lc.display_text, lc.raw_bibl,
+              tl.content AS matched_line,
+              tl.char_name AS matched_character
        FROM lexicon_citations lc
        LEFT JOIN works w ON w.id = lc.work_id
+       LEFT JOIN citation_matches cm ON cm.citation_id = lc.id
+         AND cm.id = (
+           SELECT cm2.id FROM citation_matches cm2
+           WHERE cm2.citation_id = lc.id
+           ORDER BY cm2.confidence DESC
+           LIMIT 1
+         )
+       LEFT JOIN text_lines tl ON tl.id = cm.text_line_id
        WHERE lc.entry_id = ?
        ORDER BY w.title, lc.act, lc.scene, lc.line`
 		)
 		.all(id) as LexiconCitationDetail[];
 
 	return { ...entry, senses, citations };
+}
+
+// ─── Scene text ──────────────────────────────────────────────────────────────
+
+export interface SceneTextLine {
+	id: number;
+	line_number: number | null;
+	content: string;
+	content_type: string | null;
+	character_name: string | null;
+}
+
+export interface SceneTextResult {
+	work_title: string;
+	act: number;
+	scene: number;
+	edition_name: string;
+	lines: SceneTextLine[];
+}
+
+/** Default edition preference order (by id): OSS Globe first */
+const PREFERRED_EDITION_IDS = [1, 5, 3, 2];
+
+export function getSceneText(
+	db: Database.Database,
+	workId: number,
+	act: number,
+	scene: number
+): SceneTextResult | null {
+	const work = db.prepare('SELECT title FROM works WHERE id = ?').get(workId) as { title: string } | undefined;
+	if (!work) return null;
+
+	// Pick best available edition for this work
+	let editionId: number | null = null;
+	let editionName = '';
+	for (const eid of PREFERRED_EDITION_IDS) {
+		const row = db
+			.prepare('SELECT e.id, e.name FROM editions e WHERE e.id = ? AND EXISTS (SELECT 1 FROM text_lines WHERE work_id = ? AND edition_id = ? LIMIT 1)')
+			.get(eid, workId, eid) as { id: number; name: string } | undefined;
+		if (row) {
+			editionId = row.id;
+			editionName = row.name;
+			break;
+		}
+	}
+	if (editionId == null) return null;
+
+	const lines = db
+		.prepare(
+			`SELECT tl.id, tl.line_number, tl.content, tl.content_type,
+              c.name AS character_name
+       FROM text_lines tl
+       LEFT JOIN characters c ON c.id = tl.character_id
+       WHERE tl.work_id = ? AND tl.edition_id = ? AND tl.act = ? AND tl.scene = ?
+       ORDER BY tl.line_number`
+		)
+		.all(workId, editionId, act, scene) as SceneTextLine[];
+
+	return { work_title: work.title, act, scene, edition_name: editionName, lines };
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

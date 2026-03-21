@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -310,6 +311,123 @@ func TestParseEntryXML_NilForMissingEntryFree(t *testing.T) {
 	}
 	if entry != nil {
 		t.Error("expected nil entry for XML without entryFree")
+	}
+}
+
+func TestSupplementFromDisplayText_PlayMissingLine(t *testing.T) {
+	// Perseus ref "shak. 2h6 1.2" gives act=1, scene=2, no line
+	// Display text "H6B I, 2, 15" has the line number
+	ref := ParsePerseusRef("shak. 2h6 1.2")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	if ref.Line != nil {
+		t.Fatalf("expected nil line before supplement, got %d", *ref.Line)
+	}
+
+	supplementFromDisplayText(ref, "H6B I, 2, 15", "")
+	if ref.Line == nil || *ref.Line != 15 {
+		t.Errorf("expected line 15 after supplement, got %v", ref.Line)
+	}
+	// Act and scene should remain unchanged
+	if ref.Act == nil || *ref.Act != 1 {
+		t.Errorf("expected act 1, got %v", ref.Act)
+	}
+	if ref.Scene == nil || *ref.Scene != 2 {
+		t.Errorf("expected scene 2, got %v", ref.Scene)
+	}
+}
+
+func TestSupplementFromDisplayText_TwoPartPlayIsActLine(t *testing.T) {
+	// Perseus ref "shak. tmp 4.56" gives act=4, scene=56, no line
+	// Display text "Tp. IV, 56" has only 2 numbers → act=4, line=56 (not scene)
+	ref := ParsePerseusRef("shak. tmp 4.56")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+
+	supplementFromDisplayText(ref, "Tp. IV, 56", "")
+	if ref.Act == nil || *ref.Act != 4 {
+		t.Errorf("expected act 4, got %v", ref.Act)
+	}
+	if ref.Scene != nil {
+		t.Errorf("expected nil scene (was line, not scene), got %v", *ref.Scene)
+	}
+	if ref.Line == nil || *ref.Line != 56 {
+		t.Errorf("expected line 56, got %v", ref.Line)
+	}
+}
+
+func TestSupplementFromDisplayText_AlreadyComplete(t *testing.T) {
+	// Complete ref should not be modified
+	ref := ParsePerseusRef("shak. ham 3.1.56")
+	if ref == nil {
+		t.Fatal("expected non-nil ref")
+	}
+	origLine := *ref.Line
+	supplementFromDisplayText(ref, "Hml. III, 1, 56", "")
+	if *ref.Line != origLine {
+		t.Errorf("expected line unchanged at %d, got %d", origLine, *ref.Line)
+	}
+}
+
+func TestSupplementFromDisplayText_NilRef(t *testing.T) {
+	// Should not panic on nil
+	supplementFromDisplayText(nil, "H6B I, 2, 15", "")
+}
+
+func TestParseEntryXML_SupplementsIncompleteRef(t *testing.T) {
+	xml := `<?xml version="1.0" encoding="UTF-8"?>
+<TEI.2><text><body><div1 n="A" type="alphabetic letter">
+<entryFree key="Abase" type="main"><orth>Abase,</orth> to lower: <cit><quote>a. our sight so low,</quote> <bibl n="shak. 2h6 1.2">H6B I, 2, 15</bibl></cit>.
+</entryFree></div1></body></text></TEI.2>`
+
+	entry, err := ParseEntryXML([]byte(xml), "abase.xml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("expected non-nil entry")
+	}
+	if len(entry.Citations) == 0 {
+		t.Fatal("expected at least one citation")
+	}
+	c := entry.Citations[0]
+	if c.Act == nil || *c.Act != 1 {
+		t.Errorf("expected act 1, got %v", c.Act)
+	}
+	if c.Scene == nil || *c.Scene != 2 {
+		t.Errorf("expected scene 2, got %v", c.Scene)
+	}
+	if c.Line == nil || *c.Line != 15 {
+		t.Errorf("expected line 15 (supplemented from display text), got %v", c.Line)
+	}
+}
+
+func TestParseEntryXML_DefinitionStripsReferences(t *testing.T) {
+	xml := `<?xml version="1.0" encoding="UTF-8"?>
+<TEI.2><text><body><div1 n="A" type="alphabetic letter">
+<entryFree key="A-front" type="main"><orth>A-front,</orth> in front, directly opposed: <bibl n="shak. 1h4 2.4">H4A II, 4, 222</bibl>.
+</entryFree></div1></body></text></TEI.2>`
+
+	entry, err := ParseEntryXML([]byte(xml), "a-front.xml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("expected non-nil entry")
+	}
+	if len(entry.Senses) == 0 {
+		t.Fatal("expected at least one sense")
+	}
+	// Definition should NOT contain "H4A II, 4, 222"
+	def := entry.Senses[0].Text
+	if strings.Contains(def, "H4A") {
+		t.Errorf("definition should not contain bibl text, got: %q", def)
+	}
+	// But should contain the actual definition
+	if !strings.Contains(def, "in front, directly opposed") {
+		t.Errorf("definition should contain definition text, got: %q", def)
 	}
 }
 
