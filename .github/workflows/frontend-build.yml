@@ -1,17 +1,6 @@
 name: Frontend Build & Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'projects/web/**'
-      - 'projects/data/**'
-      - '.github/workflows/frontend-build.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'projects/web/**'
-      - '.github/workflows/frontend-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -55,7 +44,6 @@ jobs:
           BARDBASE_DB_PATH: ${{ github.workspace }}/build/bardbase.db
 
       - name: Deploy to Cloudflare Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

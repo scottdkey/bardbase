@@ -3,6 +3,8 @@ import { getDb } from '$lib/server/db';
 import { getSceneText } from '$lib/server/queries';
 import type { EntryGenerator } from './$types';
 
+export const prerender = true;
+
 // Prerender all work/act/scene combinations at build time
 export const entries: EntryGenerator = () => {
 	const db = getDb();

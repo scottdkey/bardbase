@@ -3,6 +3,8 @@ import { getDb } from '$lib/server/db';
 import { getLexiconEntryFull } from '$lib/server/queries';
 import type { EntryGenerator } from './$types';
 
+export const prerender = true;
+
 // Prerender all entry IDs at build time
 export const entries: EntryGenerator = () => {
 	const db = getDb();
