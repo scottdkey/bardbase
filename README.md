@@ -6,6 +6,10 @@
 
 A SQLite database of Shakespeare's complete works — multiple editions, full-text search, and a complete Shakespeare lexicon.
 
+# Warning Before Using
+This project is in active development while I work through text alignment and lexicon reference resolution. 
+This database is currently unstable at this time and should be treated as an alpha while problems are discovered and mitigated. 
+
 ## Quick Start
 
 **Download the pre-built database** from the [latest release](https://github.com/scottdkey/bardbase/releases/latest).
