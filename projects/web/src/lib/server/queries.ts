@@ -520,6 +520,40 @@ export function getSceneText(
 	return { work_title: work.title, act, scene, edition_name: editionName, lines };
 }
 
+// ─── Attributions ─────────────────────────────────────────────────────────────
+
+export interface FooterAttribution {
+	source_name: string;
+	attribution_html: string;
+	license_notice_text: string | null;
+	display_priority: number;
+	required: boolean;
+}
+
+export function getFooterAttributions(db: Database.Database): FooterAttribution[] {
+	return db
+		.prepare(
+			`SELECT s.name AS source_name,
+			        a.attribution_html,
+			        a.license_notice_text,
+			        COALESCE(a.display_priority, 0) AS display_priority,
+			        CASE WHEN a.required = 1 THEN 1 ELSE 0 END AS required
+			 FROM attributions a
+			 JOIN sources s ON s.id = a.source_id
+			 WHERE a.display_format = 'footer'
+			   AND (
+			     s.id IN (
+			       SELECT DISTINCT e.source_id FROM editions e
+			       WHERE EXISTS (SELECT 1 FROM text_lines tl WHERE tl.edition_id = e.id)
+			     )
+			     OR (s.short_code = 'perseus_schmidt'
+			         AND EXISTS (SELECT 1 FROM lexicon_entries LIMIT 1))
+			   )
+			 ORDER BY a.display_priority DESC, s.name`
+		)
+		.all() as FooterAttribution[];
+}
+
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
 export interface DbStats {

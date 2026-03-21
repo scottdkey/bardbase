@@ -70,7 +70,12 @@
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify(correction)
 				});
+				corrections.markSubmitted(correction.id);
 			} catch { /* localStorage save already happened */ }
+		} else {
+			const url = corrections.toGitHubIssueUrl(correction);
+			window.open(url, '_blank');
+			corrections.markSubmitted(correction.id);
 		}
 
 		submitting = false;

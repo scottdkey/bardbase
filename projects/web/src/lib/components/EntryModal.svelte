@@ -591,13 +591,6 @@
 		color: var(--color-text-muted);
 	}
 
-	.sub-entry-text {
-		margin: 6px 0 12px;
-		font-size: 0.85rem;
-		color: var(--color-text-secondary);
-		line-height: 1.6;
-	}
-
 	/* ─── Senses ─── */
 	.senses {
 		margin-bottom: 24px;
@@ -688,10 +681,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-	}
-
-	.citation-work-group {
-		/* nothing extra needed */
 	}
 
 	.work-group-title {

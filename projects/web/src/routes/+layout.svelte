@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { corrections } from '$lib/stores/corrections.svelte';
+	import type { LayoutProps } from './$types';
 
-	let { children } = $props();
+	let { children, data }: LayoutProps = $props();
 	let footerOpen = $state(false);
 
 	onMount(() => {
@@ -61,59 +62,15 @@
 					</button>
 				</div>
 				<div class="drawer-body">
-					<section class="attribution-section">
-						<h4>Perseus Digital Library &mdash; Schmidt Shakespeare Lexicon</h4>
-						<p>
-							Text provided by <a href="http://www.perseus.tufts.edu" target="_blank" rel="noopener">Perseus Digital Library</a>.
-							Original work: <em>Shakespeare Lexicon and Quotation Dictionary</em> by Alexander Schmidt, 3rd edition, 1902.
-						</p>
-						<p class="license-notice">
-							Licensed under <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">Creative Commons Attribution-ShareAlike 3.0 Unported</a>.
-						</p>
-					</section>
-
-					<section class="attribution-section">
-						<h4>Perseus Digital Library &mdash; Shakespeare Play Texts</h4>
-						<p>
-							Globe edition play texts from <a href="http://www.perseus.tufts.edu" target="_blank" rel="noopener">Perseus Digital Library</a>,
-							with First Folio line cross-references.
-						</p>
-						<p class="license-notice">
-							Licensed under <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA 3.0</a>.
-						</p>
-					</section>
-
-					<section class="attribution-section">
-						<h4>Open Source Shakespeare</h4>
-						<p>
-							Text from <a href="https://www.opensourceshakespeare.org/" target="_blank" rel="noopener">Open Source Shakespeare</a>,
-							based on the Moby project. Public domain.
-						</p>
-					</section>
-
-					<section class="attribution-section">
-						<h4>Standard Ebooks</h4>
-						<p>
-							Text from <a href="https://standardebooks.org/" target="_blank" rel="noopener">Standard Ebooks</a>.
-							Released to the public domain under CC0 1.0 Universal.
-						</p>
-					</section>
-
-					<section class="attribution-section">
-						<h4>Folger Shakespeare Library</h4>
-						<p>
-							Text from <a href="https://www.folger.edu/" target="_blank" rel="noopener">Folger Shakespeare Library</a>.
-						</p>
-					</section>
-
-					<section class="attribution-section">
-						<h4>EEBO-TCP &mdash; First Folio</h4>
-						<p>
-							First Folio (1623) diplomatic transcription from
-							<a href="https://github.com/textcreationpartnership" target="_blank" rel="noopener">Early English Books Online &ndash; Text Creation Partnership</a>.
-							Public domain (CC0 1.0).
-						</p>
-					</section>
+					{#each data.attributions as attr}
+						<section class="attribution-section">
+							<h4>{attr.source_name}</h4>
+							<p>{@html attr.attribution_html}</p>
+							{#if attr.license_notice_text}
+								<p class="license-notice">{attr.license_notice_text}</p>
+							{/if}
+						</section>
+					{/each}
 
 					<section class="attribution-section">
 						<h4>License</h4>
@@ -254,27 +211,6 @@
 		flex-direction: column;
 	}
 
-	/* ─── Top Bar ─── */
-	.top-bar {
-		position: sticky;
-		top: 0;
-		z-index: 100;
-		height: var(--top-bar-height);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 16px;
-		background: var(--color-bg);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.logo {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: var(--color-text) !important;
-		letter-spacing: -0.01em;
-	}
-
 	.theme-toggle {
 		display: flex;
 		align-items: center;
@@ -316,11 +252,6 @@
 		justify-content: space-between;
 		padding: 10px 16px;
 		gap: 12px;
-	}
-
-	.footer-text {
-		font-size: 0.85rem;
-		color: var(--color-text-muted);
 	}
 
 	.footer-actions {
