@@ -2,39 +2,37 @@ import { json, error } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 
 export const prerender = false;
-import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
 
-const CORRECTIONS_DIR = resolve(import.meta.dirname, '../../../../../../corrections');
-
-export function POST({ request }) {
+export async function POST({ request }) {
 	if (!dev) {
 		throw error(403, 'Corrections API only available in development');
 	}
 
-	return request.json().then((correction) => {
-		mkdirSync(CORRECTIONS_DIR, { recursive: true });
+	const { writeFileSync, mkdirSync } = await import('node:fs');
+	const { resolve } = await import('node:path');
 
-		const filename = `${correction.id}.json`;
-		const filepath = resolve(CORRECTIONS_DIR, filename);
-		writeFileSync(filepath, JSON.stringify(correction, null, 2));
-
-		return json({ ok: true, path: filepath });
-	});
+	const dir = resolve(import.meta.dirname, '../../../../../../corrections');
+	const correction = await request.json();
+	mkdirSync(dir, { recursive: true });
+	const filepath = resolve(dir, `${correction.id}.json`);
+	writeFileSync(filepath, JSON.stringify(correction, null, 2));
+	return json({ ok: true, path: filepath });
 }
 
-export function GET() {
+export async function GET() {
 	if (!dev) {
 		throw error(403, 'Corrections API only available in development');
 	}
 
-	mkdirSync(CORRECTIONS_DIR, { recursive: true });
+	const { mkdirSync, readdirSync, readFileSync } = await import('node:fs');
+	const { resolve } = await import('node:path');
 
-	const files = readdirSync(CORRECTIONS_DIR).filter((f: string) => f.endsWith('.json'));
+	const dir = resolve(import.meta.dirname, '../../../../../../corrections');
+	mkdirSync(dir, { recursive: true });
+	const files = readdirSync(dir).filter((f: string) => f.endsWith('.json'));
 	const corrections = files.map((f: string) => {
-		const content = readFileSync(resolve(CORRECTIONS_DIR, f), 'utf-8');
+		const content = readFileSync(resolve(dir, f), 'utf-8');
 		return JSON.parse(content);
 	});
-
 	return json({ corrections });
 }

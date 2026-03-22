@@ -1,6 +1,7 @@
 name = "bardbase"
 pages_build_output_dir = ".svelte-kit/cloudflare"
 compatibility_date = "2026-03-21"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 API_URL = "https://bardbase-api-production.up.railway.app"
