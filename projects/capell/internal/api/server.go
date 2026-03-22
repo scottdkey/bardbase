@@ -56,6 +56,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/lexicon/letters", cors(s.handleLexiconLetters))
 	s.mux.HandleFunc("GET /api/lexicon/entry/{id}", cors(s.handleLexiconEntry))
 	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}", cors(s.handleScene))
+	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}/references", cors(s.handleSceneReferences))
+	s.mux.HandleFunc("GET /api/lexicon/keys", cors(s.handleLexiconKeys))
+	s.mux.HandleFunc("GET /api/reference/entry/{id}", cors(s.handleReferenceEntry))
+	s.mux.HandleFunc("GET /api/reference/search", cors(s.handleReferenceSearch))
+	s.mux.HandleFunc("GET /api/reference/sources", cors(s.handleReferenceSources))
+	s.mux.HandleFunc("GET /api/resolve/{slug}", cors(s.handleWorkBySlug))
 	s.mux.HandleFunc("GET /api/corrections", cors(s.handleCorrections))
 }
 

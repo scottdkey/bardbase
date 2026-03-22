@@ -84,3 +84,25 @@ func (s *Server) handleLexiconLetters(w http.ResponseWriter, _ *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+func (s *Server) handleLexiconKeys(w http.ResponseWriter, _ *http.Request) {
+	rows, err := s.db.Query(`SELECT DISTINCT LOWER(base_key) FROM lexicon_entries ORDER BY 1`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if keys == nil {
+		keys = []string{}
+	}
+	writeJSON(w, http.StatusOK, keys)
+}

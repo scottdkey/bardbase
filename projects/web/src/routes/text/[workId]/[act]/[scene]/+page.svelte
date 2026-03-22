@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { MultiEditionScene } from '$lib/types';
+	import type { LineReference } from '$lib/server/api';
 	import IconBack from '$lib/components/icons/IconBack.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
+	import WordPopover from '$lib/components/WordPopover.svelte';
 	import { goto } from '$app/navigation';
 	import { readingPosition } from '$lib/stores/reading-position.svelte';
 	import { findAdjacentScenes } from '$lib/utils/scene-nav';
@@ -10,6 +12,111 @@
 	let { data } = $props();
 	let scene: MultiEditionScene = $derived(data.scene);
 	let adjacent = $derived(findAdjacentScenes(data.toc, data.act, data.sceneNum));
+
+	// References: pre-loaded from DB, keyed by line number
+	let refs: Record<string, LineReference[]> = $derived(data.references ?? {});
+
+	// Build a row-level reference map: for each aligned row, collect ALL references
+	// from ALL edition line numbers in that row. This ensures that a citation
+	// stored under one edition's line number highlights the word in every edition.
+	let rowRefs = $derived.by(() => {
+		const map = new Map<number, LineReference[]>();
+		for (let rowIdx = 0; rowIdx < scene.rows.length; rowIdx++) {
+			const row = scene.rows[rowIdx];
+			const collected: LineReference[] = [];
+			const seen = new Set<string>();
+			for (const cell of Object.values(row.editions)) {
+				if (!cell || cell.line_number == null) continue;
+				const lineRefs = refs[String(cell.line_number)];
+				if (!lineRefs) continue;
+				for (const ref of lineRefs) {
+					const key = `${ref.entry_id}-${ref.source_code}-${ref.line}`;
+					if (!seen.has(key)) {
+						seen.add(key);
+						collected.push(ref);
+					}
+				}
+			}
+			if (collected.length > 0) map.set(rowIdx, collected);
+		}
+		return map;
+	});
+
+	function normalizeWord(raw: string): string {
+		return raw.replace(/^[^a-zA-Z'-]+|[^a-zA-Z'-]+$/g, '').toLowerCase();
+	}
+
+	function refKeyMatches(refKey: string, word: string): boolean {
+		const key = refKey.toLowerCase();
+		if (key === word) return true;
+		if (key.startsWith(word + ' ') || key.startsWith(word + ',')) return true;
+		return false;
+	}
+
+	// Check if a word in a specific row has a reference
+	function hasWordRef(rowIdx: number, word: string): boolean {
+		const rowRefList = rowRefs.get(rowIdx);
+		if (!rowRefList) return false;
+		const clean = normalizeWord(word);
+		return rowRefList.some((r) => refKeyMatches(r.entry_key, clean));
+	}
+
+	// Get references for a word in a specific row
+	function getWordRefs(rowIdx: number, word: string): LineReference[] {
+		const rowRefList = rowRefs.get(rowIdx);
+		if (!rowRefList) return [];
+		const clean = normalizeWord(word);
+		return rowRefList.filter((r) => refKeyMatches(r.entry_key, clean));
+	}
+
+	// Word popover state
+	let popoverWord = $state<string | null>(null);
+	let popoverRefs = $state<LineReference[]>([]);
+	let popoverX = $state(0);
+	let popoverY = $state(0);
+	let hoverTimer: ReturnType<typeof setTimeout>;
+
+	function showWordPopover(word: string, rowIdx: number, x: number, y: number) {
+		const wordRefs = getWordRefs(rowIdx, word);
+		if (wordRefs.length === 0) return;
+		popoverWord = word.replace(/^[^a-zA-Z'-]+|[^a-zA-Z'-]+$/g, '');
+		popoverRefs = wordRefs;
+		popoverX = x;
+		popoverY = y;
+	}
+
+	function handleWordInteraction(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (!target.classList.contains('ref')) return;
+		clearTimeout(hoverTimer);
+		const rowIdx = parseInt(target.dataset.row ?? '', 10);
+		if (isNaN(rowIdx)) return;
+		const rect = target.getBoundingClientRect();
+		if (e.type === 'click') {
+			showWordPopover(target.textContent ?? '', rowIdx, rect.left, rect.bottom);
+		} else {
+			hoverTimer = setTimeout(() => {
+				showWordPopover(target.textContent ?? '', rowIdx, rect.left, rect.bottom);
+			}, 300);
+		}
+	}
+
+	function handleWordLeave() {
+		clearTimeout(hoverTimer);
+	}
+
+	function closePopover() {
+		popoverWord = null;
+	}
+
+	function selectEntry(ref: LineReference) {
+		popoverWord = null;
+		if (ref.source_code === 'schmidt') {
+			goto(`/lexicon/entry/${ref.entry_id}`);
+		} else {
+			goto(`/reference/${ref.entry_id}`);
+		}
+	}
 
 	const EDITION_LABELS: Record<number, string> = {
 		1: 'OSS',
@@ -168,13 +275,13 @@
 		if (data.isReference) {
 			history.back();
 		} else {
-			goto('/editions');
+			goto('/');
 		}
 	}
 
 	function gotoScene(act: number, sc: number) {
 		tocOpen = false;
-		goto(`/text/${data.workId}/${act}/${sc}`);
+		goto(`/text/${data.slug}/${act}/${sc}`);
 	}
 
 	function gotoPrev() {
@@ -298,7 +405,13 @@
 						>
 							{#if cell}
 								<span class="line-number">{cell.line_number ?? ''}</span>
-								<span class="line-content">{cell.content}</span>
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<span
+									class="line-content"
+									onmouseenter={handleWordInteraction}
+									onmouseleave={handleWordLeave}
+									onclick={handleWordInteraction}
+								>{#if rowRefs.has(rowIdx)}{#each cell.content.split(/(\s+)/) as part}{#if /\s/.test(part)}{part}{:else if hasWordRef(rowIdx, part)}<span class="word ref" data-row={rowIdx}>{part}</span>{:else}{part}{/if}{/each}{:else}{cell.content}{/if}</span>
 							{:else}
 								<span class="line-empty">&mdash;</span>
 							{/if}
@@ -309,6 +422,17 @@
 		</div>
 	</div>
 </div>
+
+{#if popoverWord}
+	<WordPopover
+		word={popoverWord}
+		references={popoverRefs}
+		x={popoverX}
+		y={popoverY}
+		onclose={closePopover}
+		onselect={selectEntry}
+	/>
+{/if}
 
 <!-- Floating nav arrows (reading mode only) -->
 {#if !data.isReference}
@@ -453,10 +577,10 @@
 
 	.edition-selector {
 		position: fixed;
-		bottom: 52px;
+		bottom: 56px;
 		left: 50%;
 		transform: translateX(-50%);
-		z-index: 250;
+		z-index: 190;
 		display: flex;
 		gap: 4px;
 		padding: 6px 8px;
@@ -464,6 +588,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 24px;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+		pointer-events: auto;
 	}
 
 	.edition-pill {
@@ -594,6 +719,20 @@
 
 	.line-content {
 		color: var(--color-text);
+	}
+
+	.line-content .word.ref {
+		cursor: pointer;
+		border-radius: 3px;
+		color: var(--color-accent);
+		font-weight: 700;
+		background: var(--color-hover);
+		padding: 1px 2px;
+		transition: background 0.15s;
+	}
+
+	.line-content .word.ref:hover {
+		background: var(--color-active);
 	}
 
 	.line-empty {

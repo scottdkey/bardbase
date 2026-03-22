@@ -56,6 +56,7 @@ export interface CorrectionIssue {
 export interface Work {
 	id: number;
 	title: string;
+	slug: string;
 	work_type: string;
 	date_composed: string | null;
 }
@@ -66,6 +67,31 @@ export interface WorkEdition {
 	short_code: string;
 	year: number | null;
 	source_name: string;
+}
+
+export interface LineReference {
+	entry_id: number;
+	entry_key: string;
+	source: string;
+	source_code: string;
+	sense_id: number | null;
+	definition: string | null;
+	quote_text: string | null;
+	line: number;
+}
+
+export interface ReferenceSource {
+	code: string;
+	name: string;
+	count: number;
+}
+
+export interface ReferenceEntryDetail {
+	id: number;
+	headword: string;
+	raw_text: string;
+	source_name: string;
+	source_code: string;
 }
 
 export interface WorkDivision {
@@ -80,9 +106,20 @@ export const api = {
 	getCorrections: (state = 'all') =>
 		apiFetch<CorrectionIssue[]>(`/api/corrections?state=${state}`),
 	getLexiconEntry: (id: number) => apiFetch<LexiconEntryDetail>(`/api/lexicon/entry/${id}`),
+	getReferenceEntry: (id: number) =>
+		apiFetch<ReferenceEntryDetail>(`/api/reference/entry/${id}`),
+	getReferenceSources: () =>
+		apiFetch<ReferenceSource[]>('/api/reference/sources'),
+	getLexiconKeys: () => apiFetch<string[]>('/api/lexicon/keys'),
 	getLexiconLetters: () => apiFetch<LexiconLetter[]>('/api/lexicon/letters'),
 	getScene: (workId: number, act: number, scene: number) =>
 		apiFetch<MultiEditionScene>(`/api/text/scene/${workId}/${act}/${scene}`),
+	getSceneReferences: (workId: number, act: number, scene: number) =>
+		apiFetch<Record<string, LineReference[]>>(
+			`/api/text/scene/${workId}/${act}/${scene}/references`
+		),
+	getWorkBySlug: (slug: string) =>
+		apiFetch<{ id: number; title: string; slug: string }>(`/api/resolve/${slug}`),
 	getWorks: () => apiFetch<{ plays: Work[]; poetry: Work[] }>('/api/works'),
 	getWorkEditions: (id: number) => apiFetch<WorkEdition[]>(`/api/works/${id}/editions`),
 	getWorkTOC: (id: number) => apiFetch<WorkDivision[]>(`/api/works/${id}/toc`),

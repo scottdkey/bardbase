@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { corrections } from '$lib/stores/corrections.svelte';
 	import type { LayoutProps } from './$types';
@@ -10,6 +11,13 @@
 
 	let { children, data }: LayoutProps = $props();
 	let footerOpen = $state(false);
+
+	let currentPath = $derived(page.url.pathname);
+
+	function isActive(href: string): boolean {
+		if (href === '/') return currentPath === '/';
+		return currentPath.startsWith(href);
+	}
 
 	onMount(() => {
 		theme.init();
@@ -85,10 +93,9 @@
 		{/if}
 		<div class="footer-bar">
 			<nav class="footer-nav">
-				<a href="/" class="nav-link">Lexicon</a>
-				<a href="/editions" class="nav-link">Editions</a>
-				<a href="/glossary" class="nav-link">Glossary</a>
-				<a href="/corrections" class="nav-link">
+				<a href="/" class="nav-link" class:active={isActive('/') && !isActive('/references') && !isActive('/reference') && !isActive('/corrections') && !isActive('/lexicon')}>Texts</a>
+				<a href="/references" class="nav-link" class:active={isActive('/references') || isActive('/reference') || isActive('/lexicon')}>References</a>
+				<a href="/corrections" class="nav-link" class:active={isActive('/corrections')}>
 					Corrections
 					{#if corrections.pendingCount > 0}
 						<span class="corrections-badge">{corrections.pendingCount}</span>
@@ -269,6 +276,11 @@
 		text-decoration: none;
 		padding: 4px 8px;
 		border-radius: 4px;
+		transition: color 0.15s;
+	}
+
+	.nav-link.active {
+		color: var(--color-accent) !important;
 	}
 
 	.nav-link:hover {

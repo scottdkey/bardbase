@@ -1,6 +1,26 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+	"unicode"
+)
+
+// slugify converts a title like "Henry IV, Part I" to "henry-iv-part-i"
+func slugify(title string) string {
+	var b strings.Builder
+	lastDash := true
+	for _, r := range strings.ToLower(title) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
+}
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -85,6 +105,7 @@ func (s *Server) handleWorks(w http.ResponseWriter, _ *http.Request) {
 	type work struct {
 		ID           int     `json:"id"`
 		Title        string  `json:"title"`
+		Slug         string  `json:"slug"`
 		WorkType     string  `json:"work_type"`
 		DateComposed *string `json:"date_composed"`
 	}
@@ -95,11 +116,13 @@ func (s *Server) handleWorks(w http.ResponseWriter, _ *http.Request) {
 		if err := rows.Scan(&w.ID, &w.Title, &w.WorkType, &w.DateComposed); err != nil {
 			continue
 		}
+		w.Slug = slugify(w.Title)
 		switch w.WorkType {
 		case "comedy", "tragedy", "history":
 			plays = append(plays, w)
-		default:
+		case "poem", "sonnet_sequence", "apocrypha":
 			poetry = append(poetry, w)
+		// Skip biblical_reference, classical_reference, lexicon_appendix
 		}
 	}
 	if plays == nil {
@@ -186,4 +209,27 @@ func (s *Server) handleEditions(w http.ResponseWriter, r *http.Request) {
 		result = []edition{}
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleWorkBySlug(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	rows, err := s.db.Query(`SELECT id, title FROM works`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			continue
+		}
+		if slugify(title) == slug {
+			writeJSON(w, http.StatusOK, map[string]any{"id": id, "title": title, "slug": slug})
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "work not found")
 }
