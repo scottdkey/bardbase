@@ -4,16 +4,16 @@
 # SQLite database at build time and deploys to Cloudflare Pages/Workers.
 #
 # Usage (from repo root):
-#   make web dev         # Start dev server
+#   make web run         # Start dev server
 #   make web build       # Production build
 #   make web test        # Run tests
 #   make web preview     # Preview production build
 #   make web clean       # Remove build artifacts
 
-.PHONY: dev build test preview clean setup
+.PHONY: dev run build test preview clean setup
 
 # Start the SvelteKit development server
-dev:
+dev run:
 	npm run dev
 
 # Production build

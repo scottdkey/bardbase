@@ -1,3 +1,6 @@
 {
-  "cSpell.words": ["bardbase", "capell", "Folger", "Moby", "onback"]
+  "cSpell.words": ["bardbase", "capell", "Folger", "Moby", "onback"],
+  "evenBetterToml.schema.associations": {
+    ".*\\.air\\.toml": "https://raw.githubusercontent.com/air-verse/air/master/schema.json"
+  }
 }

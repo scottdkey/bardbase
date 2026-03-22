@@ -1,0 +1,42 @@
+name: bardbase
+
+services:
+  go-api:
+    build:
+      context: ./projects/capell
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Source code — air watches for changes and hot-reloads
+      - ./projects/capell:/app
+      # Persist Go module cache across restarts
+      - go-pkg-cache:/root/go/pkg/mod
+      # Read-only access to the compiled database
+      - ./build:/data:ro
+    environment:
+      DB_PATH: /data/bardbase.db
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./projects/web
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Source code — Vite watches for changes and hot-reloads
+      - ./projects/web:/app
+      # Anonymous volume: populated from the image layer (npm ci in Dockerfile.dev)
+      # on every container run, so node_modules is always the correct platform build
+      # and never goes stale from a previous run or a host install.
+      - /app/node_modules
+      # Corrections JSON files written by the dev-only corrections API
+      - ./corrections:/corrections
+    environment:
+      API_URL: http://go-api:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - go-api
+
+volumes:
+  go-pkg-cache:

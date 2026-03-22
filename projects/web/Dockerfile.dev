@@ -1,0 +1,10 @@
+FROM node:24-alpine
+
+WORKDIR /app
+
+# Install deps into the image layer so the named volume for node_modules
+# starts pre-populated on first run.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

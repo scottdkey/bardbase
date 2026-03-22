@@ -1,7 +1,5 @@
-import { getDb } from '$lib/server/db';
-import { getFooterAttributions } from '$lib/server/queries';
+import { api } from '$lib/server/api';
 
-export function load() {
-	const db = getDb();
-	return { attributions: getFooterAttributions(db) };
+export async function load() {
+	return { attributions: await api.getAttributions() };
 }

@@ -5,7 +5,7 @@
     LexiconSubEntryDetail,
     MultiEditionScene,
     EditionLineRef,
-  } from "$lib/server/queries";
+  } from "$lib/types";
   import CorrectionForm from "./CorrectionForm.svelte";
   import SceneViewer from "./SceneViewer.svelte";
   import IconClose from "$lib/components/icons/IconClose.svelte";

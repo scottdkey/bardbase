@@ -11,7 +11,7 @@
 #   make capell lint          # Run go vet
 #   make capell clean         # Remove build artifacts
 
-.PHONY: build test run run-fresh lint cover setup clean
+.PHONY: build test run run-fresh lint cover setup clean api-build api-run api-docker
 
 # Compile the CLI binary to the repo-root bin/ directory
 build:
@@ -45,6 +45,22 @@ lint:
 # Install/tidy dependencies
 setup:
 	go mod tidy
+
+# ─── API Server (invoked via `make api build/run/docker` at repo root) ───
+
+# Compile the API server binary (output to build/ alongside the database)
+api-build:
+	go build -o ../../build/bardbase-api ./cmd/api
+
+# Run the API server locally (uses repo-root build/ database)
+api-run: api-build
+	DB_PATH=../../build/bardbase.db ../../build/bardbase-api
+
+# Build Docker image for the API server
+api-docker:
+	docker build -t bardbase-api .
+
+# ─── Cleanup ─────────────────────────────────────────────────────────────
 
 # Remove build artifacts
 clean:

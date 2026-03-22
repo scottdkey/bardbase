@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { MultiEditionScene, LexiconCitationDetail } from '$lib/server/queries';
+	import type { MultiEditionScene, LexiconCitationDetail } from '$lib/types';
 	import IconClose from '$lib/components/icons/IconClose.svelte';
 	import IconBack from '$lib/components/icons/IconBack.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';

@@ -11,10 +11,10 @@
 #   make test-all              → runs tests across all projects
 #   make clean-all             → cleans build artifacts in all projects
 
-.PHONY: capell web sources data test-all clean-all help
+.PHONY: capell web api sources data test-all clean-all help
 
 # All project directories that have their own Makefile
-PROJECTS := capell web sources data
+PROJECTS := capell web api sources data
 
 # ─── Namespace Delegation ─────────────────────────────────────────────
 # Captures `make <project> <action>` and forwards to projects/<project>/Makefile.
@@ -24,6 +24,9 @@ capell:
 
 web:
 	@$(MAKE) -C projects/web $(filter-out $@,$(MAKECMDGOALS))
+
+api:
+	@$(MAKE) -C projects/api $(filter-out $@,$(MAKECMDGOALS))
 
 sources:
 	@$(MAKE) -C projects/sources $(filter-out $@,$(MAKECMDGOALS))
@@ -64,7 +67,8 @@ help:
 	@echo ""
 	@echo "Projects:"
 	@echo "  capell      Go pipeline (build, test, run, run-cached, lint, clean)"
-	@echo "  web         SvelteKit app (dev, build, test, preview, clean)"
+	@echo "  api         Go HTTP API server (build, run, docker)"
+	@echo "  web         SvelteKit app (run, build, test, preview, clean)"
 	@echo "  sources     Original texts — READ ONLY (verify, list, stats)"
 	@echo "  data        Reference JSON mappings (validate, list, clean)"
 	@echo ""

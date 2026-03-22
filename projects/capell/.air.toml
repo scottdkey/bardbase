@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "/tmp/air-build"
+
+[build]
+  cmd = "go build -o /tmp/air-build/api ./cmd/api"
+  entrypoint = "/tmp/air-build/api"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor"]
+  delay = 500
+
+[log]
+  time = false
+  main_only = true

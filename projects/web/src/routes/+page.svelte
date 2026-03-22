@@ -1,61 +1,56 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import EntryModal from '$lib/components/EntryModal.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import SearchInput from '$lib/components/ui/SearchInput.svelte';
-	import type { LexiconEntryDetail } from '$lib/server/queries';
+	import type { LexiconEntryDetail, SearchResult } from '$lib/types';
 
-	let { data } = $props();
-
-	const PAGE_SIZE = 100;
+	const MIN_QUERY = 2;
 	let query = $state('');
-	let visibleCount = $state(PAGE_SIZE);
+	let results = $state<SearchResult[]>([]);
+	let searching = $state(false);
+	let searchError = $state<string | null>(null);
 
 	let selectedEntry = $state<LexiconEntryDetail | null>(null);
 	let selectedEntryId = $state<number | null>(null);
 
-	// Client-side filtering: all entries are pre-loaded from build time
-	let filtered = $derived.by(() => {
-		const q = query.trim().toLowerCase();
-		if (!q) return data.entries;
-		// Prefix match first, then substring fallback
-		const prefix = data.entries.filter((e) => e.key.toLowerCase().startsWith(q));
-		if (prefix.length > 0) return prefix;
-		return data.entries.filter((e) => e.key.toLowerCase().includes(q));
-	});
+	let debounceTimer: ReturnType<typeof setTimeout>;
 
-	let displayEntries = $derived(filtered.slice(0, visibleCount));
-	let hasMore = $derived(visibleCount < filtered.length);
-
-	// Reset visible count when query changes
 	$effect(() => {
-		void query;
-		visibleCount = PAGE_SIZE;
-	});
+		const q = query.trim();
+		clearTimeout(debounceTimer);
 
-	let sentinel: HTMLDivElement;
+		if (q.length < MIN_QUERY) {
+			results = [];
+			return;
+		}
 
-	onMount(() => {
-		const observer = new IntersectionObserver(
-			(items) => {
-				if (items[0].isIntersecting && hasMore) {
-					visibleCount += PAGE_SIZE;
+		debounceTimer = setTimeout(async () => {
+			searching = true;
+			searchError = null;
+			try {
+				const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=100`);
+				if (res.ok) {
+					results = await res.json();
+				} else {
+					const body = await res.json().catch(() => ({}));
+					searchError = body.message ?? `Search failed (${res.status})`;
+					results = [];
 				}
-			},
-			{ rootMargin: '200px' }
-		);
-
-		if (sentinel) observer.observe(sentinel);
-		return () => observer.disconnect();
+			} catch (err) {
+				searchError = 'Could not reach the API server';
+				results = [];
+				console.error('[search]', err);
+			} finally {
+				searching = false;
+			}
+		}, 250);
 	});
 
 	async function openEntry(id: number) {
 		selectedEntryId = id;
 		try {
 			const res = await fetch(`/api/lexicon/entry/${id}`);
-			if (res.ok) {
-				selectedEntry = await res.json();
-			}
+			if (res.ok) selectedEntry = await res.json();
 		} finally {
 			// loading done
 		}
@@ -80,39 +75,36 @@
 		</div>
 	</div>
 
-	{#if query && filtered.length === 0}
+	{#if searchError}
+		<div class="status-error">{searchError}</div>
+	{:else if query.trim().length > 0 && query.trim().length < MIN_QUERY}
+		<div class="status-text">Keep typing&hellip;</div>
+	{:else if searching}
+		<div class="status-text">Searching&hellip;</div>
+	{:else if query.trim().length >= MIN_QUERY && results.length === 0}
 		<div class="status-text">No entries found for "{query}"</div>
+	{:else if results.length > 0}
+		<div class="result-count">{results.length} results</div>
 	{:else}
-		<div class="result-count">
-			{#if query}
-				{filtered.length} results
-			{:else}
-				{data.entries.length} entries
-			{/if}
-		</div>
+		<div class="status-text">Start typing to search the lexicon</div>
 	{/if}
 
-	<ul class="entry-list" role="list" aria-label="Lexicon entries">
-		{#each displayEntries as entry (entry.id)}
-			<li>
-				<button
-					class="entry-item"
-					class:selected={selectedEntryId === entry.id}
-					onclick={() => openEntry(entry.id)}
-					aria-label="View definition of {entry.key}"
-				>
-					<span class="entry-key">{entry.key}</span>
-				</button>
-			</li>
-		{/each}
-	</ul>
-
-	{#if hasMore}
-		<div class="status-text">Loading&hellip;</div>
+	{#if results.length > 0}
+		<ul class="entry-list" role="list" aria-label="Lexicon entries">
+			{#each results as entry (entry.id)}
+				<li>
+					<button
+						class="entry-item"
+						class:selected={selectedEntryId === entry.id}
+						onclick={() => openEntry(entry.id)}
+						aria-label="View definition of {entry.key}"
+					>
+						<span class="entry-key">{entry.key}</span>
+					</button>
+				</li>
+			{/each}
+		</ul>
 	{/if}
-
-	<!-- Infinite scroll sentinel -->
-	<div bind:this={sentinel} class="scroll-sentinel"></div>
 </div>
 
 <EntryModal entry={selectedEntry} onclose={closeEntry} />
@@ -132,16 +124,21 @@
 		padding-bottom: 8px;
 	}
 
-	/* ─── Search Bar ─── */
 	.search-bar {
 		position: relative;
 	}
 
-	/* ─── Status ─── */
 	.status-text {
 		padding: 12px 0;
 		font-size: 0.85rem;
 		color: var(--color-text-muted);
+		text-align: center;
+	}
+
+	.status-error {
+		padding: 12px 0;
+		font-size: 0.85rem;
+		color: var(--color-danger);
 		text-align: center;
 	}
 
@@ -151,7 +148,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* ─── Entry List ─── */
 	.entry-list {
 		list-style: none;
 		padding: 0;
@@ -189,11 +185,5 @@
 	.entry-key {
 		font-size: 1.05rem;
 		font-weight: 500;
-	}
-
-	.scroll-sentinel {
-		height: 1px;
-		/* pad below list so footer doesn't cover last entries */
-		margin-bottom: 48px;
 	}
 </style>
