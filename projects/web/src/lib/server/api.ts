@@ -121,17 +121,19 @@ export const api = {
 		apiFetch<ReferenceSource[]>('/api/reference/sources'),
 	getLexiconKeys: () => apiFetch<string[]>('/api/lexicon/keys'),
 	getLexiconLetters: () => apiFetch<LexiconLetter[]>('/api/lexicon/letters'),
-	getScene: (workId: number, act: number, scene: number) =>
-		apiFetch<MultiEditionScene>(`/api/text/scene/${workId}/${act}/${scene}`),
-	getSceneReferences: (workId: number, act: number, scene: number) =>
+	getScene: (workIdOrSlug: number | string, act: number, scene: number) =>
+		apiFetch<MultiEditionScene>(`/api/text/scene/${workIdOrSlug}/${act}/${scene}`),
+	getSceneReferences: (workIdOrSlug: number | string, act: number, scene: number) =>
 		apiFetch<Record<string, LineReference[]>>(
-			`/api/text/scene/${workId}/${act}/${scene}/references`
+			`/api/text/scene/${workIdOrSlug}/${act}/${scene}/references`
 		),
 	getWorkBySlug: (slug: string) =>
 		apiFetch<{ id: number; title: string; slug: string }>(`/api/resolve/${slug}`),
 	getWorks: () => apiFetch<{ plays: Work[]; poetry: Work[] }>('/api/works'),
-	getWorkEditions: (id: number) => apiFetch<WorkEdition[]>(`/api/works/${id}/editions`),
-	getWorkTOC: (id: number) => apiFetch<WorkDivision[]>(`/api/works/${id}/toc`),
+	getWorkEditions: (idOrSlug: number | string) =>
+		apiFetch<WorkEdition[]>(`/api/works/${idOrSlug}/editions`),
+	getWorkTOC: (idOrSlug: number | string) =>
+		apiFetch<WorkDivision[]>(`/api/works/${idOrSlug}/toc`),
 	search: (q: string, limit = 20) =>
 		apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`)
 };

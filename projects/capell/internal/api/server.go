@@ -128,6 +128,32 @@ func pathInt(r *http.Request, name string) (int, bool) {
 	return n, true
 }
 
+// resolveWorkID resolves a path parameter that can be either a numeric ID or a slug.
+func (s *Server) resolveWorkID(r *http.Request, param string) (int, bool) {
+	v := r.PathValue(param)
+	// Try numeric first
+	if n, err := strconv.Atoi(v); err == nil {
+		return n, true
+	}
+	// Resolve as slug
+	rows, err := s.db.Query(`SELECT id, title FROM works`)
+	if err != nil {
+		return 0, false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			continue
+		}
+		if slugify(title) == v {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
 // queryInt parses an optional integer query parameter with a default.
 func queryInt(r *http.Request, name string, def int) int {
 	v := r.URL.Query().Get(name)

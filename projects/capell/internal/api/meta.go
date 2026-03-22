@@ -135,9 +135,9 @@ func (s *Server) handleWorks(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleWorkTOC(w http.ResponseWriter, r *http.Request) {
-	workId, ok := pathInt(r, "id")
+	workId, ok := s.resolveWorkID(r, "id")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid work id")
+		writeError(w, http.StatusNotFound, "work not found")
 		return
 	}
 
@@ -174,9 +174,9 @@ func (s *Server) handleWorkTOC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEditions(w http.ResponseWriter, r *http.Request) {
-	workId, ok := pathInt(r, "id")
+	workId, ok := s.resolveWorkID(r, "id")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid work id")
+		writeError(w, http.StatusNotFound, "work not found")
 		return
 	}
 

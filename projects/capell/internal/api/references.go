@@ -14,9 +14,9 @@ type lineReference struct {
 }
 
 func (s *Server) handleSceneReferences(w http.ResponseWriter, r *http.Request) {
-	workId, ok := pathInt(r, "workId")
+	workId, ok := s.resolveWorkID(r, "workId")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid workId")
+		writeError(w, http.StatusNotFound, "work not found")
 		return
 	}
 	act, ok := pathInt(r, "act")
