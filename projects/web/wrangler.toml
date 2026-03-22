@@ -4,6 +4,6 @@ compatibility_date = "2026-03-21"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-API_URL = "https://bardbase-api-production.up.railway.app"
+API_URL = "https://bardbase-production.up.railway.app"
 
 # API_KEY is set as a secret in Cloudflare Pages dashboard, not here
