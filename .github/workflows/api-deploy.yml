@@ -45,6 +45,11 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Verify database exists in build context
+        run: |
+          test -f projects/capell/bardbase.db || (echo "ERROR: bardbase.db not found in build context" && exit 1)
+          ls -lh projects/capell/bardbase.db
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:

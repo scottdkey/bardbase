@@ -1,0 +1,7 @@
+bin/
+build/
+tmp/
+.air.toml
+Dockerfile.dev
+Makefile
+*.md
