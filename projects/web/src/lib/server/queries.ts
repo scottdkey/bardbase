@@ -4,7 +4,7 @@
  * usable in any server context without coupling to the singleton in db.ts.
  */
 import type Database from 'better-sqlite3';
-import type { Works, Characters, Editions, TextLines, LexiconEntries, LexiconSenses, LexiconCitations } from '$lib/generated/db';
+import type { Works, Characters, Editions, TextLines, LexiconEntries } from '$lib/generated/db';
 
 // ─── Convenience re-exports (singular aliases for route ergonomics) ───────────
 export type Work = Works;
@@ -385,7 +385,7 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 
 	const citationsByEntry = new Map<number, LexiconCitationDetail[]>();
 	for (const c of citations) {
-		const eid = (c as any).entry_id as number;
+		const eid = c.entry_id;
 		const list = citationsByEntry.get(eid) ?? [];
 		list.push(c);
 		citationsByEntry.set(eid, list);

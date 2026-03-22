@@ -63,7 +63,7 @@
 					</IconButton>
 				</div>
 				<div class="drawer-body">
-					{#each data.attributions as attr}
+					{#each data.attributions as attr (attr.source_name)}
 						<section class="attribution-section">
 							<h4>{attr.source_name}</h4>
 							<p>{@html attr.attribution_html}</p>
@@ -285,7 +285,7 @@
 		padding: 0 3px;
 		border-radius: 7px;
 		background: var(--color-warning);
-		color: #1a1a2e;
+		color: var(--color-bg);
 		font-size: 0.4rem;
 		font-weight: 800;
 	}

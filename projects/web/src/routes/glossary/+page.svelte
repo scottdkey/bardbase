@@ -15,15 +15,6 @@
 			: abbreviations
 	);
 
-	// Group by category based on position in the array
-	const categories = [
-		{ label: 'Grammatical', start: 0, end: 53 },
-		{ label: 'Reference & Scholarly', start: 53, end: 75 },
-		{ label: 'Editions & Texts', start: 75, end: 87 },
-		{ label: 'Languages', start: 87, end: 93 },
-		{ label: 'Schmidt-specific', start: 93, end: 97 },
-		{ label: 'Scholars', start: 97, end: abbreviations.length }
-	];
 </script>
 
 <svelte:head>

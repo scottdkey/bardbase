@@ -10,7 +10,6 @@
 	const PAGE_SIZE = 100;
 	let query = $state('');
 	let visibleCount = $state(PAGE_SIZE);
-	let loadingEntry = $state(false);
 
 	let selectedEntry = $state<LexiconEntryDetail | null>(null);
 	let selectedEntryId = $state<number | null>(null);
@@ -30,7 +29,7 @@
 
 	// Reset visible count when query changes
 	$effect(() => {
-		query;
+		void query;
 		visibleCount = PAGE_SIZE;
 	});
 
@@ -52,14 +51,13 @@
 
 	async function openEntry(id: number) {
 		selectedEntryId = id;
-		loadingEntry = true;
 		try {
 			const res = await fetch(`/api/lexicon/entry/${id}`);
 			if (res.ok) {
 				selectedEntry = await res.json();
 			}
 		} finally {
-			loadingEntry = false;
+			// loading done
 		}
 	}
 

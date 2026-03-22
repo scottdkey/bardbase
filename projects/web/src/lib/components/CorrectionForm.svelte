@@ -146,7 +146,7 @@
 	<div class="form-fields">
 		<FormField label="Issue type">
 			<select bind:value={category}>
-				{#each CORRECTION_CATEGORIES as cat}
+				{#each CORRECTION_CATEGORIES as cat (cat.value)}
 					<option value={cat.value}>{cat.label}</option>
 				{/each}
 			</select>
