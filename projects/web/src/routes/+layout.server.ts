@@ -1,5 +1,10 @@
 import { api } from '$lib/server/api';
 
 export async function load() {
-	return { attributions: await api.getAttributions() };
+	try {
+		return { attributions: await api.getAttributions() };
+	} catch (err) {
+		console.error('[layout] failed to load attributions:', err);
+		return { attributions: [] };
+	}
 }
