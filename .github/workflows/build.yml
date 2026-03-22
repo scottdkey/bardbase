@@ -22,19 +22,15 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: projects/capell/go.mod
 
       - name: Build database
         working-directory: projects/capell
         run: |
-          # Folger is excluded by default (CC BY-NC 3.0 — not safe for commercial use).
-          # To include Folger, set exclude_sources to '' in the workflow dispatch.
           EXCLUDE="${{ inputs.exclude_sources }}"
           EXCLUDE_FLAG=""
           IFS=',' read -ra SOURCES <<< "$EXCLUDE"
@@ -68,7 +64,7 @@ jobs:
           echo "works=$WORKS" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: bardbase
           path: build/bardbase.db
@@ -82,14 +78,6 @@ jobs:
         run: |
           VERSION="${{ steps.info.outputs.version }}"
 
-          BODY=$(cat <<'HEREDOC_END'
-          ## Bardbase Database Build
-
-          | Metric | Count |
-          |--------|-------|
-          HEREDOC_END
-          )
-
           BODY="## Bardbase Database Build
 
           | Metric | Count |
@@ -100,23 +88,8 @@ jobs:
           | **Citations** | ${{ steps.info.outputs.citations }} |
           | **Database size** | ${{ steps.info.outputs.db_size }} |
 
-          ### Sources
-          - **OSS/Moby** — Public Domain (Globe-based modern spelling)
-          - **Standard Ebooks** — CC0 (modern-spelling, verse-level)
-          - **Schmidt Lexicon** — CC BY-SA 3.0 (Perseus Digital Library)
-
           ### Excluded sources
           ${EXCLUDED}
-
-          ### Usage
-          \`\`\`bash
-          # Download the pre-built database from this release
-
-          # Or build from source
-          git clone https://github.com/scottdkey/bardbase.git
-          cd bardbase
-          make capell run
-          \`\`\`
 
           Built from commit ${{ github.sha }}"
 

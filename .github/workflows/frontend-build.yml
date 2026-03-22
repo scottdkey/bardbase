@@ -44,4 +44,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy projects/web/build --project-name=bardbase
+          workingDirectory: projects/web
+          command: pages deploy build --project-name=bardbase
