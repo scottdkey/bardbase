@@ -133,6 +133,23 @@
 	let headerEl = $state<HTMLElement | null>(null);
 	let headerHeight = $state(100);
 
+	const EDITION_PREF_KEY = 'bardbase-preferred-editions';
+
+	function loadPreferredEditions(): number[] | null {
+		try {
+			const raw = localStorage.getItem(EDITION_PREF_KEY);
+			return raw ? JSON.parse(raw) : null;
+		} catch {
+			return null;
+		}
+	}
+
+	function savePreferredEditions(editions: number[]) {
+		try {
+			localStorage.setItem(EDITION_PREF_KEY, JSON.stringify(editions));
+		} catch {}
+	}
+
 	$effect(() => {
 		if (headerEl) {
 			headerHeight = headerEl.offsetHeight;
@@ -145,14 +162,26 @@
 
 	$effect(() => {
 		if (scene) {
-			const matchedEd = data.editionId ?? 3;
 			const available = scene.available_editions.map((e) => e.id);
-			if (available.length <= 2) {
-				visibleEditions = available;
-			} else {
+			const preferred = loadPreferredEditions();
+
+			if (preferred) {
+				// Use saved preference, filtered to what's available in this scene
+				const filtered = preferred.filter((id) => available.includes(id));
+				visibleEditions = filtered.length > 0 ? filtered : [available[0]];
+			} else if (data.isReference && data.editionId) {
+				// Reference mode: show the referenced edition + one other
+				const matchedEd = data.editionId;
 				const first = available.includes(matchedEd) ? matchedEd : available[0];
 				const second = available.find((id) => id !== first) ?? available[0];
 				visibleEditions = [first, second];
+			} else {
+				// First visit, no preference: default to first two
+				if (available.length <= 2) {
+					visibleEditions = available;
+				} else {
+					visibleEditions = [available[0], available[1]];
+				}
 			}
 
 			if (data.isReference) {
@@ -253,6 +282,7 @@
 		} else {
 			visibleEditions = [...visibleEditions, edId];
 		}
+		savePreferredEditions(visibleEditions);
 	}
 
 	function getRowCharacter(row: (typeof scene.rows)[number]): string | null {
