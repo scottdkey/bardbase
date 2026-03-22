@@ -9,9 +9,6 @@ import type {
 } from '$lib/types';
 
 function getBaseUrl(): string {
-	// process.env is checked first so docker-compose environment vars always win
-	// over any .env file that Vite might load into $env/dynamic/private.
-	// In Cloudflare Workers process is undefined, so we fall through to env.API_URL.
 	const url =
 		(typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
 		env.API_URL ??
@@ -19,13 +16,25 @@ function getBaseUrl(): string {
 	return url;
 }
 
+function getApiKey(): string | undefined {
+	return (
+		(typeof process !== 'undefined' ? process.env.API_KEY : undefined) ??
+		env.API_KEY ??
+		undefined
+	);
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
 	const base = getBaseUrl();
 	const url = `${base}${path}`;
-	console.log('[api] ->', url);
+	const headers: Record<string, string> = {};
+	const apiKey = getApiKey();
+	if (apiKey) {
+		headers['Authorization'] = `Bearer ${apiKey}`;
+	}
 	let res: Response;
 	try {
-		res = await fetch(url);
+		res = await fetch(url, { headers });
 	} catch (err) {
 		console.error('[api] unreachable:', url, err);
 		throw new Error(`API unreachable at ${url}: ${err}`);

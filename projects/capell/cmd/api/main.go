@@ -25,6 +25,7 @@ import (
 func main() {
 	dbPath := envOr("DB_PATH", "./bardbase.db")
 	port := envOr("PORT", "8080")
+	apiKey := os.Getenv("API_KEY")
 
 	db, err := openReadOnly(dbPath)
 	if err != nil {
@@ -32,9 +33,13 @@ func main() {
 	}
 	defer db.Close()
 
-	srv := api.NewServer(db)
+	srv := api.NewServer(db, apiKey)
 	addr := ":" + port
-	log.Printf("bardbase API listening on %s (db: %s)", addr, dbPath)
+	if apiKey != "" {
+		log.Printf("bardbase API listening on %s (db: %s, auth: enabled)", addr, dbPath)
+	} else {
+		log.Printf("bardbase API listening on %s (db: %s, auth: disabled)", addr, dbPath)
+	}
 	if err := http.ListenAndServe(addr, srv); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

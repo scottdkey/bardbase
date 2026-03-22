@@ -16,13 +16,15 @@ import (
 
 // Server holds the database connection and HTTP handler.
 type Server struct {
-	db  *sql.DB
-	mux *http.ServeMux
+	db     *sql.DB
+	mux    *http.ServeMux
+	apiKey string
 }
 
 // NewServer creates a new API server with all routes registered.
-func NewServer(db *sql.DB) *Server {
-	s := &Server{db: db, mux: http.NewServeMux()}
+// If apiKey is empty, authentication is disabled.
+func NewServer(db *sql.DB, apiKey string) *Server {
+	s := &Server{db: db, mux: http.NewServeMux(), apiKey: apiKey}
 	s.routes()
 	return s
 }
@@ -45,24 +47,47 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+// auth wraps a handler with API key validation.
+// If no API key is configured, all requests pass through.
+func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey == "" {
+			next(w, r)
+			return
+		}
+		key := r.Header.Get("Authorization")
+		if key == "Bearer "+s.apiKey {
+			next(w, r)
+			return
+		}
+		// Also accept X-API-Key header
+		if r.Header.Get("X-API-Key") == s.apiKey {
+			next(w, r)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "invalid or missing API key")
+	}
+}
+
 func (s *Server) routes() {
+	// Health check — no auth required
 	s.mux.HandleFunc("GET /health", cors(s.handleHealth))
-	s.mux.HandleFunc("GET /api/stats", cors(s.handleStats))
-	s.mux.HandleFunc("GET /api/attributions", cors(s.handleAttributions))
-	s.mux.HandleFunc("GET /api/works", cors(s.handleWorks))
-	s.mux.HandleFunc("GET /api/works/{id}/editions", cors(s.handleEditions))
-	s.mux.HandleFunc("GET /api/works/{id}/toc", cors(s.handleWorkTOC))
-	s.mux.HandleFunc("GET /api/search", cors(s.handleSearch))
-	s.mux.HandleFunc("GET /api/lexicon/letters", cors(s.handleLexiconLetters))
-	s.mux.HandleFunc("GET /api/lexicon/entry/{id}", cors(s.handleLexiconEntry))
-	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}", cors(s.handleScene))
-	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}/references", cors(s.handleSceneReferences))
-	s.mux.HandleFunc("GET /api/lexicon/keys", cors(s.handleLexiconKeys))
-	s.mux.HandleFunc("GET /api/reference/entry/{id}", cors(s.handleReferenceEntry))
-	s.mux.HandleFunc("GET /api/reference/search", cors(s.handleReferenceSearch))
-	s.mux.HandleFunc("GET /api/reference/sources", cors(s.handleReferenceSources))
-	s.mux.HandleFunc("GET /api/resolve/{slug}", cors(s.handleWorkBySlug))
-	s.mux.HandleFunc("GET /api/corrections", cors(s.handleCorrections))
+	s.mux.HandleFunc("GET /api/stats", cors(s.auth(s.handleStats)))
+	s.mux.HandleFunc("GET /api/attributions", cors(s.auth(s.handleAttributions)))
+	s.mux.HandleFunc("GET /api/works", cors(s.auth(s.handleWorks)))
+	s.mux.HandleFunc("GET /api/works/{id}/editions", cors(s.auth(s.handleEditions)))
+	s.mux.HandleFunc("GET /api/works/{id}/toc", cors(s.auth(s.handleWorkTOC)))
+	s.mux.HandleFunc("GET /api/search", cors(s.auth(s.handleSearch)))
+	s.mux.HandleFunc("GET /api/lexicon/letters", cors(s.auth(s.handleLexiconLetters)))
+	s.mux.HandleFunc("GET /api/lexicon/entry/{id}", cors(s.auth(s.handleLexiconEntry)))
+	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}", cors(s.auth(s.handleScene)))
+	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}/references", cors(s.auth(s.handleSceneReferences)))
+	s.mux.HandleFunc("GET /api/lexicon/keys", cors(s.auth(s.handleLexiconKeys)))
+	s.mux.HandleFunc("GET /api/reference/entry/{id}", cors(s.auth(s.handleReferenceEntry)))
+	s.mux.HandleFunc("GET /api/reference/search", cors(s.auth(s.handleReferenceSearch)))
+	s.mux.HandleFunc("GET /api/reference/sources", cors(s.auth(s.handleReferenceSources)))
+	s.mux.HandleFunc("GET /api/resolve/{slug}", cors(s.auth(s.handleWorkBySlug)))
+	s.mux.HandleFunc("GET /api/corrections", cors(s.auth(s.handleCorrections)))
 }
 
 // cors adds CORS headers to allow cross-origin requests.
