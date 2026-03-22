@@ -3,11 +3,17 @@
 
 // Command api serves the bardbase Shakespeare database over HTTP.
 //
+// Environment variables:
+//
+//	DB_PATH   path to bardbase.db (default: ./bardbase.db)
+//	PORT      listen port (default: 8080)
+//	API_KEY   shared secret for request auth (optional, disabled if empty)
+//
 // Usage:
 //
-//	DB_PATH=./bardbase.db PORT=8080 ./api
-//	# Or via Makefile:
-//	make capell api-run
+//	./api                                    # defaults
+//	API_KEY=secret PORT=8080 ./api           # with auth
+//	make api run                             # via Makefile
 package main
 
 import (

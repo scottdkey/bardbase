@@ -1,93 +1,143 @@
 # Bardbase
 
 [![Build](https://github.com/scottdkey/bardbase/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/build.yml)
-[![Latest Release](https://img.shields.io/github/v/release/scottdkey/bardbase)](https://github.com/scottdkey/bardbase/releases/latest)
-[![Download](https://img.shields.io/github/downloads/scottdkey/bardbase/total)](https://github.com/scottdkey/bardbase/releases/latest)
+[![API](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml)
+[![Frontend](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml)
 
-A SQLite database of Shakespeare's complete works — multiple editions, full-text search, and a complete Shakespeare lexicon.
+A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and reference works — built on SQLite, Go, and SvelteKit.
 
-# Warning Before Using
-This project is in active development while I work through text alignment and lexicon reference resolution. 
-This database is currently unstable at this time and should be treated as an alpha while problems are discovered and mitigated. 
+## Architecture
+
+```
+┌─────────────────────┐     ┌──────────────────────┐
+│  Cloudflare Pages   │────▶│  Go API (Railway)     │
+│  SvelteKit SSR      │     │  SQLite + bardbase.db │
+└─────────────────────┘     └──────────────────────┘
+```
+
+- **Go HTTP API** — serves `bardbase.db` via native SQLite, REST endpoints, API key auth
+- **SvelteKit on Cloudflare** — SSR at the edge, server routes call the Go API
+- **Docker Compose** — local dev with hot reload (air + vite)
 
 ## Quick Start
 
-**Download the pre-built database** from the [latest release](https://github.com/scottdkey/bardbase/releases/latest).
-
-**Build from source** (requires Go 1.22+):
+### Local Development
 
 ```bash
-git clone https://github.com/scottdkey/bardbase.git
-cd bardbase
-make capell test   # run tests
-make capell run    # build → build/bardbase.db
+# Build the database (requires Go)
+make capell run
+
+# Start dev stack (requires podman/docker)
+podman compose up --build
+
+# Or run services individually
+make api run    # Go API on :8080
+make web dev    # SvelteKit on :5173
 ```
 
-## Make Commands
+### Build Database from Source
 
 ```bash
-# capell
-make capell build          # compile binary
-make capell test           # run all tests
-make capell run            # full build pipeline (uses cached sources)
-make capell run-fresh      # full build, re-download source files
-make capell lint           # go vet
-make capell cover          # test coverage report
-make capell clean          # remove artifacts
-
-# sources
-make sources verify            # check all source files exist
-make sources stats             # file counts per source
-
-# cross-project
-make test-all                  # tests across all projects
-make clean-all                 # clean all projects
-make help                      # show all commands
+make capell run          # full build → build/bardbase.db
+make capell run-fresh    # re-download sources first
+make capell test         # run tests
 ```
 
 ## What's in it
 
-| Content | Source | Status |
-|---------|--------|--------|
-| 43 works, 1,265+ characters, ~36K lines | Open Source Shakespeare / Moby | ✅ |
-| Modern-spelling text, all 37 plays | Standard Ebooks | ✅ |
-| 154 sonnets + 5 poems | Standard Ebooks | ✅ |
-| Globe edition with dual line numbering | Perseus Digital Library | ✅ |
-| First Folio 1623 (original spelling) | EEBO-TCP (A11954) | ✅ |
-| 20,070 lexicon entries, ~200K citations | Perseus / Schmidt Lexicon | ✅ |
-| Cross-edition line mappings | Generated | ✅ |
-| Full-text search (FTS5) | Generated | ✅ |
+| Content | Source | Count |
+|---------|--------|-------|
+| Shakespeare plays | Open Source Shakespeare / Moby | 37 plays |
+| Modern-spelling text | Standard Ebooks | 37 plays + poetry |
+| Globe edition (1864) | Perseus Digital Library | dual line numbering |
+| First Folio (1623) | EEBO-TCP | original spelling |
+| Folger Shakespeare | Folger Library | modern edition |
+| Schmidt Lexicon | Perseus / Schmidt | 20K entries, ~200K citations |
+| Onions Glossary | OCR import | 12.9K entries |
+| Abbott Grammar | OCR import | 670 entries |
+| Bartlett Concordance | OCR import | 84K entries |
+| Cross-edition alignment | Generated (Needleman-Wunsch) | line mappings |
+| Full-text search | Generated (FTS5) | lexicon + text |
+
+## Features
+
+- **Ebook reader** — swipe/arrow navigation, reading position memory, TOC panel
+- **Multi-edition viewer** — up to 5 editions side-by-side with cross-edition alignment
+- **Word references** — hover/tap words to see lexicon entries from Schmidt, Onions, Abbott, Bartlett
+- **Reference browser** — search and filter all reference works by source and play
+- **Correction system** — flag entries/citations, creates GitHub issues
+- **PWA** — offline capable with workbox caching
+- **Slug URLs** — `/text/hamlet/1/4` instead of `/text/8/1/4`
+- **Light/dark mode** — warm parchment light theme, deep dark theme
+
+## API Endpoints
+
+All endpoints accept work slugs or numeric IDs (e.g. `/api/works/hamlet/toc` or `/api/works/8/toc`).
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check (no auth) |
+| `GET /api/works` | List plays and poetry |
+| `GET /api/works/{id}/toc` | Act/scene structure |
+| `GET /api/works/{id}/editions` | Available editions |
+| `GET /api/text/scene/{work}/{act}/{scene}` | Multi-edition aligned text |
+| `GET /api/text/scene/{work}/{act}/{scene}/references` | Lexicon + reference citations for scene |
+| `GET /api/search?q=term` | FTS5 lexicon search |
+| `GET /api/lexicon/entry/{id}` | Full lexicon entry detail |
+| `GET /api/reference/entry/{id}` | Reference work entry (Onions, Abbott, etc.) |
+| `GET /api/reference/search?q=&source=&work_id=` | Search reference entries |
+| `GET /api/reference/sources` | List reference sources with counts |
+| `GET /api/resolve/{slug}` | Resolve work slug to ID |
+| `GET /api/corrections?state=all` | GitHub issues labeled "correction" |
+| `GET /api/attributions` | Footer attribution data |
+| `GET /api/stats` | Database statistics |
 
 ## Structure
 
 ```
 bardbase/
 ├── projects/
-│   ├── sources/       source texts — committed, read-only
-│   ├── data/          reference JSON (work mappings, attributions)
-│   ├── capell/        Go pipeline → produces SQLite database
-│   └── web/           SvelteKit PWA — Variorum
-├── Makefile
-└── .github/workflows/
+│   ├── sources/        source texts (committed, read-only)
+│   ├── data/           reference JSON (work mappings, attributions)
+│   ├── capell/         Go build pipeline + HTTP API
+│   │   ├── cmd/api/    API server entry point
+│   │   ├── cmd/build/  Database build pipeline
+│   │   └── internal/   API handlers, DB queries
+│   └── web/            SvelteKit frontend (Cloudflare Pages)
+│       ├── src/routes/  Page routes + API proxy routes
+│       └── src/lib/     Components, stores, utilities
+├── docker-compose.yml  Dev stack (Go API + SvelteKit)
+├── Makefile            Project-level make targets
+└── .github/workflows/  CI/CD pipelines
 ```
 
-## Schema
+## Deployment
 
-See [projects/capell/SCHEMA.md](projects/capell/SCHEMA.md) for all tables, indexes, and example queries.
+| Service | Platform | Trigger |
+|---------|----------|---------|
+| Database build | GitHub Actions | Manual dispatch |
+| Go API image | GitHub Container Registry | Push to main (capell changes) |
+| Go API deploy | Railway | Webhook after image push |
+| Frontend deploy | Cloudflare Pages | Push to main (web changes) |
+
+### Required Secrets
+
+| Secret | Where | Purpose |
+|--------|-------|---------|
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions | Cloudflare Pages deploy |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Cloudflare account |
+| `RAILWAY_WEBHOOK_URL` | GitHub Actions | Trigger Railway redeploy |
+| `API_KEY` | Railway + Cloudflare | Shared auth between frontend and API |
 
 ## Documentation
 
 | Doc | What it covers |
 |-----|---------------|
-| [docs/pipeline-overview.md](docs/pipeline-overview.md) | How all 9 build phases connect — OSS → SE plays → SE poetry → lexicon → Perseus → First Folio → alignments → citations → FTS |
-| [docs/line-alignment.md](docs/line-alignment.md) | Deep dive on Needleman-Wunsch sequence alignment used to produce cross-edition `line_mappings` |
-| [docs/citation-resolution.md](docs/citation-resolution.md) | Deep dive on the 5-strategy cascade that links ~200K Schmidt citations to actual `text_lines` rows |
-| [docs/fts-search.md](docs/fts-search.md) | FTS5 setup, Porter stemming, and query examples for `lexicon_fts` and `text_fts` |
+| [docs/pipeline-overview.md](docs/pipeline-overview.md) | Build pipeline phases |
+| [docs/line-alignment.md](docs/line-alignment.md) | Needleman-Wunsch cross-edition alignment |
+| [docs/citation-resolution.md](docs/citation-resolution.md) | 5-strategy citation matching cascade |
+| [docs/fts-search.md](docs/fts-search.md) | FTS5 setup and query examples |
 
 ## Sources & Attribution
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) and [projects/sources/SOURCES.md](projects/sources/SOURCES.md).
-
-## CI/CD
-
-Pushes and PRs run tests + build. Releases require a manual workflow dispatch with the release flag enabled — never automatic.
