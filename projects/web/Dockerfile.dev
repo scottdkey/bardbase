@@ -7,4 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Generate .svelte-kit/ inside the image so the anonymous volume is pre-populated
+# and the host's stale .svelte-kit/ (built for a different adapter/platform) is never used.
+COPY svelte.config.js tsconfig.json ./
+RUN npx svelte-kit sync
+
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

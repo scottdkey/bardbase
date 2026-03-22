@@ -1,23 +1,23 @@
 <script lang="ts">
-	import EntryModal from '$lib/components/EntryModal.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import SearchInput from '$lib/components/ui/SearchInput.svelte';
-	import type { LexiconEntryDetail, SearchResult } from '$lib/types';
+	import type { SearchResult } from '$lib/types';
+	import { goto } from '$app/navigation';
 
-	const MIN_QUERY = 2;
+	let { data } = $props();
+
+	const MIN_QUERY = 1;
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
 	let searching = $state(false);
 	let searchError = $state<string | null>(null);
-
-	let selectedEntry = $state<LexiconEntryDetail | null>(null);
-	let selectedEntryId = $state<number | null>(null);
 
 	let debounceTimer: ReturnType<typeof setTimeout>;
 
 	$effect(() => {
 		const q = query.trim();
 		clearTimeout(debounceTimer);
+		searchError = null;
 
 		if (q.length < MIN_QUERY) {
 			results = [];
@@ -26,7 +26,6 @@
 
 		debounceTimer = setTimeout(async () => {
 			searching = true;
-			searchError = null;
 			try {
 				const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=100`);
 				if (res.ok) {
@@ -46,20 +45,15 @@
 		}, 250);
 	});
 
-	async function openEntry(id: number) {
-		selectedEntryId = id;
-		try {
-			const res = await fetch(`/api/lexicon/entry/${id}`);
-			if (res.ok) selectedEntry = await res.json();
-		} finally {
-			// loading done
-		}
+	function openEntry(id: number) {
+		goto(`/lexicon/entry/${id}`);
 	}
 
-	function closeEntry() {
-		selectedEntry = null;
-		selectedEntryId = null;
+	function selectLetter(letter: string) {
+		query = letter;
 	}
+
+	let isSearching = $derived(query.trim().length >= MIN_QUERY);
 </script>
 
 <svelte:head>
@@ -69,7 +63,6 @@
 <div class="lexicon-page">
 	<div class="sticky-header">
 		<PageHeader title="Bardbase" />
-
 		<div class="search-bar">
 			<SearchInput bind:value={query} placeholder="Search entries..." autofocus />
 		</div>
@@ -77,37 +70,46 @@
 
 	{#if searchError}
 		<div class="status-error">{searchError}</div>
-	{:else if query.trim().length > 0 && query.trim().length < MIN_QUERY}
-		<div class="status-text">Keep typing&hellip;</div>
-	{:else if searching}
+	{:else if isSearching && searching}
 		<div class="status-text">Searching&hellip;</div>
-	{:else if query.trim().length >= MIN_QUERY && results.length === 0}
+	{:else if isSearching && results.length === 0 && !searching}
 		<div class="status-text">No entries found for "{query}"</div>
-	{:else if results.length > 0}
-		<div class="result-count">{results.length} results</div>
-	{:else}
-		<div class="status-text">Start typing to search the lexicon</div>
 	{/if}
 
-	{#if results.length > 0}
-		<ul class="entry-list" role="list" aria-label="Lexicon entries">
-			{#each results as entry (entry.id)}
-				<li>
-					<button
-						class="entry-item"
-						class:selected={selectedEntryId === entry.id}
-						onclick={() => openEntry(entry.id)}
-						aria-label="View definition of {entry.key}"
-					>
-						<span class="entry-key">{entry.key}</span>
-					</button>
-				</li>
+	{#if isSearching}
+		{#if results.length > 0}
+			<div class="result-count">{results.length} results</div>
+			<ul class="entry-list" role="list" aria-label="Search results">
+				{#each results as entry (entry.id)}
+					<li>
+						<button
+							class="entry-item"
+							onclick={() => openEntry(entry.id)}
+							aria-label="View definition of {entry.key}"
+						>
+							<span class="entry-key">{entry.key}</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{:else}
+		<!-- Letter browser — shown when not searching -->
+		<div class="letter-browser">
+			{#each data.letters as l (l.letter)}
+				<button
+					class="letter-btn"
+					onclick={() => selectLetter(l.letter)}
+					title="{l.count} entries"
+				>
+					{l.letter.toUpperCase()}
+					<span class="letter-count">{l.count}</span>
+				</button>
 			{/each}
-		</ul>
+		</div>
 	{/if}
 </div>
 
-<EntryModal entry={selectedEntry} onclose={closeEntry} />
 
 <style>
 	.lexicon-page {
@@ -128,6 +130,7 @@
 		position: relative;
 	}
 
+	/* ─── Status ─── */
 	.status-text {
 		padding: 12px 0;
 		font-size: 0.85rem;
@@ -148,6 +151,44 @@
 		color: var(--color-text-muted);
 	}
 
+	/* ─── Letter browser ─── */
+	.letter-browser {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding: 16px 0;
+	}
+
+	.letter-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 10px 14px;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+		color: var(--color-text);
+		border-radius: 8px;
+		cursor: pointer;
+		font-family: inherit;
+		font-size: 1.1rem;
+		font-weight: 600;
+		min-width: 52px;
+		transition: background 0.15s, border-color 0.15s;
+	}
+
+	.letter-btn:hover {
+		background: var(--color-hover);
+		border-color: var(--color-accent);
+	}
+
+	.letter-count {
+		font-size: 0.65rem;
+		font-weight: 400;
+		color: var(--color-text-muted);
+		margin-top: 2px;
+	}
+
+	/* ─── Entry list ─── */
 	.entry-list {
 		list-style: none;
 		padding: 0;
@@ -175,11 +216,6 @@
 
 	.entry-item:active {
 		background: var(--color-active);
-	}
-
-	.entry-item.selected {
-		background: var(--color-active);
-		border-color: var(--color-accent);
 	}
 
 	.entry-key {

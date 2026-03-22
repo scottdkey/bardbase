@@ -126,21 +126,21 @@
 
 	/* ─── Light theme ─── */
 	:global([data-theme='light']) {
-		--color-bg: #FAF7F2;
-		--color-surface: #F0EBE1;
-		--color-elevated: #FFFFFF;
-		--color-text: #1A1209;
-		--color-text-secondary: #5C4A37;
-		--color-text-muted: #8A7968;
-		--color-accent: #7B5B3A;
-		--color-accent-hover: #634A2E;
-		--color-border: #DDD5C7;
+		--color-bg: #EDE8DF;
+		--color-surface: #E3DDD3;
+		--color-elevated: #F2EDE5;
+		--color-text: #2C2418;
+		--color-text-secondary: #4A3F30;
+		--color-text-muted: #7A6E5D;
+		--color-accent: #6B4D2E;
+		--color-accent-hover: #523A21;
+		--color-border: #CFC7B8;
 		--color-overlay: rgba(26, 18, 9, 0.4);
-		--color-hover: rgba(123, 91, 58, 0.08);
-		--color-active: rgba(123, 91, 58, 0.14);
-		--color-focus: #7B5B3A;
-		--color-warning: #e8a735;
-		--color-danger: #e85535;
+		--color-hover: rgba(107, 77, 46, 0.10);
+		--color-active: rgba(107, 77, 46, 0.18);
+		--color-focus: #6B4D2E;
+		--color-warning: #c48a1a;
+		--color-danger: #c44428;
 		color-scheme: light;
 	}
 

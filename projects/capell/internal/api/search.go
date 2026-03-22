@@ -9,10 +9,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := queryInt(r, "limit", 20)
+	limit := queryInt(r, "limit", 50)
 	if limit > 100 {
 		limit = 100
 	}
+	offset := queryInt(r, "offset", 0)
 
 	cleaned := sanitizeFTS(q)
 	if cleaned == "" {
@@ -29,7 +30,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		WHERE lexicon_fts MATCH ?
 		GROUP BY le.base_key
 		ORDER BY rank
-		LIMIT ?`, matchExpr, limit)
+		LIMIT ? OFFSET ?`, matchExpr, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return

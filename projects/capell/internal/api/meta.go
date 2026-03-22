@@ -111,6 +111,45 @@ func (s *Server) handleWorks(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"plays": plays, "poetry": poetry})
 }
 
+func (s *Server) handleWorkTOC(w http.ResponseWriter, r *http.Request) {
+	workId, ok := pathInt(r, "id")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid work id")
+		return
+	}
+
+	rows, err := s.db.Query(`SELECT act, scene, description, line_count
+		FROM text_divisions
+		WHERE work_id = ? AND edition_id = (
+			SELECT MIN(edition_id) FROM text_divisions WHERE work_id = ?
+		)
+		ORDER BY act, scene`, workId, workId)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	type division struct {
+		Act         int     `json:"act"`
+		Scene       int     `json:"scene"`
+		Description *string `json:"description"`
+		LineCount   int     `json:"line_count"`
+	}
+	var result []division
+	for rows.Next() {
+		var d division
+		if err := rows.Scan(&d.Act, &d.Scene, &d.Description, &d.LineCount); err != nil {
+			continue
+		}
+		result = append(result, d)
+	}
+	if result == nil {
+		result = []division{}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleEditions(w http.ResponseWriter, r *http.Request) {
 	workId, ok := pathInt(r, "id")
 	if !ok {

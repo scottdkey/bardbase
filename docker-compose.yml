@@ -25,16 +25,20 @@ services:
     volumes:
       # Source code — Vite watches for changes and hot-reloads
       - ./projects/web:/app
-      # Anonymous volume: populated from the image layer (npm ci in Dockerfile.dev)
-      # on every container run, so node_modules is always the correct platform build
-      # and never goes stale from a previous run or a host install.
+      # Anonymous volumes: populated from the image layer on every container run.
+      # node_modules: always the correct platform build, never stale from a host install.
+      # .svelte-kit: always regenerated inside the container, never inherits a stale
+      #              host build that was generated for a different adapter or platform.
       - /app/node_modules
+      - /app/.svelte-kit
       # Corrections JSON files written by the dev-only corrections API
       - ./corrections:/corrections
     environment:
       API_URL: http://go-api:8080
     ports:
       - "5173:5173"
+      # Vite HMR WebSocket — required for hot module replacement in the browser
+      - "24678:24678"
     depends_on:
       - go-api
 

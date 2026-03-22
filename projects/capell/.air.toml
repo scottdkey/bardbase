@@ -7,6 +7,10 @@ tmp_dir = "/tmp/air-build"
   include_ext = ["go"]
   exclude_dir = ["tmp", "vendor"]
   delay = 500
+  # Poll for file changes — required on macOS/Windows hosts where inotify
+  # events do not propagate through the VM layer into the Linux container.
+  poll = true
+  poll_interval = 500
 
 [log]
   time = false

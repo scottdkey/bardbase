@@ -8,25 +8,84 @@ import type {
 	SearchResult
 } from '$lib/types';
 
+function getBaseUrl(): string {
+	// process.env is checked first so docker-compose environment vars always win
+	// over any .env file that Vite might load into $env/dynamic/private.
+	// In Cloudflare Workers process is undefined, so we fall through to env.API_URL.
+	const url =
+		(typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
+		env.API_URL ??
+		'http://localhost:8080';
+	return url;
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
-	// Read per-call so Cloudflare Workers gets the request-scoped env binding.
-	const base = env.API_URL ?? 'http://localhost:8080';
+	const base = getBaseUrl();
 	const url = `${base}${path}`;
+	console.log('[api] ->', url);
 	let res: Response;
 	try {
 		res = await fetch(url);
 	} catch (err) {
+		console.error('[api] unreachable:', url, err);
 		throw new Error(`API unreachable at ${url}: ${err}`);
 	}
-	if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+	if (!res.ok) {
+		console.error('[api] error', res.status, url);
+		throw new Error(`API error ${res.status}: ${path}`);
+	}
 	return res.json() as Promise<T>;
+}
+
+export interface LexiconLetter {
+	letter: string;
+	count: number;
+}
+
+export interface CorrectionIssue {
+	number: number;
+	title: string;
+	state: string;
+	url: string;
+	created_at: string;
+	updated_at: string;
+	labels: string[];
+	body: string;
+}
+
+export interface Work {
+	id: number;
+	title: string;
+	work_type: string;
+	date_composed: string | null;
+}
+
+export interface WorkEdition {
+	id: number;
+	name: string;
+	short_code: string;
+	year: number | null;
+	source_name: string;
+}
+
+export interface WorkDivision {
+	act: number;
+	scene: number;
+	description: string | null;
+	line_count: number;
 }
 
 export const api = {
 	getAttributions: () => apiFetch<FooterAttribution[]>('/api/attributions'),
+	getCorrections: (state = 'all') =>
+		apiFetch<CorrectionIssue[]>(`/api/corrections?state=${state}`),
 	getLexiconEntry: (id: number) => apiFetch<LexiconEntryDetail>(`/api/lexicon/entry/${id}`),
+	getLexiconLetters: () => apiFetch<LexiconLetter[]>('/api/lexicon/letters'),
 	getScene: (workId: number, act: number, scene: number) =>
 		apiFetch<MultiEditionScene>(`/api/text/scene/${workId}/${act}/${scene}`),
+	getWorks: () => apiFetch<{ plays: Work[]; poetry: Work[] }>('/api/works'),
+	getWorkEditions: (id: number) => apiFetch<WorkEdition[]>(`/api/works/${id}/editions`),
+	getWorkTOC: (id: number) => apiFetch<WorkDivision[]>(`/api/works/${id}/toc`),
 	search: (q: string, limit = 20) =>
 		apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`)
 };

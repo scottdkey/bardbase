@@ -51,10 +51,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/attributions", cors(s.handleAttributions))
 	s.mux.HandleFunc("GET /api/works", cors(s.handleWorks))
 	s.mux.HandleFunc("GET /api/works/{id}/editions", cors(s.handleEditions))
+	s.mux.HandleFunc("GET /api/works/{id}/toc", cors(s.handleWorkTOC))
 	s.mux.HandleFunc("GET /api/search", cors(s.handleSearch))
 	s.mux.HandleFunc("GET /api/lexicon/letters", cors(s.handleLexiconLetters))
 	s.mux.HandleFunc("GET /api/lexicon/entry/{id}", cors(s.handleLexiconEntry))
 	s.mux.HandleFunc("GET /api/text/scene/{workId}/{act}/{scene}", cors(s.handleScene))
+	s.mux.HandleFunc("GET /api/corrections", cors(s.handleCorrections))
 }
 
 // cors adds CORS headers to allow cross-origin requests.

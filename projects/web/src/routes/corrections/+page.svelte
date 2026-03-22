@@ -1,31 +1,34 @@
 <script lang="ts">
-	import { dev } from '$app/environment';
-	import { corrections } from '$lib/stores/corrections.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import { corrections } from '$lib/stores/corrections.svelte';
 
-	function submitToGitHub(id: string) {
-		const c = corrections.items.find((i) => i.id === id);
-		if (!c) return;
-		const url = corrections.toGitHubIssueUrl(c);
-		window.open(url, '_blank');
-		corrections.markSubmitted(id);
+	let { data } = $props();
+
+	let filter = $state<'all' | 'open' | 'closed'>('all');
+
+	let filteredIssues = $derived(
+		filter === 'all'
+			? data.issues
+			: data.issues.filter((i) => i.state === filter)
+	);
+
+	let openCount = $derived(data.issues.filter((i) => i.state === 'open').length);
+	let closedCount = $derived(data.issues.filter((i) => i.state === 'closed').length);
+
+	function newIssueUrl() {
+		return 'https://github.com/scottdkey/bardbase/issues/new?labels=correction&template=correction.md';
 	}
 
-	async function submitLocal(id: string) {
-		const c = corrections.items.find((i) => i.id === id);
-		if (!c) return;
-		try {
-			await fetch('/api/corrections', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(c)
-			});
-			corrections.markSubmitted(id);
-		} catch (e) {
-			console.error('Failed to save correction:', e);
-		}
+	function formatDate(iso: string): string {
+		return new Date(iso).toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric'
+		});
 	}
+
+	// Check for any pending local corrections that haven't been submitted yet
+	let pendingLocal = $derived(corrections.pending);
 </script>
 
 <svelte:head>
@@ -33,67 +36,98 @@
 </svelte:head>
 
 <div class="corrections-page">
-	<PageHeader title="Corrections"><a href="/" class="back-link">Back to Lexicon</a></PageHeader>
+	<PageHeader title="Corrections">
+		<a href={newIssueUrl()} target="_blank" rel="noopener" class="new-issue-link">
+			+ New Issue
+		</a>
+	</PageHeader>
 
-	{#if corrections.count === 0}
+	{#if pendingLocal.length > 0}
+		<div class="local-pending">
+			<h3>Pending Submissions ({pendingLocal.length})</h3>
+			<p class="hint">These corrections haven't been submitted to GitHub yet.</p>
+			{#each pendingLocal as c (c.id)}
+				<div class="local-card">
+					<div class="card-header">
+						<span class="card-entry">{c.entryKey}</span>
+						{#if c.citationRef}
+							<span class="card-ref">{c.citationRef}</span>
+						{/if}
+					</div>
+					<p class="card-text">{c.correctionText}</p>
+					<div class="card-actions">
+						<a
+							href={corrections.toGitHubIssueUrl(c)}
+							target="_blank"
+							rel="noopener"
+							class="submit-link"
+							onclick={() => corrections.markSubmitted(c.id)}
+						>
+							Submit to GitHub
+						</a>
+						<button class="remove-btn" onclick={() => corrections.remove(c.id)}>
+							Remove
+						</button>
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	<div class="filter-bar">
+		<button class="filter-btn" class:active={filter === 'all'} onclick={() => (filter = 'all')}>
+			All ({data.issues.length})
+		</button>
+		<button
+			class="filter-btn"
+			class:active={filter === 'open'}
+			onclick={() => (filter = 'open')}
+		>
+			Open ({openCount})
+		</button>
+		<button
+			class="filter-btn"
+			class:active={filter === 'closed'}
+			onclick={() => (filter = 'closed')}
+		>
+			Closed ({closedCount})
+		</button>
+	</div>
+
+	{#if filteredIssues.length === 0}
 		<div class="empty-state">
-			<p>No corrections flagged yet.</p>
-			<p class="hint">While viewing a scene, hover over any line and click the flag icon to report an issue.</p>
+			<p>No {filter === 'all' ? '' : filter} corrections found.</p>
+			<p class="hint">
+				Flag entries or citations while browsing the lexicon, or
+				<a href={newIssueUrl()} target="_blank" rel="noopener">create an issue on GitHub</a>.
+			</p>
 		</div>
 	{:else}
-		<div class="stats">
-			{corrections.pendingCount} pending / {corrections.count} total
-		</div>
-
-		<ul class="correction-list">
-			{#each corrections.items as c (c.id)}
-				<li class="correction-card" class:submitted={c.status === 'submitted'}>
-					<div class="card-header">
-						<div class="card-location">
-							<span class="card-entry">{c.entryKey}</span>
-							<span class="card-ref">{c.workTitle} {c.act}.{c.scene}.{c.lineNumber}</span>
+		<ul class="issue-list">
+			{#each filteredIssues as issue (issue.number)}
+				<li class="issue-card">
+					<a href={issue.url} target="_blank" rel="noopener" class="issue-link">
+						<div class="issue-header">
+							<span class="issue-state" class:open={issue.state === 'open'}>
+								{issue.state}
+							</span>
+							<span class="issue-number">#{issue.number}</span>
 						</div>
-						<span class="card-status" class:pending={c.status === 'pending'}>
-							{c.status}
-						</span>
-					</div>
-
-					{#if c.characterName}
-						<div class="card-speaker">{c.characterName}</div>
-					{/if}
-
-					<div class="card-current">
-						<span class="card-label">Current:</span>
-						<span class="card-text">{c.currentText}</span>
-					</div>
-
-					<div class="card-correction">
-						<span class="card-label">Correction:</span>
-						<span class="card-text">{c.correctionText}</span>
-					</div>
-
-					{#if c.notes}
-						<div class="card-notes">
-							<span class="card-label">Notes:</span>
-							<span class="card-text">{c.notes}</span>
-						</div>
-					{/if}
-
-					<div class="card-meta">
-						<span class="card-time">{new Date(c.timestamp).toLocaleDateString()}</span>
-						<span class="card-edition">{c.editionName}</span>
-					</div>
-
-					<div class="card-actions">
-						{#if c.status === 'pending'}
-							{#if dev}
-								<Button variant="primary" onclick={() => submitLocal(c.id)}>Save to File</Button>
-							{:else}
-								<Button variant="primary" onclick={() => submitToGitHub(c.id)}>Submit to GitHub</Button>
-							{/if}
+						<h3 class="issue-title">{issue.title}</h3>
+						{#if issue.labels.length > 1}
+							<div class="issue-labels">
+								{#each issue.labels.filter((l) => l !== 'correction') as label}
+									<span class="issue-label">{label}</span>
+								{/each}
+							</div>
 						{/if}
-						<Button variant="danger" onclick={() => corrections.remove(c.id)}>Remove</Button>
-					</div>
+						<div class="issue-meta">
+							<span>opened {formatDate(issue.created_at)}</span>
+							{#if issue.state === 'closed'}
+								<span>closed {formatDate(issue.updated_at)}</span>
+							{/if}
+						</div>
+					</a>
 				</li>
 			{/each}
 		</ul>
@@ -107,6 +141,121 @@
 		padding: 0 16px 60px;
 	}
 
+	.new-issue-link {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--color-accent);
+		text-decoration: none;
+		padding: 4px 10px;
+		border: 1px solid var(--color-accent);
+		border-radius: 6px;
+	}
+
+	.new-issue-link:hover {
+		background: var(--color-hover);
+	}
+
+	/* ─── Local pending ─── */
+	.local-pending {
+		background: var(--color-surface);
+		border: 1px solid var(--color-warning);
+		border-radius: 10px;
+		padding: 14px;
+		margin-bottom: 16px;
+	}
+
+	.local-pending h3 {
+		margin: 0 0 4px;
+		font-size: 0.9rem;
+		color: var(--color-warning);
+	}
+
+	.local-card {
+		padding: 8px 0;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.local-card:last-child {
+		border-bottom: none;
+	}
+
+	.card-header {
+		display: flex;
+		gap: 8px;
+		align-items: baseline;
+	}
+
+	.card-entry {
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.card-ref {
+		font-size: 0.8rem;
+		color: var(--color-accent);
+		font-weight: 600;
+	}
+
+	.card-text {
+		margin: 4px 0;
+		font-size: 0.85rem;
+		color: var(--color-text-secondary);
+	}
+
+	.card-actions {
+		display: flex;
+		gap: 8px;
+		margin-top: 4px;
+	}
+
+	.submit-link {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-accent);
+	}
+
+	.remove-btn {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-danger);
+		background: none;
+		border: none;
+		cursor: pointer;
+		font-family: inherit;
+		padding: 0;
+	}
+
+	/* ─── Filter bar ─── */
+	.filter-bar {
+		display: flex;
+		gap: 4px;
+		margin-bottom: 16px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.filter-btn {
+		padding: 8px 14px;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		border-bottom: 2px solid transparent;
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.filter-btn:hover {
+		color: var(--color-text);
+	}
+
+	.filter-btn.active {
+		color: var(--color-accent);
+		border-bottom-color: var(--color-accent);
+	}
+
+	/* ─── Empty state ─── */
 	.empty-state {
 		text-align: center;
 		padding: 40px 0;
@@ -119,56 +268,47 @@
 
 	.hint {
 		font-size: 0.85rem;
-	}
-
-	.stats {
-		font-size: 0.8rem;
 		color: var(--color-text-muted);
-		margin-bottom: 12px;
 	}
 
-	.correction-list {
+	/* ─── Issue list ─── */
+	.issue-list {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 8px;
 	}
 
-	.correction-card {
+	.issue-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
+		transition: border-color 0.15s;
+	}
+
+	.issue-card:hover {
+		border-color: var(--color-accent);
+	}
+
+	.issue-link {
+		display: block;
 		padding: 14px;
+		text-decoration: none;
+		color: inherit;
 	}
 
-	.correction-card.submitted {
-		opacity: 0.6;
-	}
-
-	.card-header {
+	.issue-header {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 8px;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 4px;
 	}
 
-	.card-entry {
-		font-weight: 700;
-		color: var(--color-text);
-		margin-right: 8px;
-	}
-
-	.card-ref {
-		font-size: 0.8rem;
-		color: var(--color-accent);
-		font-weight: 600;
-	}
-
-	.card-status {
+	.issue-state {
 		font-size: 0.65rem;
-		font-weight: 600;
+		font-weight: 700;
 		text-transform: uppercase;
 		padding: 2px 6px;
 		border-radius: 4px;
@@ -176,55 +316,46 @@
 		color: var(--color-text-muted);
 	}
 
-	.card-status.pending {
-		background: rgba(232, 167, 53, 0.15);
-		color: var(--color-warning);
+	.issue-state.open {
+		background: rgba(109, 218, 208, 0.15);
+		color: var(--color-accent);
 	}
 
-	.card-speaker {
-		font-size: 0.7rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		margin-bottom: 6px;
-	}
-
-	.card-current,
-	.card-correction,
-	.card-notes {
-		margin-bottom: 6px;
-		font-size: 0.85rem;
-		line-height: 1.5;
-	}
-
-	.card-label {
-		font-weight: 600;
-		color: var(--color-text-muted);
+	.issue-number {
 		font-size: 0.75rem;
-		margin-right: 4px;
+		color: var(--color-text-muted);
+		font-weight: 600;
 	}
 
-	.card-current .card-text {
-		font-style: italic;
-		color: var(--color-text-secondary);
-	}
-
-	.card-correction .card-text {
+	.issue-title {
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
 		color: var(--color-text);
+		line-height: 1.4;
 	}
 
-	.card-meta {
+	.issue-labels {
+		display: flex;
+		gap: 4px;
+		margin-top: 6px;
+		flex-wrap: wrap;
+	}
+
+	.issue-label {
+		font-size: 0.6rem;
+		font-weight: 600;
+		padding: 1px 6px;
+		border-radius: 10px;
+		background: var(--color-hover);
+		color: var(--color-text-muted);
+	}
+
+	.issue-meta {
 		display: flex;
 		gap: 12px;
+		margin-top: 6px;
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
-		margin-bottom: 8px;
 	}
-
-	.card-actions {
-		display: flex;
-		gap: 8px;
-	}
-
 </style>

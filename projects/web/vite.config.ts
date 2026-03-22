@@ -5,7 +5,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	server: {
 		host: '0.0.0.0',
-		port: 5173
+		port: 5173,
+		// Poll for file changes — inotify events don't propagate from macOS host
+		// through the VM layer into the Linux container.
+		watch: { usePolling: true },
+		hmr: { port: 24678 }
 	},
 	plugins: [
 		sveltekit(),
@@ -46,28 +50,40 @@ export default defineConfig({
 				globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
 				runtimeCaching: [
 					{
-						// Lexicon entries and scene text — cache first, rarely changes
-						urlPattern: /\/api\/(lexicon\/entry|text\/scene)\//,
-						handler: 'StaleWhileRevalidate',
+						// Static metadata — changes only when the DB is rebuilt, serve from cache immediately
+						urlPattern: /\/api\/(attributions|works|stats)/,
+						handler: 'CacheFirst',
 						options: {
-							cacheName: 'bardbase-data',
+							cacheName: 'bardbase-meta',
 							expiration: {
-								maxEntries: 500,
-								maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+								maxEntries: 20,
+								maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
 							},
 							cacheableResponse: { statuses: [0, 200] }
 						}
 					},
 					{
-						// Search and metadata — try network first, fall back to cache
-						urlPattern: /\/api\/(search|attributions|works|stats)/,
-						handler: 'NetworkFirst',
+						// Lexicon entries and scene text — stable content, cache aggressively
+						urlPattern: /\/api\/(lexicon\/entry|text\/scene)\//,
+						handler: 'CacheFirst',
 						options: {
-							cacheName: 'bardbase-api',
-							networkTimeoutSeconds: 5,
+							cacheName: 'bardbase-data',
 							expiration: {
-								maxEntries: 100,
-								maxAgeSeconds: 60 * 60 * 24 // 1 day
+								maxEntries: 2000,
+								maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+							},
+							cacheableResponse: { statuses: [0, 200] }
+						}
+					},
+					{
+						// Search — serve cached results instantly, refresh in background
+						urlPattern: /\/api\/search/,
+						handler: 'StaleWhileRevalidate',
+						options: {
+							cacheName: 'bardbase-search',
+							expiration: {
+								maxEntries: 500,
+								maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
 							},
 							cacheableResponse: { statuses: [0, 200] }
 						}
