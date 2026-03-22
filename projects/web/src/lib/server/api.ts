@@ -24,6 +24,16 @@ function getApiKey(): string | undefined {
 	);
 }
 
+// Exposed for proxy routes that need to pass through query params
+export async function apiProxy(path: string): Promise<Response> {
+	const base = getBaseUrl();
+	const url = `${base}${path}`;
+	const headers: Record<string, string> = {};
+	const apiKey = getApiKey();
+	if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+	return fetch(url, { headers });
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
 	const base = getBaseUrl();
 	const url = `${base}${path}`;

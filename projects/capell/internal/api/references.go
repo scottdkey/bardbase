@@ -3,14 +3,16 @@ package api
 import "net/http"
 
 type lineReference struct {
-	EntryID    int     `json:"entry_id"`
-	EntryKey   string  `json:"entry_key"`
-	Source     string  `json:"source"`
-	SourceCode string  `json:"source_code"`
-	SenseID    *int    `json:"sense_id"`
-	Definition *string `json:"definition"`
-	QuoteText  *string `json:"quote_text"`
-	Line       int     `json:"line"`
+	EntryID    int      `json:"entry_id"`
+	EntryKey   string   `json:"entry_key"`
+	Source     string   `json:"source"`
+	SourceCode string   `json:"source_code"`
+	SenseID    *int     `json:"sense_id"`
+	Definition *string  `json:"definition"`
+	QuoteText  *string  `json:"quote_text"`
+	Line       int      `json:"line"`
+	EditionID  int      `json:"edition_id"`
+	Confidence float64  `json:"confidence"`
 }
 
 func (s *Server) handleSceneReferences(w http.ResponseWriter, r *http.Request) {
@@ -32,24 +34,29 @@ func (s *Server) handleSceneReferences(w http.ResponseWriter, r *http.Request) {
 
 	result := make(map[int][]lineReference)
 
-	// 1. Schmidt lexicon citations
+	// 1. Schmidt lexicon citations — resolved via citation_matches
 	schmidtRows, err := s.db.Query(`
-		SELECT lc.line, le.id, le.base_key, lc.sense_id, ls.definition_text, lc.quote_text
-		FROM lexicon_citations lc
+		SELECT tl.line_number, le.id, le.base_key, lc.sense_id, ls.definition_text, lc.quote_text,
+		       cm.edition_id, cm.confidence
+		FROM citation_matches cm
+		JOIN lexicon_citations lc ON lc.id = cm.citation_id
 		JOIN lexicon_entries le ON le.id = lc.entry_id
+		JOIN text_lines tl ON tl.id = cm.text_line_id
 		LEFT JOIN lexicon_senses ls ON ls.id = lc.sense_id
-		WHERE lc.work_id = ? AND lc.act = ? AND lc.scene = ?
-		  AND lc.line IS NOT NULL
-		ORDER BY lc.line, le.base_key`, workId, act, scene)
+		WHERE lc.work_id = ? AND tl.act = ? AND tl.scene = ?
+		  AND tl.line_number IS NOT NULL
+		GROUP BY tl.line_number, le.id, cm.edition_id
+		ORDER BY tl.line_number, le.base_key`, workId, act, scene)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		writeError(w, http.StatusInternalServerError, "schmidt query failed")
 		return
 	}
 	defer schmidtRows.Close()
 
 	for schmidtRows.Next() {
 		var ref lineReference
-		if err := schmidtRows.Scan(&ref.Line, &ref.EntryID, &ref.EntryKey, &ref.SenseID, &ref.Definition, &ref.QuoteText); err != nil {
+		if err := schmidtRows.Scan(&ref.Line, &ref.EntryID, &ref.EntryKey, &ref.SenseID,
+			&ref.Definition, &ref.QuoteText, &ref.EditionID, &ref.Confidence); err != nil {
 			continue
 		}
 		ref.Source = "Schmidt Shakespeare Lexicon"
@@ -57,30 +64,33 @@ func (s *Server) handleSceneReferences(w http.ResponseWriter, r *http.Request) {
 		result[ref.Line] = append(result[ref.Line], ref)
 	}
 
-	// 2. Reference works (Onions, Abbott, Bartlett, Henley & Farmer, etc.)
+	// 2. Reference works — resolved via reference_citation_matches
 	refRows, err := s.db.Query(`
-		SELECT rc.line, re.id, re.headword, s.name, s.short_code, re.raw_text
-		FROM reference_citations rc
+		SELECT tl.line_number, re.id, re.headword, s.name, s.short_code, re.raw_text,
+		       rcm.edition_id, rcm.confidence
+		FROM reference_citation_matches rcm
+		JOIN reference_citations rc ON rc.id = rcm.ref_citation_id
 		JOIN reference_entries re ON re.id = rc.entry_id
+		JOIN text_lines tl ON tl.id = rcm.text_line_id
 		JOIN sources s ON s.id = rc.source_id
-		WHERE rc.work_id = ? AND rc.act = ? AND rc.scene = ?
-		  AND rc.line IS NOT NULL
-		GROUP BY rc.line, re.id
-		ORDER BY rc.line, s.short_code, re.headword`, workId, act, scene)
+		WHERE rc.work_id = ? AND tl.act = ? AND tl.scene = ?
+		  AND tl.line_number IS NOT NULL
+		GROUP BY tl.line_number, re.id, rcm.edition_id
+		ORDER BY tl.line_number, s.short_code, re.headword`, workId, act, scene)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		writeError(w, http.StatusInternalServerError, "reference query failed")
 		return
 	}
 	defer refRows.Close()
 
 	for refRows.Next() {
-		var line int
-		var entryID int
+		var line, entryID, editionID int
+		var confidence float64
 		var headword, sourceName, sourceCode, rawText string
-		if err := refRows.Scan(&line, &entryID, &headword, &sourceName, &sourceCode, &rawText); err != nil {
+		if err := refRows.Scan(&line, &entryID, &headword, &sourceName, &sourceCode,
+			&rawText, &editionID, &confidence); err != nil {
 			continue
 		}
-		// Truncate raw_text for popover display
 		def := rawText
 		if len(def) > 300 {
 			def = def[:300] + "…"
@@ -92,6 +102,8 @@ func (s *Server) handleSceneReferences(w http.ResponseWriter, r *http.Request) {
 			SourceCode: sourceCode,
 			Definition: &def,
 			Line:       line,
+			EditionID:  editionID,
+			Confidence: confidence,
 		}
 		result[line] = append(result[line], ref)
 	}
