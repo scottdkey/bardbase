@@ -1,11 +1,13 @@
+<script lang="ts">
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+</script>
+
 <svelte:head>
 	<title>Editions &mdash; Bardbase</title>
 </svelte:head>
 
 <div class="editions-page">
-	<header class="page-header">
-		<h1 class="page-title">Editions</h1>
-	</header>
+	<PageHeader title="Editions" />
 
 	<p class="placeholder">Edition browser coming soon.</p>
 </div>
@@ -15,17 +17,6 @@
 		max-width: 720px;
 		margin: 0 auto;
 		padding: 0 16px 60px;
-	}
-
-	.page-header {
-		padding: 16px 0 12px;
-	}
-
-	.page-title {
-		margin: 0;
-		font-size: 1.3rem;
-		font-weight: 700;
-		color: var(--color-text);
 	}
 
 	.placeholder {

@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { dev } from '$app/environment';
 	import { corrections, CORRECTION_CATEGORIES, type CorrectionType } from '$lib/stores/corrections.svelte';
+	import IconClose from '$lib/components/icons/IconClose.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import FormField from '$lib/components/ui/FormField.svelte';
 
 	let {
 		type = 'line' as CorrectionType,
@@ -93,12 +97,9 @@
 <div class="correction-form" role="dialog" aria-label="Submit correction">
 	<div class="form-header">
 		<h3>{typeLabel}</h3>
-		<button class="form-close" onclick={onclose} aria-label="Close">
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<line x1="18" y1="6" x2="6" y2="18" />
-				<line x1="6" y1="6" x2="18" y2="18" />
-			</svg>
-		</button>
+		<IconButton onclick={onclose} label="Close" size={28}>
+			<IconClose size={16} />
+		</IconButton>
 	</div>
 
 	<div class="form-context">
@@ -143,37 +144,34 @@
 	</div>
 
 	<div class="form-fields">
-		<label class="field">
-			<span class="field-label">Issue type</span>
+		<FormField label="Issue type">
 			<select bind:value={category}>
 				{#each CORRECTION_CATEGORIES as cat}
 					<option value={cat.value}>{cat.label}</option>
 				{/each}
 			</select>
-		</label>
-		<label class="field">
-			<span class="field-label">Correction</span>
+		</FormField>
+		<FormField label="Correction">
 			<textarea
 				bind:value={correctionText}
 				rows="3"
 				placeholder="Describe what's wrong and what it should be..."
 			></textarea>
-		</label>
-		<label class="field">
-			<span class="field-label">Notes (optional)</span>
+		</FormField>
+		<FormField label="Notes (optional)">
 			<textarea
 				bind:value={notes}
 				rows="2"
 				placeholder="Any additional context..."
 			></textarea>
-		</label>
+		</FormField>
 	</div>
 
 	<div class="form-actions">
-		<button class="btn-cancel" onclick={onclose}>Cancel</button>
-		<button class="btn-submit" onclick={submit} disabled={!correctionText.trim() || submitting}>
+		<Button variant="secondary" onclick={onclose}>Cancel</Button>
+		<Button variant="primary" onclick={submit} disabled={!correctionText.trim() || submitting}>
 			{submitting ? 'Saving...' : 'Flag'}
-		</button>
+		</Button>
 	</div>
 </div>
 
@@ -212,24 +210,6 @@
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 700;
-		color: var(--color-text);
-	}
-
-	.form-close {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		background: none;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		border-radius: 6px;
-	}
-
-	.form-close:hover {
-		background: var(--color-hover);
 		color: var(--color-text);
 	}
 
@@ -273,20 +253,6 @@
 		margin-bottom: 12px;
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.field-label {
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-
 	textarea, select {
 		width: 100%;
 		padding: 8px 10px;
@@ -316,37 +282,4 @@
 		gap: 8px;
 	}
 
-	.btn-cancel, .btn-submit {
-		padding: 6px 14px;
-		border-radius: 6px;
-		font-family: inherit;
-		font-size: 0.8rem;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.btn-cancel {
-		border: 1px solid var(--color-border);
-		background: none;
-		color: var(--color-text-muted);
-	}
-
-	.btn-cancel:hover {
-		background: var(--color-hover);
-	}
-
-	.btn-submit {
-		border: none;
-		background: var(--color-accent);
-		color: var(--color-bg);
-	}
-
-	.btn-submit:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-submit:not(:disabled):hover {
-		background: var(--color-accent-hover);
-	}
 </style>

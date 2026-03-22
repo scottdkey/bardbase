@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { abbreviations } from '$lib/data/abbreviations';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 
 	let filter = $state('');
 
@@ -29,18 +31,10 @@
 </svelte:head>
 
 <div class="glossary-page">
-	<header class="page-header">
-		<h1 class="page-title">Abbreviation Glossary</h1>
-		<p class="page-subtitle">Abbreviations used in Schmidt's Shakespeare Lexicon</p>
-	</header>
+	<PageHeader title="Glossary" subtitle="A–Z index of all lexicon headwords" />
 
 	<div class="search-bar">
-		<input
-			type="text"
-			class="search-input"
-			placeholder="Filter abbreviations..."
-			bind:value={filter}
-		/>
+		<SearchInput bind:value={filter} placeholder="Filter entries..." />
 	</div>
 
 	<div class="glossary-list">
@@ -69,42 +63,8 @@
 		padding: 0 16px 60px;
 	}
 
-	.page-header {
-		padding: 16px 0 8px;
-	}
-
-	.page-title {
-		margin: 0;
-		font-size: 1.3rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-
-	.page-subtitle {
-		margin: 4px 0 0;
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
-	}
-
 	.search-bar {
 		margin-bottom: 12px;
-	}
-
-	.search-input {
-		width: 100%;
-		padding: 8px 12px;
-		border: 1px solid var(--color-border);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-family: inherit;
-		font-size: 0.85rem;
-		border-radius: 8px;
-		outline: none;
-		box-sizing: border-box;
-	}
-
-	.search-input:focus {
-		border-color: var(--color-accent);
 	}
 
 	.glossary-list {

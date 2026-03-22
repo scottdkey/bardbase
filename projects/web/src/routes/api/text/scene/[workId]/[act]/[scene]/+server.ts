@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { getSceneText } from '$lib/server/queries';
+import { getMultiEditionScene } from '$lib/server/queries';
 import type { EntryGenerator } from './$types';
 
 export const prerender = true;
@@ -34,7 +34,7 @@ export function GET({ params }) {
 	}
 
 	const db = getDb();
-	const result = getSceneText(db, workId, act, scene);
+	const result = getMultiEditionScene(db, workId, act, scene);
 	if (!result) throw error(404, 'Scene not found');
 
 	return json(result);

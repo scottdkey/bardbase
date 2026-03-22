@@ -3,6 +3,10 @@
 	import { theme } from '$lib/stores/theme.svelte';
 	import { corrections } from '$lib/stores/corrections.svelte';
 	import type { LayoutProps } from './$types';
+	import IconClose from '$lib/components/icons/IconClose.svelte';
+	import IconSun from '$lib/components/icons/IconSun.svelte';
+	import IconMoon from '$lib/components/icons/IconMoon.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	let { children, data }: LayoutProps = $props();
 	let footerOpen = $state(false);
@@ -54,12 +58,9 @@
 			<div class="footer-drawer">
 				<div class="drawer-header">
 					<h3 class="drawer-title">Acknowledgements & Legal</h3>
-					<button class="drawer-close" onclick={() => footerOpen = false} aria-label="Close">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<line x1="18" y1="6" x2="6" y2="18" />
-							<line x1="6" y1="6" x2="18" y2="18" />
-						</svg>
-					</button>
+					<IconButton onclick={() => footerOpen = false} label="Close" size={28}>
+						<IconClose size={16} />
+					</IconButton>
 				</div>
 				<div class="drawer-body">
 					{#each data.attributions as attr}
@@ -98,29 +99,17 @@
 				<button class="footer-toggle" onclick={() => footerOpen = !footerOpen}>
 					{footerOpen ? 'Close' : 'Legal'}
 				</button>
-				<button
-					class="theme-toggle"
+				<IconButton
 					onclick={() => theme.toggle()}
-					aria-label={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+					label={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+					size={32}
 				>
 					{#if theme.isDark}
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="12" cy="12" r="5" />
-							<line x1="12" y1="1" x2="12" y2="3" />
-							<line x1="12" y1="21" x2="12" y2="23" />
-							<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-							<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-							<line x1="1" y1="12" x2="3" y2="12" />
-							<line x1="21" y1="12" x2="23" y2="12" />
-							<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-							<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-						</svg>
+						<IconSun size={16} />
 					{:else}
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-						</svg>
+						<IconMoon size={16} />
 					{/if}
-				</button>
+				</IconButton>
 			</div>
 		</div>
 	</footer>
@@ -150,6 +139,8 @@
 		--color-hover: rgba(123, 91, 58, 0.08);
 		--color-active: rgba(123, 91, 58, 0.14);
 		--color-focus: #7B5B3A;
+		--color-warning: #e8a735;
+		--color-danger: #e85535;
 		color-scheme: light;
 	}
 
@@ -168,6 +159,8 @@
 		--color-hover: rgba(109, 218, 208, 0.07);
 		--color-active: rgba(109, 218, 208, 0.13);
 		--color-focus: #6DDAD0;
+		--color-warning: #e8a735;
+		--color-danger: #e85535;
 		color-scheme: dark;
 	}
 
@@ -209,25 +202,6 @@
 		min-height: 100dvh;
 		display: flex;
 		flex-direction: column;
-	}
-
-	.theme-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border: none;
-		background: none;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		border-radius: 6px;
-		transition: color 0.15s, background 0.15s;
-	}
-
-	.theme-toggle:hover {
-		color: var(--color-text);
-		background: var(--color-hover);
 	}
 
 	.content {
@@ -310,7 +284,7 @@
 		height: 14px;
 		padding: 0 3px;
 		border-radius: 7px;
-		background: #e8a735;
+		background: var(--color-warning);
 		color: #1a1a2e;
 		font-size: 0.4rem;
 		font-weight: 800;
@@ -336,24 +310,6 @@
 		margin: 0;
 		font-size: 0.9rem;
 		font-weight: 700;
-		color: var(--color-text);
-	}
-
-	.drawer-close {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		background: none;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		border-radius: 6px;
-	}
-
-	.drawer-close:hover {
-		background: var(--color-hover);
 		color: var(--color-text);
 	}
 

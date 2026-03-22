@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import EntryModal from '$lib/components/EntryModal.svelte';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 	import type { LexiconEntryDetail } from '$lib/server/queries';
 
 	let { data } = $props();
@@ -32,12 +34,9 @@
 		visibleCount = PAGE_SIZE;
 	});
 
-	let searchInput: HTMLInputElement;
 	let sentinel: HTMLDivElement;
 
 	onMount(() => {
-		searchInput?.focus();
-
 		const observer = new IntersectionObserver(
 			(items) => {
 				if (items[0].isIntersecting && hasMore) {
@@ -50,11 +49,6 @@
 		if (sentinel) observer.observe(sentinel);
 		return () => observer.disconnect();
 	});
-
-	function clearSearch() {
-		query = '';
-		searchInput?.focus();
-	}
 
 	async function openEntry(id: number) {
 		selectedEntryId = id;
@@ -81,31 +75,10 @@
 
 <div class="lexicon-page">
 	<div class="sticky-header">
-		<header class="page-header">
-			<h1 class="page-title">Lexicon</h1>
-		</header>
+		<PageHeader title="Bardbase" />
 
 		<div class="search-bar">
-		<svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-			<circle cx="11" cy="11" r="8" />
-			<line x1="21" y1="21" x2="16.65" y2="16.65" />
-		</svg>
-		<input
-			bind:this={searchInput}
-			type="text"
-			class="search-input"
-			placeholder="Search words..."
-			bind:value={query}
-			aria-label="Search lexicon entries"
-		/>
-		{#if query}
-			<button class="clear-btn" onclick={clearSearch} aria-label="Clear search">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<line x1="18" y1="6" x2="6" y2="18" />
-					<line x1="6" y1="6" x2="18" y2="18" />
-				</svg>
-			</button>
-		{/if}
+			<SearchInput bind:value={query} placeholder="Search entries..." autofocus />
 		</div>
 	</div>
 
@@ -161,72 +134,9 @@
 		padding-bottom: 8px;
 	}
 
-	.page-header {
-		padding: 12px 0 8px;
-	}
-
-	.page-title {
-		margin: 0;
-		font-size: 1.3rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-
 	/* ─── Search Bar ─── */
 	.search-bar {
 		position: relative;
-	}
-
-	.search-icon {
-		position: absolute;
-		left: 14px;
-		top: 50%;
-		transform: translateY(-50%);
-		color: var(--color-text-muted);
-		pointer-events: none;
-	}
-
-	.search-input {
-		width: 100%;
-		padding: 12px 40px 12px 42px;
-		border: 1px solid var(--color-border);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-family: inherit;
-		font-size: 1rem;
-		border-radius: 12px;
-		outline: none;
-		transition: border-color 0.15s, box-shadow 0.15s;
-		box-sizing: border-box;
-	}
-
-	.search-input::placeholder {
-		color: var(--color-text-muted);
-	}
-
-	.search-input:focus {
-		border-color: var(--color-accent);
-		box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.15);
-	}
-
-	.clear-btn {
-		position: absolute;
-		right: 10px;
-		top: 50%;
-		transform: translateY(-50%);
-		background: none;
-		border: none;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		padding: 4px;
-		border-radius: 4px;
-		display: flex;
-		align-items: center;
-	}
-
-	.clear-btn:hover {
-		color: var(--color-text);
-		background: var(--color-hover);
 	}
 
 	/* ─── Status ─── */

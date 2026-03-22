@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { dev } from '$app/environment';
 	import { corrections } from '$lib/stores/corrections.svelte';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	function submitToGitHub(id: string) {
 		const c = corrections.items.find((i) => i.id === id);
@@ -31,10 +33,7 @@
 </svelte:head>
 
 <div class="corrections-page">
-	<header class="page-header">
-		<h1 class="page-title">Corrections</h1>
-		<a href="/" class="back-link">Back to Lexicon</a>
-	</header>
+	<PageHeader title="Corrections"><a href="/" class="back-link">Back to Lexicon</a></PageHeader>
 
 	{#if corrections.count === 0}
 		<div class="empty-state">
@@ -88,12 +87,12 @@
 					<div class="card-actions">
 						{#if c.status === 'pending'}
 							{#if dev}
-								<button class="btn-action" onclick={() => submitLocal(c.id)}>Save to File</button>
+								<Button variant="primary" onclick={() => submitLocal(c.id)}>Save to File</Button>
 							{:else}
-								<button class="btn-action" onclick={() => submitToGitHub(c.id)}>Submit to GitHub</button>
+								<Button variant="primary" onclick={() => submitToGitHub(c.id)}>Submit to GitHub</Button>
 							{/if}
 						{/if}
-						<button class="btn-remove" onclick={() => corrections.remove(c.id)}>Remove</button>
+						<Button variant="danger" onclick={() => corrections.remove(c.id)}>Remove</Button>
 					</div>
 				</li>
 			{/each}
@@ -106,24 +105,6 @@
 		max-width: 720px;
 		margin: 0 auto;
 		padding: 0 16px 60px;
-	}
-
-	.page-header {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		padding: 16px 0 12px;
-	}
-
-	.page-title {
-		margin: 0;
-		font-size: 1.3rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-
-	.back-link {
-		font-size: 0.85rem;
 	}
 
 	.empty-state {
@@ -197,7 +178,7 @@
 
 	.card-status.pending {
 		background: rgba(232, 167, 53, 0.15);
-		color: #e8a735;
+		color: var(--color-warning);
 	}
 
 	.card-speaker {
@@ -246,36 +227,4 @@
 		gap: 8px;
 	}
 
-	.btn-action {
-		padding: 4px 10px;
-		border: none;
-		background: var(--color-accent);
-		color: var(--color-bg);
-		font-family: inherit;
-		font-size: 0.75rem;
-		font-weight: 600;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-
-	.btn-action:hover {
-		background: var(--color-accent-hover);
-	}
-
-	.btn-remove {
-		padding: 4px 10px;
-		border: 1px solid var(--color-border);
-		background: none;
-		color: var(--color-text-muted);
-		font-family: inherit;
-		font-size: 0.75rem;
-		font-weight: 600;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-
-	.btn-remove:hover {
-		color: #e85535;
-		border-color: #e85535;
-	}
 </style>

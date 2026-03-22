@@ -140,6 +140,12 @@ export function getLexiconEntriesPage(
 		.all(letter, limit, offset) as LexiconListItem[];
 }
 
+export interface EditionLineRef {
+	edition_id: number;
+	edition_code: string;
+	line_number: number | null;
+}
+
 export interface LexiconCitationDetail {
 	id: number;
 	entry_id: number;
@@ -157,6 +163,7 @@ export interface LexiconCitationDetail {
 	matched_line_number: number | null;
 	matched_character: string | null;
 	matched_edition_id: number | null;
+	edition_lines: EditionLineRef[];
 }
 
 export interface LexiconSenseDetail {
@@ -177,6 +184,17 @@ export interface LexiconSubEntryDetail {
 	citations: LexiconCitationDetail[];
 }
 
+export interface ReferenceCitation {
+	source_name: string;
+	source_code: string;
+	work_title: string | null;
+	work_abbrev: string | null;
+	act: number | null;
+	scene: number | null;
+	line: number | null;
+	edition_lines: EditionLineRef[];
+}
+
 export interface LexiconEntryDetail {
 	id: number;
 	key: string;
@@ -186,6 +204,7 @@ export interface LexiconEntryDetail {
 	subEntries: LexiconSubEntryDetail[];
 	senses: LexiconSenseDetail[];
 	citations: LexiconCitationDetail[];
+	references: ReferenceCitation[];
 }
 
 export function getLexiconEntryFull(db: Database.Database, id: number): LexiconEntryDetail | null {
@@ -324,6 +343,38 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 		}
 	}
 
+	// Batch-load cross-edition line numbers for all citations.
+	// citation_matches already maps each citation to text_lines in multiple editions.
+	const citationIds = citations.map(c => c.id);
+	if (citationIds.length > 0) {
+		const edLinePlaceholders = citationIds.map(() => '?').join(',');
+		const edLineRows = db
+			.prepare(
+				`SELECT cm.citation_id, cm.edition_id, e.short_code AS edition_code, tl.line_number
+				 FROM citation_matches cm
+				 JOIN text_lines tl ON tl.id = cm.text_line_id
+				 JOIN editions e ON e.id = cm.edition_id
+				 WHERE cm.citation_id IN (${edLinePlaceholders})
+				   AND cm.edition_id IN (1, 2, 3, 4, 5)
+				 ORDER BY cm.citation_id, cm.edition_id`
+			)
+			.all(...citationIds) as { citation_id: number; edition_id: number; edition_code: string; line_number: number | null }[];
+
+		const edLinesByCitation = new Map<number, EditionLineRef[]>();
+		for (const row of edLineRows) {
+			const list = edLinesByCitation.get(row.citation_id) ?? [];
+			list.push({ edition_id: row.edition_id, edition_code: row.edition_code, line_number: row.line_number });
+			edLinesByCitation.set(row.citation_id, list);
+		}
+		for (const c of citations) {
+			c.edition_lines = edLinesByCitation.get(c.id) ?? [];
+		}
+	} else {
+		for (const c of citations) {
+			c.edition_lines = [];
+		}
+	}
+
 	// Build sub-entries: group senses and citations by their parent entry
 	const sensesByEntry = new Map<number, LexiconSenseDetail[]>();
 	for (const s of senses) {
@@ -350,6 +401,9 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 		citations: citationsByEntry.get(ge.id) ?? []
 	}));
 
+	// Load reference work citations (Onions, Abbott, Bartlett, Henley & Farmer)
+	const references = getReferenceCitationsForEntry(db, entry.base_key);
+
 	// Use base_key as the display key (not "A1", just "A").
 	return {
 		id: entry.id,
@@ -359,8 +413,63 @@ export function getLexiconEntryFull(db: Database.Database, id: number): LexiconE
 		full_text: entry.full_text,
 		subEntries,
 		senses,
-		citations
+		citations,
+		references
 	};
+}
+
+// ─── Reference citations ─────────────────────────────────────────────────────
+
+function getReferenceCitationsForEntry(db: Database.Database, baseKey: string): ReferenceCitation[] {
+	// Find reference entries matching this headword
+	const refCitations = db
+		.prepare(
+			`SELECT rc.id, s.name AS source_name, s.short_code AS source_code,
+			        w.title AS work_title, rc.work_abbrev,
+			        rc.act, rc.scene, rc.line
+			 FROM reference_citations rc
+			 JOIN reference_entries re ON re.id = rc.entry_id
+			 JOIN sources s ON s.id = rc.source_id
+			 LEFT JOIN works w ON w.id = rc.work_id
+			 WHERE LOWER(re.headword) = LOWER(?)
+			 ORDER BY s.name, w.title, rc.act, rc.scene, rc.line`
+		)
+		.all(baseKey) as { id: number; source_name: string; source_code: string; work_title: string | null; work_abbrev: string | null; act: number | null; scene: number | null; line: number | null }[];
+
+	if (refCitations.length === 0) return [];
+
+	// Batch-load edition line numbers
+	const refCitIds = refCitations.map(r => r.id);
+	const refPlaceholders = refCitIds.map(() => '?').join(',');
+	const refEdLines = db
+		.prepare(
+			`SELECT rcm.ref_citation_id, rcm.edition_id, e.short_code AS edition_code, tl.line_number
+			 FROM reference_citation_matches rcm
+			 JOIN text_lines tl ON tl.id = rcm.text_line_id
+			 JOIN editions e ON e.id = rcm.edition_id
+			 WHERE rcm.ref_citation_id IN (${refPlaceholders})
+			   AND rcm.edition_id IN (1, 2, 3, 4, 5)
+			 ORDER BY rcm.ref_citation_id, rcm.edition_id`
+		)
+		.all(...refCitIds) as { ref_citation_id: number; edition_id: number; edition_code: string; line_number: number | null }[];
+
+	const refEdLinesByRef = new Map<number, EditionLineRef[]>();
+	for (const row of refEdLines) {
+		const list = refEdLinesByRef.get(row.ref_citation_id) ?? [];
+		list.push({ edition_id: row.edition_id, edition_code: row.edition_code, line_number: row.line_number });
+		refEdLinesByRef.set(row.ref_citation_id, list);
+	}
+
+	return refCitations.map(rc => ({
+		source_name: rc.source_name,
+		source_code: rc.source_code,
+		work_title: rc.work_title,
+		work_abbrev: rc.work_abbrev,
+		act: rc.act,
+		scene: rc.scene,
+		line: rc.line,
+		edition_lines: refEdLinesByRef.get(rc.id) ?? []
+	}));
 }
 
 // ─── Scene text ──────────────────────────────────────────────────────────────
@@ -379,6 +488,243 @@ export interface SceneTextResult {
 	scene: number;
 	edition_name: string;
 	lines: SceneTextLine[];
+}
+
+// ─── Multi-edition scene ─────────────────────────────────────────────────────
+
+export interface EditionInfo {
+	id: number;
+	code: string;
+	name: string;
+}
+
+export interface AlignedEditionLine {
+	line_number: number | null;
+	content: string;
+	content_type: string | null;
+	character_name: string | null;
+}
+
+export interface AlignedSceneRow {
+	editions: Record<number, AlignedEditionLine | null>;
+}
+
+export interface MultiEditionScene {
+	work_title: string;
+	act: number;
+	scene: number;
+	available_editions: EditionInfo[];
+	rows: AlignedSceneRow[];
+}
+
+export function getMultiEditionScene(
+	db: Database.Database,
+	workId: number,
+	act: number,
+	scene: number
+): MultiEditionScene | null {
+	const work = db.prepare('SELECT title, work_type FROM works WHERE id = ?').get(workId) as { title: string; work_type: string } | undefined;
+	if (!work) return null;
+
+	const isPoem = ['poem', 'poem_collection', 'sonnet_sequence'].includes(work.work_type);
+
+	// Find which main editions have data for this scene
+	const availEditions = db
+		.prepare(
+			isPoem
+				? `SELECT DISTINCT e.id, e.short_code AS code, e.name
+				   FROM editions e
+				   JOIN text_lines tl ON tl.edition_id = e.id
+				   WHERE tl.work_id = ? AND e.id IN (1,2,3,4,5)
+				     AND (tl.scene = ? OR tl.scene IS NULL OR ? = 0)
+				   ORDER BY e.id`
+				: `SELECT DISTINCT e.id, e.short_code AS code, e.name
+				   FROM editions e
+				   JOIN text_lines tl ON tl.edition_id = e.id
+				   WHERE tl.work_id = ? AND tl.act = ? AND tl.scene = ?
+				     AND e.id IN (1,2,3,4,5)
+				   ORDER BY e.id`
+		)
+		.all(...(isPoem ? [workId, scene, scene] : [workId, act, scene])) as EditionInfo[];
+
+	if (availEditions.length === 0) return null;
+
+	const charCoalesce = `COALESCE(
+		c.name,
+		(SELECT c2.name FROM characters c2
+		 WHERE c2.work_id = tl.work_id
+		   AND LOWER(c2.name) LIKE LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+		 LIMIT 1),
+		(SELECT c3.name FROM characters c3
+		 WHERE c3.work_id = tl.work_id
+		   AND (' ' || LOWER(c3.name)) LIKE '% ' || LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+		 LIMIT 1),
+		tl.char_name
+	)`;
+
+	// Load all lines for all available editions for this scene
+	type LineRow = { id: number; edition_id: number; line_number: number | null; content: string; content_type: string | null; character_name: string | null };
+	const editionIds = availEditions.map(e => e.id);
+	const edPlaceholders = editionIds.map(() => '?').join(',');
+
+	const sceneFilter = isPoem
+		? (scene === 0 ? '1=1' : '(tl.scene = ? OR tl.scene IS NULL)')
+		: 'tl.act = ? AND tl.scene = ?';
+	const sceneParams = isPoem
+		? (scene === 0 ? [] : [scene])
+		: [act, scene];
+
+	const allLines = db
+		.prepare(
+			`SELECT tl.id, tl.edition_id, tl.line_number, tl.content, tl.content_type,
+			        ${charCoalesce} AS character_name
+			 FROM text_lines tl
+			 LEFT JOIN characters c ON c.id = tl.character_id
+			 WHERE tl.work_id = ? AND tl.edition_id IN (${edPlaceholders})
+			   AND ${sceneFilter}
+			   AND tl.id = (
+			     SELECT MIN(t2.id) FROM text_lines t2
+			     WHERE t2.work_id = tl.work_id AND t2.edition_id = tl.edition_id
+			       AND COALESCE(t2.act, 0) = COALESCE(tl.act, 0)
+			       AND COALESCE(t2.scene, 0) = COALESCE(tl.scene, 0)
+			       AND t2.line_number = tl.line_number
+			   )
+			 ORDER BY tl.edition_id, tl.line_number, tl.id`
+		)
+		.all(workId, ...editionIds, ...sceneParams) as LineRow[];
+
+	// Group lines by edition, indexed by text_lines.id
+	const linesByEdition = new Map<number, LineRow[]>();
+	const lineById = new Map<number, LineRow>();
+	for (const line of allLines) {
+		const list = linesByEdition.get(line.edition_id) ?? [];
+		list.push(line);
+		linesByEdition.set(line.edition_id, list);
+		lineById.set(line.id, line);
+	}
+
+	// Use edition 1 (OSS) as anchor if available, otherwise first available
+	const anchorEditionId = editionIds.includes(1) ? 1 : editionIds[0];
+	const anchorLines = linesByEdition.get(anchorEditionId) ?? [];
+
+	if (availEditions.length <= 1) {
+		// Only one edition — simple case, no alignment needed
+		const rows: AlignedSceneRow[] = anchorLines.map(line => ({
+			editions: { [anchorEditionId]: { line_number: line.line_number, content: line.content, content_type: line.content_type, character_name: line.character_name } }
+		}));
+		return { work_title: work.title, act, scene, available_editions: availEditions, rows };
+	}
+
+	// Load line_mappings between anchor and all other editions for this scene
+	const otherEditionIds = editionIds.filter(id => id !== anchorEditionId);
+	type MappingRow = { edition_a_id: number; edition_b_id: number; line_a_id: number | null; line_b_id: number | null; align_order: number; match_type: string };
+
+	const mappingFilter = isPoem
+		? (scene === 0 ? '1=1' : '(lm.scene = ? OR lm.scene = 0)')
+		: 'lm.act = ? AND lm.scene = ?';
+	const mappingParams = isPoem
+		? (scene === 0 ? [] : [scene])
+		: [act, scene];
+
+	const otherPlaceholders = otherEditionIds.map(() => '?').join(',');
+	const mappings = db
+		.prepare(
+			`SELECT lm.edition_a_id, lm.edition_b_id, lm.line_a_id, lm.line_b_id, lm.align_order, lm.match_type
+			 FROM line_mappings lm
+			 WHERE lm.work_id = ? AND ${mappingFilter}
+			   AND (
+			     (lm.edition_a_id = ? AND lm.edition_b_id IN (${otherPlaceholders}))
+			     OR (lm.edition_b_id = ? AND lm.edition_a_id IN (${otherPlaceholders}))
+			   )
+			 ORDER BY lm.edition_b_id, lm.align_order`
+		)
+		.all(workId, ...mappingParams, anchorEditionId, ...otherEditionIds, anchorEditionId, ...otherEditionIds) as MappingRow[];
+
+	// Build mapping: anchor line_id → other edition line_id, per edition
+	// line_mappings stores pairs where edition_a_id < edition_b_id
+	const anchorToOther = new Map<number, Map<number, number>>(); // anchorLineId → Map<otherEditionId, otherLineId>
+	const otherOnlyLines = new Map<number, number[]>(); // editionId → [lineIds not in anchor]
+
+	for (const m of mappings) {
+		let anchorLineId: number | null;
+		let otherLineId: number | null;
+		let otherEdId: number;
+
+		if (m.edition_a_id === anchorEditionId) {
+			anchorLineId = m.line_a_id;
+			otherLineId = m.line_b_id;
+			otherEdId = m.edition_b_id;
+		} else {
+			anchorLineId = m.line_b_id;
+			otherLineId = m.line_a_id;
+			otherEdId = m.edition_a_id;
+		}
+
+		if (anchorLineId != null && otherLineId != null) {
+			const edMap = anchorToOther.get(anchorLineId) ?? new Map();
+			edMap.set(otherEdId, otherLineId);
+			anchorToOther.set(anchorLineId, edMap);
+		} else if (anchorLineId == null && otherLineId != null) {
+			// Line exists only in other edition
+			const list = otherOnlyLines.get(otherEdId) ?? [];
+			list.push(otherLineId);
+			otherOnlyLines.set(otherEdId, list);
+		}
+	}
+
+	// Build aligned rows: walk anchor lines, look up corresponding lines in other editions
+	const usedOtherLines = new Set<number>(); // track which other-edition lines have been placed
+	const rows: AlignedSceneRow[] = [];
+
+	for (const anchorLine of anchorLines) {
+		const row: AlignedSceneRow = { editions: {} };
+		row.editions[anchorEditionId] = {
+			line_number: anchorLine.line_number,
+			content: anchorLine.content,
+			content_type: anchorLine.content_type,
+			character_name: anchorLine.character_name
+		};
+
+		const edMap = anchorToOther.get(anchorLine.id);
+		if (edMap) {
+			for (const [otherEdId, otherLineId] of edMap) {
+				const otherLine = lineById.get(otherLineId);
+				if (otherLine) {
+					row.editions[otherEdId] = {
+						line_number: otherLine.line_number,
+						content: otherLine.content,
+						content_type: otherLine.content_type,
+						character_name: otherLine.character_name
+					};
+					usedOtherLines.add(otherLineId);
+				}
+			}
+		}
+
+		rows.push(row);
+	}
+
+	// Append lines that exist only in non-anchor editions (only_b entries)
+	for (const [otherEdId, lineIds] of otherOnlyLines) {
+		for (const lineId of lineIds) {
+			if (usedOtherLines.has(lineId)) continue;
+			const otherLine = lineById.get(lineId);
+			if (!otherLine) continue;
+
+			// Find insertion point: after the last row that has a line
+			// from this edition, or at the end
+			const row: AlignedSceneRow = { editions: {} };
+			row.editions[otherEdId] = {
+				line_number: otherLine.line_number,
+				content: otherLine.content,
+				content_type: otherLine.content_type,
+				character_name: otherLine.character_name
+			};
+			rows.push(row);
+		}
+	}
+
+	return { work_title: work.title, act, scene, available_editions: availEditions, rows };
 }
 
 /** Resolve which scene a line number belongs to within a given act. */
