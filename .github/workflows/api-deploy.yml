@@ -22,13 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download database from latest release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --pattern 'bardbase.db' --dir projects/capell/
-          ls -lh projects/capell/bardbase.db
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -45,11 +38,6 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Verify database exists in build context
-        run: |
-          test -f projects/capell/bardbase.db || (echo "ERROR: bardbase.db not found in build context" && exit 1)
-          ls -lh projects/capell/bardbase.db
-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -57,7 +45,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Trigger Railway redeploy
-        if: github.ref == 'refs/heads/main'
-        run: curl -s -X POST "${{ secrets.RAILWAY_WEBHOOK_URL }}"
