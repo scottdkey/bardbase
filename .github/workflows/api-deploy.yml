@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - 'projects/capell/**'
-      - 'fly.toml'
+      - 'railway.json'
 
 permissions:
   contents: read
@@ -19,8 +19,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
 
     steps:
       - uses: actions/checkout@v4
@@ -64,11 +62,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
 
-      - name: Deploy to Fly.io
-        run: flyctl deploy --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      - name: Deploy to Railway
+        run: railway up --service bardbase-api --image ghcr.io/${{ github.repository }}/api:latest
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          REGISTRY: ghcr.io
-          IMAGE_NAME: ${{ github.repository }}/api
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

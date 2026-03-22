@@ -10,6 +10,5 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/api .
 COPY bardbase.db .
-ENV DB_PATH=/app/bardbase.db
 EXPOSE 8080
 CMD ["./api"]
