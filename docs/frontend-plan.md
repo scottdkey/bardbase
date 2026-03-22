@@ -5,10 +5,12 @@
 ### Texts / Ebook Reader
 - **Home page** (`/`) — work browser grouped by tragedies, comedies, histories, poetry
 - **Scene reader** (`/text/{slug}/{act}/{scene}`) — multi-edition aligned text
-- **Edition toggles** — floating pill bar to show/hide editions
+- **Edition toggles** — header dropdown to show/hide editions, preferences saved in localStorage
 - **Swipe + arrow navigation** — prev/next scene with floating arrows
 - **Reading position** — persisted per work in localStorage, restored on return
 - **TOC panel** — slide-out panel with full act/scene list
+- **Reference toggles** — header dropdown to enable/disable reference sources, preferences saved in localStorage
+- **Auto-hide header** — header hides on scroll down, reappears on scroll up
 - **Speaker names** — character names displayed between dialogue sections
 - **Slug URLs** — `/text/hamlet/1/4` with numeric ID redirect
 - **Lexicon vs reading flow** — `?hw=` param = reference mode (no position save, no nav)

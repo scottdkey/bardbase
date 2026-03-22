@@ -34,7 +34,7 @@ podman compose up --build
 
 # Or run services individually
 make api run    # Go API on :8080
-make web dev    # SvelteKit on :5173
+make web run    # SvelteKit on :5173
 ```
 
 ### Build Database from Source
@@ -119,7 +119,7 @@ bardbase/
 |---------|----------|---------|
 | Database build | GitHub Actions | Manual dispatch |
 | Go API image | GitHub Container Registry | Push to main (capell changes) |
-| Go API deploy | Railway | Webhook after image push |
+| Go API deploy | Railway | Auto-deploys from GHCR image |
 | Frontend deploy | Cloudflare Pages | Push to main (web changes) |
 
 ### Required Secrets
@@ -128,7 +128,6 @@ bardbase/
 |--------|-------|---------|
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions | Cloudflare Pages deploy |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Cloudflare account |
-| `RAILWAY_WEBHOOK_URL` | GitHub Actions | Trigger Railway redeploy |
 | `API_KEY` | Railway + Cloudflare | Shared auth between frontend and API |
 
 ## Documentation
