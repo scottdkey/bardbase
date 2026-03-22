@@ -105,12 +105,21 @@ export interface ReferenceSource {
 	count: number;
 }
 
+export interface ReferenceEntryCitation {
+	work_title: string | null;
+	act: number | null;
+	scene: number | null;
+	line: number | null;
+	work_slug: string | null;
+}
+
 export interface ReferenceEntryDetail {
 	id: number;
 	headword: string;
 	raw_text: string;
 	source_name: string;
 	source_code: string;
+	citations: ReferenceEntryCitation[];
 }
 
 export interface WorkDivision {

@@ -18,7 +18,7 @@
 	} = $props();
 
 	let popoverStyle = $derived.by(() => {
-		const left = Math.min(x, window.innerWidth - 300);
+		const left = Math.min(x, window.innerWidth - 320);
 		const above = y > 350;
 		if (above) {
 			return `left: ${Math.max(8, left)}px; bottom: ${window.innerHeight - y + 8}px;`;
@@ -26,25 +26,53 @@
 		return `left: ${Math.max(8, left)}px; top: ${y + 8}px;`;
 	});
 
-	// Group references by source
+	// Group references by source, ordered: schmidt first, then onions, abbott, bartlett
+	const SOURCE_ORDER = ['schmidt', 'onions', 'abbott', 'bartlett', 'henley_farmer'];
+
 	let bySource = $derived.by(() => {
 		const groups = new Map<string, LineReference[]>();
 		for (const ref of references) {
-			const key = ref.source_code;
-			const list = groups.get(key) ?? [];
+			const list = groups.get(ref.source_code) ?? [];
 			list.push(ref);
-			groups.set(key, list);
+			groups.set(ref.source_code, list);
 		}
-		return groups;
+		// Sort by source order
+		const sorted = new Map<string, LineReference[]>();
+		for (const code of SOURCE_ORDER) {
+			if (groups.has(code)) sorted.set(code, groups.get(code)!);
+		}
+		// Add any remaining
+		for (const [code, refs] of groups) {
+			if (!sorted.has(code)) sorted.set(code, refs);
+		}
+		return sorted;
 	});
 
 	const SOURCE_LABELS: Record<string, string> = {
-		schmidt: 'Schmidt',
-		onions: 'Onions',
-		abbott: 'Abbott',
-		bartlett: 'Bartlett',
+		schmidt: 'Schmidt Lexicon',
+		onions: 'Onions Glossary',
+		abbott: 'Abbott Grammar',
+		bartlett: 'Bartlett Concordance',
 		henley_farmer: 'Henley & Farmer'
 	};
+
+	// For Bartlett, show the headword as a quote snippet, not the full raw_text
+	function formatEntryKey(ref: LineReference): string {
+		const key = ref.entry_key.replace(/\s+/g, ' ').trim();
+		if (key.length > 60) return key.slice(0, 57) + '...';
+		return key;
+	}
+
+	// For definition display, clean up OCR noise
+	function formatDef(def: string | null): string {
+		if (!def) return '';
+		return def.replace(/\s+/g, ' ').trim();
+	}
+
+	// Is this a phrase entry (Bartlett-style)?
+	function isPhrase(ref: LineReference): boolean {
+		return ref.entry_key.includes(' ') && ref.entry_key.length > 20;
+	}
 </script>
 
 <div class="popover-backdrop" onclick={onclose} onkeydown={(e) => e.key === 'Escape' && onclose()} role="presentation"></div>
@@ -57,9 +85,13 @@
 			<div class="source-label">{SOURCE_LABELS[sourceCode] ?? sourceCode}</div>
 			{#each refs as ref, i (ref.entry_id + '-' + (ref.sense_id ?? i))}
 				<button class="popover-entry" onclick={() => onselect(ref)}>
-					<span class="entry-key">{ref.entry_key}</span>
-					{#if ref.definition}
-						<p class="entry-def">{ref.definition}</p>
+					{#if isPhrase(ref)}
+						<p class="entry-quote-key">&ldquo;{formatEntryKey(ref)}&rdquo;</p>
+					{:else}
+						<span class="entry-key">{ref.entry_key}</span>
+					{/if}
+					{#if ref.definition && !isPhrase(ref)}
+						<p class="entry-def">{formatDef(ref.definition)}</p>
 					{/if}
 					{#if ref.quote_text}
 						<p class="entry-quote">{ref.quote_text}</p>
@@ -80,23 +112,23 @@
 	.word-popover {
 		position: fixed;
 		z-index: 600;
-		width: 300px;
-		max-height: 360px;
+		width: 320px;
+		max-height: 400px;
 		overflow-y: auto;
 		background: var(--color-elevated);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-		padding: 8px 0;
+		padding: 6px 0;
 	}
 
 	.popover-header {
-		padding: 4px 12px 6px;
+		padding: 6px 12px 8px;
 		border-bottom: 1px solid var(--color-border);
 	}
 
 	.popover-word {
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		font-weight: 700;
 		color: var(--color-accent);
 	}
@@ -106,20 +138,20 @@
 	}
 
 	.source-label {
-		padding: 2px 12px;
-		font-size: 0.6rem;
+		padding: 4px 12px 2px;
+		font-size: 0.55rem;
 		font-weight: 700;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.05em;
 	}
 
 	.popover-entry {
 		display: block;
 		width: 100%;
-		padding: 6px 12px;
+		padding: 5px 12px;
 		border: none;
-		border-bottom: 1px solid color-mix(in srgb, var(--color-border) 30%, transparent);
+		border-bottom: 1px solid color-mix(in srgb, var(--color-border) 20%, transparent);
 		background: none;
 		text-align: left;
 		cursor: pointer;
@@ -142,20 +174,32 @@
 		color: var(--color-text);
 	}
 
+	.entry-quote-key {
+		margin: 0;
+		font-size: 0.72rem;
+		font-style: italic;
+		color: var(--color-text-secondary);
+		line-height: 1.3;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
 	.entry-def {
-		margin: 3px 0 0;
-		font-size: 0.7rem;
+		margin: 2px 0 0;
+		font-size: 0.68rem;
 		color: var(--color-text-secondary);
 		line-height: 1.4;
 		display: -webkit-box;
-		-webkit-line-clamp: 3;
+		-webkit-line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
 
 	.entry-quote {
-		margin: 3px 0 0;
-		font-size: 0.65rem;
+		margin: 2px 0 0;
+		font-size: 0.62rem;
 		color: var(--color-text-muted);
 		font-style: italic;
 		line-height: 1.3;

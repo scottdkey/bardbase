@@ -61,30 +61,59 @@
 		<p class="definition">{entry.raw_text}</p>
 
 		{#if entry.citations.length > 0}
-			<CollapsibleSection label="References" count={entry.citations.length}>
-				<div class="citation-groups">
-					{#each [...citationsByWork.entries()] as [workName, citations] (workName)}
-						<div class="citation-work-group">
-							<h4 class="work-group-title">{workName}</h4>
-							<ul class="citation-list">
-								{#each citations as c, i (i)}
-									<li>
-										{#if c.work_slug && c.act != null}
-											<button class="citation-item clickable" onclick={() => openScene(c)}>
-												<span class="citation-ref">{formatLoc(c)}</span>
-											</button>
-										{:else}
-											<span class="citation-item">
-												<span class="citation-ref">{formatLoc(c)}</span>
-											</span>
-										{/if}
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{/each}
-				</div>
-			</CollapsibleSection>
+			{#if entry.source_code === 'bartlett'}
+				<!-- Bartlett's: show citations below definition, always visible -->
+				<section class="citations-below">
+					<h3 class="citations-heading">Citations ({entry.citations.length})</h3>
+					<div class="citation-groups">
+						{#each [...citationsByWork.entries()] as [workName, citations] (workName)}
+							<div class="citation-work-group">
+								<h4 class="work-group-title">{workName}</h4>
+								<ul class="citation-list">
+									{#each citations as c, i (i)}
+										<li>
+											{#if c.work_slug && c.act != null}
+												<button class="citation-item clickable" onclick={() => openScene(c)}>
+													<span class="citation-ref">{formatLoc(c)}</span>
+												</button>
+											{:else}
+												<span class="citation-item">
+													<span class="citation-ref">{formatLoc(c)}</span>
+												</span>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{:else}
+				<CollapsibleSection label="References" count={entry.citations.length}>
+					<div class="citation-groups">
+						{#each [...citationsByWork.entries()] as [workName, citations] (workName)}
+							<div class="citation-work-group">
+								<h4 class="work-group-title">{workName}</h4>
+								<ul class="citation-list">
+									{#each citations as c, i (i)}
+										<li>
+											{#if c.work_slug && c.act != null}
+												<button class="citation-item clickable" onclick={() => openScene(c)}>
+													<span class="citation-ref">{formatLoc(c)}</span>
+												</button>
+											{:else}
+												<span class="citation-item">
+													<span class="citation-ref">{formatLoc(c)}</span>
+												</span>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/each}
+					</div>
+				</CollapsibleSection>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -133,6 +162,22 @@
 		color: var(--color-text-secondary);
 		line-height: 1.8;
 		white-space: pre-wrap;
+	}
+
+	/* ─── Bartlett's citations below ─── */
+	.citations-below {
+		margin-top: 20px;
+		padding-top: 16px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.citations-heading {
+		margin: 0 0 10px;
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: var(--color-text);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
 	}
 
 	/* ─── Citations ─── */

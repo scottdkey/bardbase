@@ -6,6 +6,8 @@
 
 A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and reference works — built on SQLite, Go, and SvelteKit.
 
+**Live:** [bardbase.pages.dev](https://bardbase.pages.dev)
+
 ## Architecture
 
 ```

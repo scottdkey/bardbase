@@ -5,6 +5,7 @@
 	import IconBack from '$lib/components/icons/IconBack.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import WordPopover from '$lib/components/WordPopover.svelte';
+	import ReferenceDrawer from '$lib/components/ReferenceDrawer.svelte';
 	import { goto } from '$app/navigation';
 	import { readingPosition } from '$lib/stores/reading-position.svelte';
 	import { findAdjacentScenes } from '$lib/utils/scene-nav';
@@ -30,7 +31,7 @@
 				const lineRefs = refs[String(cell.line_number)];
 				if (!lineRefs) continue;
 				for (const ref of lineRefs) {
-					const key = `${ref.entry_id}-${ref.source_code}-${ref.line}`;
+					const key = `${ref.entry_id}-${ref.source_code}`;
 					if (!seen.has(key)) {
 						seen.add(key);
 						collected.push(ref);
@@ -47,26 +48,33 @@
 	}
 
 	function refKeyMatches(refKey: string, word: string): boolean {
-		const key = refKey.toLowerCase();
+		const key = refKey.toLowerCase().replace(/\s+/g, ' ');
 		if (key === word) return true;
+		// Key starts with word
 		if (key.startsWith(word + ' ') || key.startsWith(word + ',')) return true;
+		// Word appears as a standalone word anywhere in the key (for phrase headwords like Bartlett)
+		if (key.includes(' ' + word + ' ') || key.includes(' ' + word + ',') || key.endsWith(' ' + word)) return true;
 		return false;
 	}
 
-	// Check if a word in a specific row has a reference
+	// Check if a word in a specific row has a reference (filtered by enabled sources)
 	function hasWordRef(rowIdx: number, word: string): boolean {
 		const rowRefList = rowRefs.get(rowIdx);
-		if (!rowRefList) return false;
+		if (!rowRefList || enabledSources.size === 0) return false;
 		const clean = normalizeWord(word);
-		return rowRefList.some((r) => refKeyMatches(r.entry_key, clean));
+		return rowRefList.some(
+			(r) => enabledSources.has(r.source_code) && refKeyMatches(r.entry_key, clean)
+		);
 	}
 
-	// Get references for a word in a specific row
+	// Get references for a word in a specific row (filtered by enabled sources)
 	function getWordRefs(rowIdx: number, word: string): LineReference[] {
 		const rowRefList = rowRefs.get(rowIdx);
 		if (!rowRefList) return [];
 		const clean = normalizeWord(word);
-		return rowRefList.filter((r) => refKeyMatches(r.entry_key, clean));
+		return rowRefList.filter(
+			(r) => enabledSources.has(r.source_code) && refKeyMatches(r.entry_key, clean)
+		);
 	}
 
 	// Word popover state
@@ -109,13 +117,16 @@
 		popoverWord = null;
 	}
 
+	// Reference drawer state
+	let drawerRef = $state<LineReference | null>(null);
+
 	function selectEntry(ref: LineReference) {
 		popoverWord = null;
-		if (ref.source_code === 'schmidt') {
-			goto(`/lexicon/entry/${ref.entry_id}`);
-		} else {
-			goto(`/reference/${ref.entry_id}`);
-		}
+		drawerRef = ref;
+	}
+
+	function closeDrawer() {
+		drawerRef = null;
 	}
 
 	const EDITION_LABELS: Record<number, string> = {
@@ -130,10 +141,26 @@
 	let highlightRow = $state<number | null>(null);
 	let matchQuality = $state<'exact' | 'nearby' | 'scene' | 'unmatched'>('exact');
 	let tocOpen = $state(false);
+	let editionsDropdownOpen = $state(false);
+	let refsDropdownOpen = $state(false);
 	let headerEl = $state<HTMLElement | null>(null);
 	let headerHeight = $state(100);
+	let headerVisible = $state(true);
+	let lastScrollY = 0;
 
 	const EDITION_PREF_KEY = 'bardbase-preferred-editions';
+	const REF_PREF_KEY = 'bardbase-preferred-refs';
+
+	const SOURCE_LABELS: Record<string, string> = {
+		schmidt: 'Schmidt',
+		onions: 'Onions',
+		abbott: 'Abbott',
+		bartlett: 'Bartlett',
+		henley_farmer: 'H&F'
+	};
+
+	// Reference source toggles
+	let enabledSources = $state<Set<string>>(new Set());
 
 	function loadPreferredEditions(): number[] | null {
 		try {
@@ -149,6 +176,42 @@
 			localStorage.setItem(EDITION_PREF_KEY, JSON.stringify(editions));
 		} catch {}
 	}
+
+	function loadPreferredRefs(): Set<string> | null {
+		try {
+			const raw = localStorage.getItem(REF_PREF_KEY);
+			return raw ? new Set(JSON.parse(raw)) : null;
+		} catch {
+			return null;
+		}
+	}
+
+	function savePreferredRefs(sources: Set<string>) {
+		try {
+			localStorage.setItem(REF_PREF_KEY, JSON.stringify([...sources]));
+		} catch {}
+	}
+
+	function toggleSource(code: string) {
+		if (enabledSources.has(code)) {
+			enabledSources.delete(code);
+		} else {
+			enabledSources.add(code);
+		}
+		enabledSources = new Set(enabledSources);
+		savePreferredRefs(enabledSources);
+	}
+
+	// Available reference sources in this scene
+	let availableSources = $derived.by(() => {
+		const sources = new Set<string>();
+		for (const lineRefs of Object.values(refs)) {
+			for (const ref of lineRefs) {
+				sources.add(ref.source_code);
+			}
+		}
+		return [...sources].sort();
+	});
 
 	$effect(() => {
 		if (headerEl) {
@@ -196,6 +259,18 @@
 		}
 	});
 
+	// Initialize reference sources from localStorage
+	$effect(() => {
+		if (availableSources.length > 0) {
+			const saved = loadPreferredRefs();
+			if (saved) {
+				enabledSources = new Set([...saved].filter((s) => availableSources.includes(s)));
+			} else {
+				enabledSources = new Set(availableSources);
+			}
+		}
+	});
+
 	// Reading position: save on scene load and restore scroll
 	onMount(() => {
 		if (!data.isReference) {
@@ -204,20 +279,34 @@
 				requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
 			}
 			readingPosition.save(data.workId, data.act, data.sceneNum, 0);
+		}
 
-			let scrollTimer: ReturnType<typeof setTimeout>;
-			function onScroll() {
+		let scrollTimer: ReturnType<typeof setTimeout>;
+		function onScroll() {
+			const y = window.scrollY;
+			// Auto-hide header on scroll down, show on scroll up
+			if (y > lastScrollY && y > 100) {
+				headerVisible = false;
+				editionsDropdownOpen = false;
+				refsDropdownOpen = false;
+			} else {
+				headerVisible = true;
+			}
+			lastScrollY = y;
+
+			// Save reading position (debounced)
+			if (!data.isReference) {
 				clearTimeout(scrollTimer);
 				scrollTimer = setTimeout(() => {
 					readingPosition.save(data.workId, data.act, data.sceneNum, window.scrollY);
 				}, 500);
 			}
-			window.addEventListener('scroll', onScroll, { passive: true });
-			return () => {
-				clearTimeout(scrollTimer);
-				window.removeEventListener('scroll', onScroll);
-			};
 		}
+		window.addEventListener('scroll', onScroll, { passive: true });
+		return () => {
+			clearTimeout(scrollTimer);
+			window.removeEventListener('scroll', onScroll);
+		};
 	});
 
 	function findHeadwordRow(
@@ -337,6 +426,14 @@
 		}
 	}
 
+	function handleWindowClick(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (!target.closest('.dropdown')) {
+			editionsDropdownOpen = false;
+			refsDropdownOpen = false;
+		}
+	}
+
 	// Group TOC by act for the panel
 	let tocByAct = $derived(() => {
 		const acts = new Map<number, typeof data.toc>();
@@ -349,6 +446,9 @@
 	});
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<svelte:window onclick={handleWindowClick} />
+
 <svelte:head>
 	<title>{scene.work_title} {sceneTitle()} &mdash; Bardbase</title>
 </svelte:head>
@@ -358,54 +458,92 @@
 	ontouchstart={handleTouchStart}
 	ontouchend={handleTouchEnd}
 >
-	<div class="scene-header" bind:this={headerEl}>
-		<IconButton onclick={goBack} label="Back" size={36}>
-			<IconBack size={20} />
-		</IconButton>
-		{#if !data.isReference}
-			<button class="toc-btn" onclick={() => (tocOpen = !tocOpen)} aria-label="Table of contents">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-				</svg>
-			</button>
-		{/if}
-		<div class="scene-title">
-			<h1>{scene.work_title}</h1>
-			<span class="scene-location">{sceneTitle()}</span>
-		</div>
-		{#if highlightRow != null}
-			<button
-				class="jump-btn"
-				class:review={matchQuality === 'scene' || matchQuality === 'unmatched'}
-				onclick={scrollToHighlight}
-				aria-label="Jump to referenced line"
-			>
-				Row {highlightRow}
-				{#if matchQuality === 'scene'}
-					<span class="match-flag" title="Headword found elsewhere in scene">?</span>
-				{:else if matchQuality === 'unmatched'}
-					<span class="match-flag" title="Headword not found in scene">!</span>
+	<div class="scene-header" class:hidden={!headerVisible} bind:this={headerEl}>
+		<div class="header-row">
+			<IconButton onclick={goBack} label="Back" size={36}>
+				<IconBack size={20} />
+			</IconButton>
+			{#if !data.isReference}
+				<button class="toc-btn" onclick={() => (tocOpen = !tocOpen)} aria-label="Table of contents">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+					</svg>
+				</button>
+			{/if}
+			<div class="scene-title">
+				<h1>{scene.work_title}</h1>
+				<span class="scene-location">{sceneTitle()}</span>
+			</div>
+			{#if highlightRow != null}
+				<button
+					class="jump-btn"
+					class:review={matchQuality === 'scene' || matchQuality === 'unmatched'}
+					onclick={scrollToHighlight}
+					aria-label="Jump to referenced line"
+				>
+					Row {highlightRow}
+					{#if matchQuality === 'scene'}
+						<span class="match-flag" title="Headword found elsewhere in scene">?</span>
+					{:else if matchQuality === 'unmatched'}
+						<span class="match-flag" title="Headword not found in scene">!</span>
+					{/if}
+				</button>
+			{/if}
+			<div class="header-dropdowns">
+				<div class="dropdown">
+					<button class="dropdown-trigger" onclick={() => { editionsDropdownOpen = !editionsDropdownOpen; refsDropdownOpen = false; }}>
+						Editions <span class="dropdown-count">{visibleEditions.length}</span>
+					</button>
+					{#if editionsDropdownOpen}
+						<div class="dropdown-panel">
+							{#each scene.available_editions as ed (ed.id)}
+								<label class="dropdown-item">
+									<input
+										type="checkbox"
+										checked={visibleEditions.includes(ed.id)}
+										onchange={() => toggleEdition(ed.id)}
+									/>
+									<span>{ed.name}</span>
+								</label>
+							{/each}
+						</div>
+					{/if}
+				</div>
+				{#if availableSources.length > 0}
+					<div class="dropdown">
+						<button class="dropdown-trigger" onclick={() => { refsDropdownOpen = !refsDropdownOpen; editionsDropdownOpen = false; }}>
+							References <span class="dropdown-count">{enabledSources.size}</span>
+						</button>
+						{#if refsDropdownOpen}
+							<div class="dropdown-panel">
+								{#each availableSources as src (src)}
+									{@const FULL_LABELS: Record<string, string> = {
+										schmidt: 'Schmidt Lexicon',
+										onions: 'Onions Glossary',
+										abbott: 'Abbott Grammar',
+										bartlett: 'Bartlett Concordance',
+										henley_farmer: 'Henley & Farmer'
+									}}
+									<label class="dropdown-item">
+										<input
+											type="checkbox"
+											checked={enabledSources.has(src)}
+											onchange={() => toggleSource(src)}
+										/>
+										<span>{FULL_LABELS[src] ?? src}</span>
+									</label>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
-			</button>
-		{/if}
-	</div>
-
-	<div class="edition-selector">
-		{#each scene.available_editions as ed (ed.id)}
-			<button
-				class="edition-pill"
-				class:active={visibleEditions.includes(ed.id)}
-				onclick={() => toggleEdition(ed.id)}
-				aria-pressed={visibleEditions.includes(ed.id)}
-			>
-				{EDITION_LABELS[ed.id] ?? ed.code}
-			</button>
-		{/each}
+			</div>
+		</div>
 	</div>
 
 	<div class="scene-body">
 		<div class="scene-columns" style="--col-count: {visibleEditions.length}">
-			<div class="column-headers" style="top: {headerHeight}px">
+			<div class="column-headers" style="top: {headerVisible ? headerHeight : 0}px">
 				{#each visibleEditions as edId (edId)}
 					{@const ed = scene.available_editions.find((e) => e.id === edId)}
 					<div class="col-header">{ed?.name ?? EDITION_LABELS[edId]}</div>
@@ -464,6 +602,10 @@
 	/>
 {/if}
 
+{#if drawerRef}
+	<ReferenceDrawer ref={drawerRef} onclose={closeDrawer} />
+{/if}
+
 <!-- Floating nav arrows (reading mode only) -->
 {#if !data.isReference}
 	{#if adjacent.prev}
@@ -518,14 +660,104 @@
 	}
 
 	.scene-header {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 16px 0 8px;
 		position: sticky;
 		top: 0;
 		z-index: 20;
 		background: var(--color-bg);
+		padding: 8px 0 4px;
+		transition: transform 0.25s ease;
+	}
+
+	.scene-header.hidden {
+		transform: translateY(-100%);
+	}
+
+	.header-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.header-dropdowns {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-left: auto;
+		flex-shrink: 0;
+		align-items: flex-end;
+	}
+
+	.dropdown {
+		position: relative;
+	}
+
+	.dropdown-trigger {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 8px;
+		border: 1px solid var(--color-border);
+		background: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 0.6rem;
+		font-weight: 600;
+		cursor: pointer;
+		border-radius: 6px;
+		white-space: nowrap;
+		transition: border-color 0.15s;
+	}
+
+	.dropdown-trigger:hover {
+		border-color: var(--color-accent);
+		color: var(--color-text);
+	}
+
+	.dropdown-count {
+		background: var(--color-accent);
+		color: var(--color-bg);
+		font-size: 0.55rem;
+		font-weight: 700;
+		padding: 0 4px;
+		border-radius: 8px;
+		min-width: 14px;
+		text-align: center;
+	}
+
+	.dropdown-panel {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 4px;
+		min-width: 200px;
+		background: var(--color-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+		padding: 6px 0;
+		z-index: 30;
+	}
+
+	.dropdown-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		font-size: 0.75rem;
+		color: var(--color-text);
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.dropdown-item:hover {
+		background: var(--color-hover);
+	}
+
+	.dropdown-item input {
+		margin: 0;
+		width: 14px;
+		height: 14px;
+		cursor: pointer;
 	}
 
 	.toc-btn {
@@ -553,7 +785,7 @@
 
 	.scene-title h1 {
 		margin: 0;
-		font-size: 1.2rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: var(--color-text);
 		white-space: nowrap;
@@ -562,7 +794,7 @@
 	}
 
 	.scene-location {
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		color: var(--color-text-muted);
 	}
 
@@ -605,46 +837,6 @@
 		font-weight: 800;
 	}
 
-	.edition-selector {
-		position: fixed;
-		bottom: 56px;
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: 190;
-		display: flex;
-		gap: 4px;
-		padding: 6px 8px;
-		background: var(--color-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 24px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-		pointer-events: auto;
-	}
-
-	.edition-pill {
-		padding: 4px 10px;
-		border: none;
-		background: none;
-		color: var(--color-text-muted);
-		font-family: inherit;
-		font-size: 0.65rem;
-		font-weight: 700;
-		cursor: pointer;
-		border-radius: 14px;
-		transition: background 0.15s, color 0.15s;
-		user-select: none;
-		letter-spacing: 0.02em;
-	}
-
-	.edition-pill:hover {
-		color: var(--color-text);
-		background: var(--color-hover);
-	}
-
-	.edition-pill.active {
-		background: var(--color-accent);
-		color: var(--color-bg);
-	}
 
 	.scene-body {
 		font-size: 16px;
@@ -668,6 +860,7 @@
 		z-index: 15;
 		background: var(--color-surface);
 		border-bottom: 1px solid var(--color-border);
+		transition: top 0.25s ease;
 		max-width: calc(var(--col-count) * 600px);
 		margin: 0 auto;
 	}
