@@ -3,10 +3,17 @@
 [![Build](https://github.com/scottdkey/bardbase/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/build.yml)
 [![API](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml)
 [![Frontend](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml)
+![Downloads](https://img.shields.io/github/downloads/scottdkey/bardbase/total)
+
 
 A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and reference works — built on SQLite, Go, and SvelteKit.
 
 **Live:** [bardbase.pages.dev](https://bardbase.pages.dev)
+
+## Warning --- alpha ----
+This project should be considered in alpha. There are many issues left to resolve, if you end up using the app and find an issue, please report issues to the github repository. Within the web app there is an issue reporter in many places(but not all) in the application. Please keep in mind that this project is something that is worked on for free and in spare time. While I want to provide the best possible experience, some things are outside of my control.  
+
+
 
 ## Architecture
 
