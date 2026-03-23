@@ -1695,7 +1695,10 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 				return &lines[idx], "line_number", 0.9
 			}
 			// Line number matches but headword isn't there.
-			// Don't accept yet — fall through to search nearby lines.
+			// Don't reject yet — search nearby lines, then fall back to
+			// the exact line number with lower confidence.
+			// Schmidt cited Globe line numbers which are correct; the headword
+			// may differ in spelling (e.g. "Montanto" vs "Mountanto").
 		}
 
 		// Search nearby lines (±20) for one containing the headword.
@@ -1737,13 +1740,16 @@ func findBestMatch(lines []textLineRow, cit citationRow) (*textLineRow, string, 
 			}
 		}
 
-		// Fall back to exact line number — only if we can't verify headword
-		// (headword too short). If we CAN verify but didn't find it, don't
-		// return a bad match — let later phases (headword search) handle it.
-		if !canVerifyHeadword {
-			if idx, ok := lineNumIdx[*cit.Line]; ok {
-				return &lines[idx], "line_number", 0.7
+		// Fall back to exact line number even when headword wasn't found.
+		// Schmidt's Globe line numbers are authoritative — the headword
+		// may be a spelling variant (Montanto/Mountanto), a proper noun,
+		// or an abbreviated form that doesn't appear literally in the text.
+		if idx, ok := lineNumIdx[*cit.Line]; ok {
+			conf := 0.6
+			if !canVerifyHeadword {
+				conf = 0.7
 			}
+			return &lines[idx], "line_number", conf
 		}
 	}
 

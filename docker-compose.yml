@@ -11,7 +11,7 @@ services:
       # Persist Go module cache across restarts
       - go-pkg-cache:/root/go/pkg/mod
       # Read-only access to the compiled database
-      - ./build:/data:ro
+      - ./build:/data
     environment:
       DB_PATH: /data/bardbase.db
       PORT: "8080"

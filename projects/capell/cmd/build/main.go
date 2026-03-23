@@ -136,6 +136,7 @@ func main() {
 		{"standalone", func() error { return importer.ImportStandalonePassages(database, sourcesDir) }},
 		{"attributions", func() error { return importer.PopulateAttributions(database) }},
 		{"mappings", func() error { return importer.BuildLineMappings(database) }},
+		{"ext-refs", func() error { return importer.CreateExternalReferenceLines(database) }},
 		{"citations", func() error { return importer.ResolveCitations(database) }},
 		{"ref-citations", func() error { return importer.ResolveReferenceCitations(database) }},
 		{"fts", func() error { return importer.BuildFTS(database) }},
