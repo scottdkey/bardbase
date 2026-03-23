@@ -38,6 +38,7 @@ make capell run
 
 # Start dev stack (requires podman/docker)
 podman compose up --build
+docker compose up --build
 
 # Or run services individually
 make api run    # Go API on :8080
