@@ -1,10 +1,29 @@
 <script lang="ts">
 	import type { LexiconEntryDetail } from '$lib/types';
-	import type { LineReference } from '$lib/server/api';
+	import type { CitationSpan, LineReference } from '$lib/server/api';
 	import IconClose from '$lib/components/icons/IconClose.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import CollapsibleSection from '$lib/components/ui/CollapsibleSection.svelte';
 	import { groupBy } from '$lib/utils';
+	import { goto } from '$app/navigation';
+
+	interface TextSegment {
+		text: string;
+		span?: CitationSpan;
+	}
+
+	function buildSegments(rawText: string, spans: CitationSpan[]): TextSegment[] {
+		if (!spans || spans.length === 0) return [{ text: rawText }];
+		const segments: TextSegment[] = [];
+		let pos = 0;
+		for (const sp of spans) {
+			if (sp.start > pos) segments.push({ text: rawText.slice(pos, sp.start) });
+			segments.push({ text: rawText.slice(sp.start, sp.end), span: sp });
+			pos = sp.end;
+		}
+		if (pos < rawText.length) segments.push({ text: rawText.slice(pos) });
+		return segments;
+	}
 
 	let {
 		ref,
@@ -31,7 +50,13 @@
 		source_name: string;
 		source_code: string;
 		citations: { work_title: string | null; act: number | null; scene: number | null; line: number | null; work_slug: string | null }[];
+		citation_spans?: CitationSpan[];
 	} | null>(null);
+
+	let refTextSegments = $derived.by((): TextSegment[] => {
+		if (!referenceEntry) return [];
+		return buildSegments(referenceEntry.raw_text, referenceEntry.citation_spans ?? []);
+	});
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -168,7 +193,7 @@
 				<section class="reference-works">
 					<h3 class="ref-section-title">Reference Works</h3>
 					{#each [...refsBySource.entries()] as [sourceName, refs] (sourceName)}
-						<CollapsibleSection label={sourceName} count={refs.length}>
+						<CollapsibleSection label={sourceName} count={refs.length} open={true}>
 							<ul class="ref-citation-list">
 								{#each refs as r, idx (idx)}
 									<li class="ref-citation-item">
@@ -186,7 +211,7 @@
 		{:else if referenceEntry}
 			<!-- Reference entry (Abbott, Onions, Bartlett, Henley & Farmer) -->
 			<div class="entry-text">
-				<p class="definition">{referenceEntry.raw_text}</p>
+				<p class="definition">{#each refTextSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<button class="citation-inline" onclick={() => goto(`/text/${seg.span!.work_slug}/${seg.span!.act}/${seg.span!.scene ?? 1}`)}>{seg.text}</button>{:else}{seg.text}{/if}{/each}</p>
 			</div>
 
 			{#if referenceEntry.citations && referenceEntry.citations.length > 0}
@@ -386,6 +411,26 @@
 		color: var(--color-text-secondary);
 		line-height: 1.7;
 		white-space: pre-wrap;
+	}
+
+	.citation-inline {
+		display: inline;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		color: var(--color-accent);
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		text-underline-offset: 2px;
+	}
+
+	.citation-inline:hover {
+		text-decoration-style: solid;
+		background: var(--color-hover);
+		border-radius: 2px;
 	}
 
 	/* ─── Citations ─── */

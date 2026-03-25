@@ -394,6 +394,13 @@ func isGlobeEdition(code string) bool {
 	return strings.Contains(code, "globe")
 }
 
+// isDivergentEdition returns true for editions whose lineation or scene
+// structure differs significantly from the Globe standard (First Folio,
+// early quartos). These benefit from a lighter gap penalty during alignment.
+func isDivergentEdition(code string) bool {
+	return strings.Contains(code, "folio") || strings.HasPrefix(code, "q1_")
+}
+
 func loadAlignTasksFromCache(
 	lineCache map[lineKey][]parser.AlignableLine,
 	workTypes map[int64]string,
@@ -405,6 +412,12 @@ func loadAlignTasksFromCache(
 		// Both editions share Globe line numbering: add affinity so that NW
 		// strongly prefers matching lines with the same (or adjacent) line numbers.
 		opts.LineNumberAffinity = 0.15
+	}
+	if isDivergentEdition(pair.ACode) || isDivergentEdition(pair.BCode) {
+		// Structurally divergent editions (Folio, early quartos) benefit from
+		// a lighter gap penalty so the aligner leaves lines unmatched rather
+		// than forcing poor pairings on edition-specific passages.
+		opts.GapPenalty = -0.05
 	}
 	// Collect all keys visible from this pair (present in either edition A or B)
 	// and group them by content type: plays, sonnets, poems.

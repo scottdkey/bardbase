@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"math"
 	"strings"
 	"unicode"
 )
@@ -150,6 +151,108 @@ func isConsonant(b byte) bool {
 	}
 }
 
+// charNgrams extracts character n-grams (trigrams by default) from normalized text.
+// Returns a frequency map suitable for cosine similarity computation.
+func charNgrams(s string, n int) map[string]int {
+	s = NormalizeForMatch(s)
+	// Remove spaces for character-level comparison so "a y" and "i" work at
+	// the character level without space noise.
+	s = strings.ReplaceAll(s, " ", "")
+	grams := make(map[string]int)
+	if len(s) < n {
+		// For very short strings (shorter than n), use the whole string as one gram.
+		if len(s) > 0 {
+			grams[s] = 1
+		}
+		return grams
+	}
+	for i := 0; i <= len(s)-n; i++ {
+		grams[s[i:i+n]] = grams[s[i:i+n]] + 1
+	}
+	return grams
+}
+
+// CharNgramSimilarity computes cosine similarity over character trigrams.
+// Effective for short strings where word-level Jaccard fails (e.g., "Ay" vs "I"
+// both normalize to single characters — trigram cosine handles these gracefully).
+// Returns 0.0–1.0.
+func CharNgramSimilarity(a, b string) float64 {
+	gramsA := charNgrams(a, 3)
+	gramsB := charNgrams(b, 3)
+
+	if len(gramsA) == 0 && len(gramsB) == 0 {
+		return 1.0
+	}
+	if len(gramsA) == 0 || len(gramsB) == 0 {
+		return 0.0
+	}
+
+	// Cosine similarity: dot(A,B) / (|A| * |B|)
+	var dot, magA, magB float64
+	for g, countA := range gramsA {
+		fa := float64(countA)
+		magA += fa * fa
+		if countB, ok := gramsB[g]; ok {
+			dot += fa * float64(countB)
+		}
+	}
+	for _, countB := range gramsB {
+		fb := float64(countB)
+		magB += fb * fb
+	}
+
+	if magA == 0 || magB == 0 {
+		return 0.0
+	}
+
+	return dot / (math.Sqrt(magA) * math.Sqrt(magB))
+}
+
+// HybridSimilarity picks the best similarity metric based on line length.
+// Short lines (≤3 words on either side) use character n-gram cosine similarity
+// since Jaccard on word sets returns 0 for single-word substitutions like "Ay"/"I".
+// Longer lines use Jaccard which is faster and more robust for multi-word lines.
+// When both metrics are available (medium-length lines of 4 words), it returns the max.
+func HybridSimilarity(a, b string) float64 {
+	setA := WordSet(a)
+	setB := WordSet(b)
+	jaccard := jaccardFromSets(setA, setB)
+
+	minWords := len(setA)
+	if len(setB) < minWords {
+		minWords = len(setB)
+	}
+
+	if minWords <= 3 {
+		ngram := CharNgramSimilarity(a, b)
+		if ngram > jaccard {
+			return ngram
+		}
+	}
+
+	return jaccard
+}
+
+// HybridSimilarityFromSets is like HybridSimilarity but uses pre-computed word sets
+// and raw content strings. Avoids re-normalizing for the Jaccard path.
+func HybridSimilarityFromSets(setA, setB map[string]bool, contentA, contentB string) float64 {
+	jaccard := jaccardFromSets(setA, setB)
+
+	minWords := len(setA)
+	if len(setB) < minWords {
+		minWords = len(setB)
+	}
+
+	if minWords <= 3 {
+		ngram := CharNgramSimilarity(contentA, contentB)
+		if ngram > jaccard {
+			return ngram
+		}
+	}
+
+	return jaccard
+}
+
 // WordSet splits normalized text into a set of unique words.
 func WordSet(s string) map[string]bool {
 	words := strings.Fields(NormalizeForMatch(s))
@@ -285,6 +388,13 @@ type AlignOptions struct {
 	// an exact line-number match adds 0.15 to the Jaccard score; a ±1-3 line
 	// offset adds half that. Zero disables the bonus entirely.
 	LineNumberAffinity float64
+
+	// GapPenalty controls the Needleman-Wunsch penalty for inserting gaps
+	// (unmatched lines). A lower magnitude (e.g. -0.05) lets the algorithm
+	// leave lines unmatched rather than forcing poor pairings, which is
+	// desirable for structurally divergent editions like the First Folio or
+	// early quartos. Zero uses the default of -0.1.
+	GapPenalty float64
 }
 
 // alignedThreshold returns the minimum Jaccard similarity for a pair to be
@@ -314,9 +424,154 @@ func alignedThreshold(a, b *AlignableLine) float64 {
 	return 0.2
 }
 
-// AlignSequences performs Needleman-Wunsch global alignment on two sequences of text lines.
-// Returns aligned pairs in display order with gap handling for insertions/deletions.
-// Uses Jaccard word similarity as the scoring function.
+// anchorPair represents a high-confidence match used to split sequences
+// into smaller segments for alignment.
+type anchorPair struct {
+	idxA int // index in linesA
+	idxB int // index in linesB
+	sim  float64
+}
+
+// findAnchors identifies high-confidence line matches between two sequences.
+// An anchor must have similarity >= threshold and be the best match for that
+// line in both directions (mutual best match). Anchors are returned in order.
+// Uses a greedy monotonic approach: anchors must preserve sequence order.
+func findAnchors(linesA, linesB []AlignableLine, threshold float64, opt AlignOptions) []anchorPair {
+	n := len(linesA)
+	m := len(linesB)
+
+	// For each line in A, find the best-matching line in B.
+	bestForA := make([]int, n)   // index in B
+	bestSimA := make([]float64, n)
+	for i := range n {
+		bestForA[i] = -1
+		for j := range m {
+			s := computeSimilarity(linesA[i], linesB[j], opt)
+			if s > bestSimA[i] {
+				bestSimA[i] = s
+				bestForA[i] = j
+			}
+		}
+	}
+
+	// For each line in B, find the best-matching line in A.
+	bestForB := make([]int, m)
+	bestSimB := make([]float64, m)
+	for j := range m {
+		bestForB[j] = -1
+		for i := range n {
+			s := computeSimilarity(linesA[i], linesB[j], opt)
+			if s > bestSimB[j] {
+				bestSimB[j] = s
+				bestForB[j] = i
+			}
+		}
+	}
+
+	// Collect mutual best matches above threshold.
+	var candidates []anchorPair
+	for i := range n {
+		j := bestForA[i]
+		if j < 0 || bestSimA[i] < threshold {
+			continue
+		}
+		// Mutual best: A[i]'s best is B[j], and B[j]'s best is A[i].
+		if bestForB[j] == i {
+			candidates = append(candidates, anchorPair{idxA: i, idxB: j, sim: bestSimA[i]})
+		}
+	}
+
+	// Filter to longest increasing subsequence on idxB to ensure monotonicity.
+	// This prevents crossing anchors (e.g., A[3]→B[5] and A[5]→B[3]).
+	anchors := longestIncreasingAnchors(candidates)
+	return anchors
+}
+
+// longestIncreasingAnchors extracts the longest subsequence of anchor pairs
+// where both idxA and idxB are strictly increasing. Input must be sorted by idxA
+// (guaranteed since we iterate A in order).
+func longestIncreasingAnchors(candidates []anchorPair) []anchorPair {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	n := len(candidates)
+	// dp[i] = length of LIS ending at i (based on idxB values)
+	dp := make([]int, n)
+	prev := make([]int, n)
+	for i := range n {
+		dp[i] = 1
+		prev[i] = -1
+	}
+
+	bestLen := 1
+	bestEnd := 0
+
+	for i := 1; i < n; i++ {
+		for j := 0; j < i; j++ {
+			if candidates[j].idxB < candidates[i].idxB && dp[j]+1 > dp[i] {
+				dp[i] = dp[j] + 1
+				prev[i] = j
+			}
+		}
+		if dp[i] > bestLen {
+			bestLen = dp[i]
+			bestEnd = i
+		}
+	}
+
+	// Reconstruct
+	result := make([]anchorPair, bestLen)
+	idx := bestEnd
+	for k := bestLen - 1; k >= 0; k-- {
+		result[k] = candidates[idx]
+		idx = prev[idx]
+	}
+	return result
+}
+
+// computeSimilarity calculates the similarity between two lines using the hybrid
+// metric plus optional line-number affinity. Used by both anchor finding and NW.
+func computeSimilarity(a, b AlignableLine, opt AlignOptions) float64 {
+	var s float64
+	if a.Words != nil && b.Words != nil {
+		s = HybridSimilarityFromSets(a.Words, b.Words, a.Content, b.Content)
+	} else {
+		s = HybridSimilarity(a.Content, b.Content)
+	}
+
+	if opt.LineNumberAffinity > 0 && a.LineNumber > 0 && b.LineNumber > 0 {
+		delta := a.LineNumber - b.LineNumber
+		if delta < 0 {
+			delta = -delta
+		}
+		var bonus float64
+		switch {
+		case delta == 0:
+			bonus = opt.LineNumberAffinity
+		case delta <= 3:
+			bonus = opt.LineNumberAffinity * 0.5
+		}
+		if bonus > 0 {
+			s += bonus
+			if s > 1.0 {
+				s = 1.0
+			}
+		}
+	}
+
+	return s
+}
+
+// AlignSequences performs alignment on two sequences of text lines using an
+// anchor-and-bridge strategy: high-confidence matches are found first, then
+// Needleman-Wunsch runs on each segment between anchors. This prevents drift
+// over long sequences and dramatically improves alignment for structurally
+// divergent editions like the First Folio.
+//
+// For small sequences (< 30 lines on both sides), falls through directly to NW
+// since anchor overhead isn't worth it. For very large sequences that exceed the
+// NW memory budget, falls back to simple positional alignment.
 //
 // opts is optional; when omitted the default zero value is used (no line-number
 // affinity). Passing a non-zero AlignOptions enables per-pair tuning.
@@ -350,54 +605,235 @@ func AlignSequences(linesA, linesB []AlignableLine, opts ...AlignOptions) []Alig
 	}
 
 	// For very large sequences, fall back to simple 1:1 alignment to bound
-	// memory and compute. The limit is a cell count (n×m) rather than a
-	// per-sequence length so that flat-vs-structured play comparisons
-	// (e.g., Q1 Hamlet ~2000 lines × SE Hamlet ~3500 lines = 7M cells, and
-	// Coriolanus OSS ~4000 × First Folio ~3400 = 13.6M cells) still use
-	// Needleman-Wunsch while truly enormous tasks fall back.
-	// 15M cells: sim(120MB float64) + dp(120MB float64) + trace(15MB int8) ≈ 255MB per task.
+	// memory and compute.
 	if int64(n)*int64(m) > 15_000_000 {
-		return simpleAlign(linesA, linesB, opt)
+		return resolveLineSplits(simpleAlign(linesA, linesB, opt))
 	}
 
-	gapPenalty := -0.1
+	// Small sequences: direct NW is fine, anchor overhead not worth it.
+	if n < 30 && m < 30 {
+		return resolveLineSplits(nwAlign(linesA, linesB, opt))
+	}
 
-	// Pre-compute similarity matrix.
-	// Use pre-computed word sets when available (set by buildLineCache) to avoid
-	// re-normalizing each line O(n×m) times — one normalize per line instead.
+	// Anchor-and-bridge: find high-confidence matches, split, NW each segment.
+	anchors := findAnchors(linesA, linesB, 0.7, opt)
+
+	// Not enough anchors to be useful — fall back to straight NW.
+	if len(anchors) < 2 {
+		return resolveLineSplits(nwAlign(linesA, linesB, opt))
+	}
+
+	var allPairs []AlignedPair
+
+	// Process segments between anchors (including before first and after last).
+	prevA, prevB := 0, 0
+	for _, anchor := range anchors {
+		// Align the segment before this anchor.
+		segA := linesA[prevA:anchor.idxA]
+		segB := linesB[prevB:anchor.idxB]
+		if len(segA) > 0 || len(segB) > 0 {
+			segPairs := nwAlign(segA, segB, opt)
+			allPairs = append(allPairs, segPairs...)
+		}
+
+		// Add the anchor pair itself.
+		a := linesA[anchor.idxA]
+		b := linesB[anchor.idxB]
+		mt := "aligned"
+		if anchor.sim < alignedThreshold(&a, &b) {
+			mt = "modified"
+		}
+		allPairs = append(allPairs, AlignedPair{
+			LineA: &a, LineB: &b, MatchType: mt, Similarity: anchor.sim,
+		})
+
+		prevA = anchor.idxA + 1
+		prevB = anchor.idxB + 1
+	}
+
+	// Align the tail after the last anchor.
+	tailA := linesA[prevA:]
+	tailB := linesB[prevB:]
+	if len(tailA) > 0 || len(tailB) > 0 {
+		tailPairs := nwAlign(tailA, tailB, opt)
+		allPairs = append(allPairs, tailPairs...)
+	}
+
+	return resolveLineSplits(allPairs)
+}
+
+// resolveLineSplits post-processes alignment results to detect 1:2 and 2:1 line
+// splits. The Folio wraps prose differently than modern editions — one modern line
+// may correspond to two Folio lines or vice versa. NW can only express 1:1 matches,
+// so these show up as adjacent only_a / only_b pairs.
+//
+// Strategy: scan for runs of unmatched lines. When we find consecutive only_a
+// lines adjacent to an only_b (or vice versa), try concatenating the only_a pair
+// and comparing against the single only_b. If similarity exceeds a threshold,
+// replace the three pairs with a single aligned pair (crediting the first line
+// of the concatenated side).
+func resolveLineSplits(pairs []AlignedPair) []AlignedPair {
+	if len(pairs) < 2 {
+		return pairs
+	}
+
+	const splitThreshold = 0.35
+
+	var result []AlignedPair
+	i := 0
+	for i < len(pairs) {
+		// Try 2:1 split — two only_a lines followed by one only_b (or interleaved).
+		if i+2 < len(pairs) {
+			if merged := tryMerge2to1(pairs[i], pairs[i+1], pairs[i+2], splitThreshold); merged != nil {
+				result = append(result, *merged)
+				i += 3
+				continue
+			}
+		}
+
+		// Try 1:2 split — one only_a followed by two only_b.
+		if i+2 < len(pairs) {
+			if merged := tryMerge1to2(pairs[i], pairs[i+1], pairs[i+2], splitThreshold); merged != nil {
+				result = append(result, *merged)
+				i += 3
+				continue
+			}
+		}
+
+		// Try 2:1 with just two adjacent pairs.
+		if i+1 < len(pairs) {
+			if merged := tryMerge2to1Short(pairs[i], pairs[i+1], splitThreshold); merged != nil {
+				result = append(result, *merged)
+				i += 2
+				continue
+			}
+			if merged := tryMerge1to2Short(pairs[i], pairs[i+1], splitThreshold); merged != nil {
+				result = append(result, *merged)
+				i += 2
+				continue
+			}
+		}
+
+		result = append(result, pairs[i])
+		i++
+	}
+
+	return result
+}
+
+// tryMerge2to1 checks if two only_a lines concatenated match a single only_b line.
+func tryMerge2to1(p1, p2, p3 AlignedPair, threshold float64) *AlignedPair {
+	if p1.MatchType != "only_a" || p2.MatchType != "only_a" || p3.MatchType != "only_b" {
+		return nil
+	}
+	combined := p1.LineA.Content + " " + p2.LineA.Content
+	sim := HybridSimilarity(combined, p3.LineB.Content)
+	if sim >= threshold {
+		return &AlignedPair{
+			LineA: p1.LineA, LineB: p3.LineB,
+			MatchType: "aligned", Similarity: sim,
+		}
+	}
+	return nil
+}
+
+// tryMerge1to2 checks if one only_a line matches two concatenated only_b lines.
+func tryMerge1to2(p1, p2, p3 AlignedPair, threshold float64) *AlignedPair {
+	if p1.MatchType != "only_b" || p2.MatchType != "only_b" || p3.MatchType != "only_a" {
+		// Also try: only_a then two only_b
+		if p1.MatchType != "only_a" || p2.MatchType != "only_b" || p3.MatchType != "only_b" {
+			return nil
+		}
+		combined := p2.LineB.Content + " " + p3.LineB.Content
+		sim := HybridSimilarity(p1.LineA.Content, combined)
+		if sim >= threshold {
+			return &AlignedPair{
+				LineA: p1.LineA, LineB: p2.LineB,
+				MatchType: "aligned", Similarity: sim,
+			}
+		}
+		return nil
+	}
+	combined := p1.LineB.Content + " " + p2.LineB.Content
+	sim := HybridSimilarity(p3.LineA.Content, combined)
+	if sim >= threshold {
+		return &AlignedPair{
+			LineA: p3.LineA, LineB: p1.LineB,
+			MatchType: "aligned", Similarity: sim,
+		}
+	}
+	return nil
+}
+
+// tryMerge2to1Short handles adjacent only_a + only_b where one side is a
+// "modified" pair with very low similarity — the NW aligned them but they're
+// really a split. Also handles simple adjacent only_a + only_b.
+func tryMerge2to1Short(p1, p2 AlignedPair, threshold float64) *AlignedPair {
+	// Adjacent only_a followed by only_b — try direct match
+	if p1.MatchType == "only_a" && p2.MatchType == "only_b" {
+		sim := HybridSimilarity(p1.LineA.Content, p2.LineB.Content)
+		if sim >= threshold {
+			return &AlignedPair{
+				LineA: p1.LineA, LineB: p2.LineB,
+				MatchType: "aligned", Similarity: sim,
+			}
+		}
+	}
+	return nil
+}
+
+// tryMerge1to2Short handles adjacent only_b + only_a.
+func tryMerge1to2Short(p1, p2 AlignedPair, threshold float64) *AlignedPair {
+	if p1.MatchType == "only_b" && p2.MatchType == "only_a" {
+		sim := HybridSimilarity(p2.LineA.Content, p1.LineB.Content)
+		if sim >= threshold {
+			return &AlignedPair{
+				LineA: p2.LineA, LineB: p1.LineB,
+				MatchType: "aligned", Similarity: sim,
+			}
+		}
+	}
+	return nil
+}
+
+// nwAlign performs Needleman-Wunsch global alignment on two sequences of text lines.
+// This is the core DP algorithm, called by AlignSequences on each segment between anchors.
+// Uses hybrid similarity (Jaccard for longer lines, character n-gram for short lines).
+func nwAlign(linesA, linesB []AlignableLine, opt AlignOptions) []AlignedPair {
+	n := len(linesA)
+	m := len(linesB)
+
+	if n == 0 && m == 0 {
+		return nil
+	}
+	if n == 0 {
+		pairs := make([]AlignedPair, m)
+		for j := range m {
+			b := linesB[j]
+			pairs[j] = AlignedPair{LineB: &b, MatchType: "only_b"}
+		}
+		return pairs
+	}
+	if m == 0 {
+		pairs := make([]AlignedPair, n)
+		for i := range n {
+			a := linesA[i]
+			pairs[i] = AlignedPair{LineA: &a, MatchType: "only_a"}
+		}
+		return pairs
+	}
+
+	gapPenalty := opt.GapPenalty
+	if gapPenalty == 0 {
+		gapPenalty = -0.1
+	}
+
+	// Pre-compute similarity matrix using computeSimilarity (hybrid + affinity).
 	sim := make([][]float64, n)
 	for i := range n {
 		sim[i] = make([]float64, m)
 		for j := range m {
-			if linesA[i].Words != nil && linesB[j].Words != nil {
-				sim[i][j] = jaccardFromSets(linesA[i].Words, linesB[j].Words)
-			} else {
-				sim[i][j] = JaccardSimilarity(linesA[i].Content, linesB[j].Content)
-			}
-			// Line-number affinity: for edition pairs sharing a numbering scheme
-			// (e.g. oss_globe↔perseus_globe), add a bonus when line numbers are
-			// close. This anchors the NW traceback and prevents drift in scenes
-			// where many consecutive lines share common short words.
-			if opt.LineNumberAffinity > 0 &&
-				linesA[i].LineNumber > 0 && linesB[j].LineNumber > 0 {
-				delta := linesA[i].LineNumber - linesB[j].LineNumber
-				if delta < 0 {
-					delta = -delta
-				}
-				var bonus float64
-				switch {
-				case delta == 0:
-					bonus = opt.LineNumberAffinity
-				case delta <= 3:
-					bonus = opt.LineNumberAffinity * 0.5
-				}
-				if bonus > 0 {
-					sim[i][j] += bonus
-					if sim[i][j] > 1.0 {
-						sim[i][j] = 1.0
-					}
-				}
-			}
+			sim[i][j] = computeSimilarity(linesA[i], linesB[j], opt)
 		}
 	}
 
@@ -413,8 +849,7 @@ func AlignSequences(linesA, linesB []AlignableLine, opts ...AlignOptions) []Alig
 		dp[0][j+1] = float64(j+1) * gapPenalty
 	}
 
-	// Traceback direction stored as int8: 0=diagonal(match), 1=up(gap in B), 2=left(gap in A).
-	// int8 saves 7 bytes/cell vs int on 64-bit — matters at 10M+ cells.
+	// Traceback direction: 0=diagonal, 1=up(gap in B), 2=left(gap in A).
 	trace := make([][]int8, n+1)
 	for i := range trace {
 		trace[i] = make([]int8, m+1)
@@ -428,10 +863,6 @@ func AlignSequences(linesA, linesB []AlignableLine, opts ...AlignOptions) []Alig
 
 	for i := range n {
 		for j := range m {
-			// Subtract gapPenalty magnitude so that 0-similarity pairs score the
-			// same as a gap rather than always winning the diagonal. Lines with
-			// Jaccard > |gapPenalty| (0.1) are preferred for alignment; lines below
-			// that threshold are treated no better than a gap insertion.
 			matchScore := dp[i][j] + sim[i][j] + gapPenalty
 			gapA := dp[i][j+1] + gapPenalty
 			gapB := dp[i+1][j] + gapPenalty
@@ -499,9 +930,9 @@ func simpleAlign(linesA, linesB []AlignableLine, opt AlignOptions) []AlignedPair
 			b := linesB[k]
 			var s float64
 			if a.Words != nil && b.Words != nil {
-				s = jaccardFromSets(a.Words, b.Words)
+				s = HybridSimilarityFromSets(a.Words, b.Words, a.Content, b.Content)
 			} else {
-				s = JaccardSimilarity(a.Content, b.Content)
+				s = HybridSimilarity(a.Content, b.Content)
 			}
 			// Apply line-number affinity in the simple aligner too.
 			if opt.LineNumberAffinity > 0 && a.LineNumber > 0 && b.LineNumber > 0 {

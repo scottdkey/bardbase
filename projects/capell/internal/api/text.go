@@ -114,13 +114,6 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 		LEFT JOIN characters c ON c.id = tl.character_id
 		WHERE tl.work_id = ? AND tl.edition_id IN (%s)
 		  AND tl.act = ? AND tl.scene = ?
-		  AND tl.id = (
-		    SELECT MIN(t2.id) FROM text_lines t2
-		    WHERE t2.work_id = tl.work_id AND t2.edition_id = tl.edition_id
-		      AND COALESCE(t2.act, 0) = COALESCE(tl.act, 0)
-		      AND COALESCE(t2.scene, 0) = COALESCE(tl.scene, 0)
-		      AND t2.line_number = tl.line_number
-		  )
 		ORDER BY tl.edition_id, tl.line_number, tl.id`, charCoalesce, edPlaceholders), queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("lines: %w", err)
@@ -198,10 +191,15 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 
 	// anchor line_id → map[otherEditionID]otherLineID
 	anchorToOther := map[int]map[int]int{}
-	var otherOnlyLineIDs []struct {
+
+	// Gap lines: lines in non-anchor editions with no anchor counterpart.
+	// Keyed by the anchor line ID they should appear after (0 = before all anchor lines).
+	type gapEntry struct {
 		edID   int
 		lineID int
 	}
+	gapsAfterAnchor := map[int][]gapEntry{}
+	lastAnchorByEdition := map[int]int{} // otherEdID → last anchor line ID seen in this alignment
 
 	for mappingRows.Next() {
 		var edA, edB int
@@ -227,17 +225,31 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 				anchorToOther[*anchorLineID] = map[int]int{}
 			}
 			anchorToOther[*anchorLineID][otherEdID] = *otherLineID
+			lastAnchorByEdition[otherEdID] = *anchorLineID
 		} else if anchorLineID == nil && otherLineID != nil {
-			otherOnlyLineIDs = append(otherOnlyLineIDs, struct {
-				edID   int
-				lineID int
-			}{otherEdID, *otherLineID})
+			afterID := lastAnchorByEdition[otherEdID]
+			gapsAfterAnchor[afterID] = append(gapsAfterAnchor[afterID], gapEntry{otherEdID, *otherLineID})
+		} else if anchorLineID != nil {
+			lastAnchorByEdition[otherEdID] = *anchorLineID
 		}
 	}
 
-	// Build aligned rows
+	// Build aligned rows, interleaving gap lines at correct positions
 	usedLines := map[int]bool{}
 	rows := make([]alignedSceneRow, 0, len(anchorLines))
+
+	// Gap lines that precede all anchor lines
+	for _, g := range gapsAfterAnchor[0] {
+		if l, ok := lineByID[g.lineID]; ok {
+			rows = append(rows, alignedSceneRow{
+				Editions: map[int]*alignedEditionLine{
+					g.edID: {LineNumber: l.lineNumber, Content: l.content, ContentType: l.contentType, CharacterName: l.characterName},
+				},
+			})
+			usedLines[g.lineID] = true
+		}
+	}
+
 	for _, al := range anchorLines {
 		row := alignedSceneRow{
 			Editions: map[int]*alignedEditionLine{
@@ -255,19 +267,20 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 			}
 		}
 		rows = append(rows, row)
-	}
 
-	// Append lines only in non-anchor editions
-	for _, ol := range otherOnlyLineIDs {
-		if usedLines[ol.lineID] {
-			continue
-		}
-		if l, ok := lineByID[ol.lineID]; ok {
-			rows = append(rows, alignedSceneRow{
-				Editions: map[int]*alignedEditionLine{
-					ol.edID: {LineNumber: l.lineNumber, Content: l.content, ContentType: l.contentType, CharacterName: l.characterName},
-				},
-			})
+		// Insert gap lines that belong after this anchor line
+		for _, g := range gapsAfterAnchor[al.id] {
+			if usedLines[g.lineID] {
+				continue
+			}
+			if l, ok := lineByID[g.lineID]; ok {
+				rows = append(rows, alignedSceneRow{
+					Editions: map[int]*alignedEditionLine{
+						g.edID: {LineNumber: l.lineNumber, Content: l.content, ContentType: l.contentType, CharacterName: l.characterName},
+					},
+				})
+				usedLines[g.lineID] = true
+			}
 		}
 	}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { CitationSpan } from '$lib/server/api';
 	import IconBack from '$lib/components/icons/IconBack.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import CollapsibleSection from '$lib/components/ui/CollapsibleSection.svelte';
@@ -25,6 +26,31 @@
 
 	let citationsByWork = $derived.by(() => {
 		return groupBy(entry.citations as Citation[], (c) => c.work_title || 'Other');
+	});
+
+	// Split raw_text into alternating plain/citation segments for annotated rendering.
+	interface TextSegment {
+		text: string;
+		span?: CitationSpan;
+	}
+
+	let textSegments = $derived.by((): TextSegment[] => {
+		const spans: CitationSpan[] = entry.citation_spans ?? [];
+		if (spans.length === 0) return [{ text: entry.raw_text }];
+
+		const segments: TextSegment[] = [];
+		let pos = 0;
+		for (const sp of spans) {
+			if (sp.start > pos) {
+				segments.push({ text: entry.raw_text.slice(pos, sp.start) });
+			}
+			segments.push({ text: entry.raw_text.slice(sp.start, sp.end), span: sp });
+			pos = sp.end;
+		}
+		if (pos < entry.raw_text.length) {
+			segments.push({ text: entry.raw_text.slice(pos) });
+		}
+		return segments;
 	});
 
 	function formatLoc(c: Citation): string {
@@ -58,7 +84,7 @@
 	</div>
 
 	<div class="entry-body">
-		<p class="definition">{entry.raw_text}</p>
+		<p class="definition">{#each textSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<button class="citation-inline" onclick={() => goto(`/text/${seg.span!.work_slug}/${seg.span!.act}/${seg.span!.scene ?? 1}`)}>{seg.text}</button>{:else}{seg.text}{/if}{/each}</p>
 
 		{#if entry.citations.length > 0}
 			{#if entry.source_code === 'bartlett'}
@@ -89,7 +115,7 @@
 					</div>
 				</section>
 			{:else}
-				<CollapsibleSection label="References" count={entry.citations.length}>
+				<CollapsibleSection label="References" count={entry.citations.length} open={true}>
 					<div class="citation-groups">
 						{#each [...citationsByWork.entries()] as [workName, citations] (workName)}
 							<div class="citation-work-group">
@@ -162,6 +188,26 @@
 		color: var(--color-text-secondary);
 		line-height: 1.8;
 		white-space: pre-wrap;
+	}
+
+	.citation-inline {
+		display: inline;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		color: var(--color-accent);
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		text-underline-offset: 2px;
+	}
+
+	.citation-inline:hover {
+		text-decoration-style: solid;
+		background: var(--color-hover);
+		border-radius: 2px;
 	}
 
 	/* ─── Bartlett's citations below ─── */

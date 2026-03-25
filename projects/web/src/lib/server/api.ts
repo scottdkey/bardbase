@@ -113,6 +113,15 @@ export interface ReferenceEntryCitation {
 	work_slug: string | null;
 }
 
+export interface CitationSpan {
+	start: number;
+	end: number;
+	work_slug?: string;
+	act?: number;
+	scene?: number;
+	line?: number;
+}
+
 export interface ReferenceEntryDetail {
 	id: number;
 	headword: string;
@@ -120,6 +129,7 @@ export interface ReferenceEntryDetail {
 	source_name: string;
 	source_code: string;
 	citations: ReferenceEntryCitation[];
+	citation_spans: CitationSpan[];
 }
 
 export interface WorkDivision {

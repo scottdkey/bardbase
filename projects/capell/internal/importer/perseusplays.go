@@ -253,51 +253,88 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 // Perseus only marks Globe numbers on milestone lines (every 5th/10th via
 // <lb ed="G" n="10"/>). Lines between milestones get GlobeLine=0.
 //
-// This function walks through the lines and interpolates: between two
-// milestones at Globe numbers G1 and G2 with N lines between them,
-// each line gets G1+1, G1+2, etc. Lines before the first milestone
-// count backwards. Stage directions share the number of the preceding line.
+// Processing is done per-scene to avoid numbers bleeding across scene
+// boundaries. Within each scene, milestones anchor the numbering and
+// lines between milestones are interpolated linearly.
 func interpolateGlobeNumbers(lines []parser.PerseusLine) {
 	if len(lines) == 0 {
 		return
 	}
 
-	// Pass 1: assign Globe numbers to speech lines (not stage directions)
-	// using milestones as anchors.
-	current := 0
+	// Split into per-scene slices and process each independently.
+	start := 0
+	for start < len(lines) {
+		act, scene := lines[start].Act, lines[start].Scene
+		end := start + 1
+		for end < len(lines) && lines[end].Act == act && lines[end].Scene == scene {
+			end++
+		}
+		interpolateSceneGlobeNumbers(lines[start:end])
+		start = end
+	}
+}
+
+// interpolateSceneGlobeNumbers assigns Globe line numbers to all lines in a
+// single scene. It uses milestone lines (those with GlobeLine set by the parser)
+// as anchors and linearly interpolates between them.
+func interpolateSceneGlobeNumbers(lines []parser.PerseusLine) {
+	// Collect indices of speech lines (not stage directions).
+	speechIdx := make([]int, 0, len(lines))
 	for i := range lines {
-		if lines[i].GlobeLine > 0 {
-			// This is a milestone — use its number as the anchor.
-			current = lines[i].GlobeLine
-		} else if !lines[i].IsStageDirection {
-			// Increment from last known Globe number.
-			current++
-			lines[i].GlobeLine = current
+		if !lines[i].IsStageDirection {
+			speechIdx = append(speechIdx, i)
+		}
+	}
+	if len(speechIdx) == 0 {
+		return
+	}
+
+	// Find milestones: speech lines that already have a Globe number from the parser.
+	type milestone struct {
+		speechPos int // position within speechIdx
+		globeN    int
+	}
+	var milestones []milestone
+	for si, idx := range speechIdx {
+		if lines[idx].GlobeLine > 0 {
+			milestones = append(milestones, milestone{si, lines[idx].GlobeLine})
 		}
 	}
 
-	// Pass 2: fill in lines before the first milestone by counting backwards.
-	firstMilestone := -1
-	for i := range lines {
-		if lines[i].GlobeLine > 0 {
-			firstMilestone = i
-			break
+	if len(milestones) == 0 {
+		// No milestones in this scene — number sequentially from 1.
+		for i, idx := range speechIdx {
+			lines[idx].GlobeLine = i + 1
 		}
-	}
-	if firstMilestone > 0 {
-		num := lines[firstMilestone].GlobeLine
-		for i := firstMilestone - 1; i >= 0; i-- {
-			if !lines[i].IsStageDirection {
-				num--
-				if num < 1 {
-					num = 1
-				}
-				lines[i].GlobeLine = num
+	} else {
+		// Interpolate before the first milestone by counting backwards.
+		first := milestones[0]
+		for i := 0; i < first.speechPos; i++ {
+			lines[speechIdx[i]].GlobeLine = max(1, first.globeN-(first.speechPos-i))
+		}
+
+		// Interpolate between consecutive milestones using linear interpolation.
+		for m := 0; m < len(milestones)-1; m++ {
+			startPos := milestones[m].speechPos
+			endPos := milestones[m+1].speechPos
+			startN := milestones[m].globeN
+			endN := milestones[m+1].globeN
+
+			span := endPos - startPos
+			for i := startPos; i < endPos; i++ {
+				n := startN + (endN-startN)*(i-startPos)/span
+				lines[speechIdx[i]].GlobeLine = n
 			}
 		}
+
+		// Interpolate after the last milestone by counting forwards.
+		last := milestones[len(milestones)-1]
+		for i := last.speechPos; i < len(speechIdx); i++ {
+			lines[speechIdx[i]].GlobeLine = last.globeN + (i - last.speechPos)
+		}
 	}
 
-	// Pass 3: stage directions get the same number as the preceding speech line.
+	// Stage directions get the same number as the preceding speech line.
 	lastNum := 0
 	for i := range lines {
 		if lines[i].IsStageDirection {

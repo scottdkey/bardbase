@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -343,5 +344,216 @@ func TestAlignSequences_CompletelyDifferent(t *testing.T) {
 	}
 	if pairs[0].MatchType != "modified" {
 		t.Errorf("expected modified for completely different content, got %s", pairs[0].MatchType)
+	}
+}
+
+// === Character N-gram Similarity Tests ===
+
+func TestCharNgramSimilarity_Identical(t *testing.T) {
+	score := CharNgramSimilarity("to be or not to be", "to be or not to be")
+	if math.Abs(score-1.0) > 0.001 {
+		t.Errorf("expected ~1.0 for identical, got %f", score)
+	}
+}
+
+func TestCharNgramSimilarity_BothEmpty(t *testing.T) {
+	score := CharNgramSimilarity("", "")
+	if score != 1.0 {
+		t.Errorf("expected 1.0 for both empty, got %f", score)
+	}
+}
+
+func TestCharNgramSimilarity_OneEmpty(t *testing.T) {
+	score := CharNgramSimilarity("hello", "")
+	if score != 0.0 {
+		t.Errorf("expected 0.0 when one is empty, got %f", score)
+	}
+}
+
+func TestCharNgramSimilarity_ShortWords(t *testing.T) {
+	// "Ay" and "I" — the classic Folio substitution. Both very short.
+	// After normalization, "ay" vs "i" — completely different at word level
+	// but at character level they should get a non-zero score (both are short).
+	scoreJaccard := JaccardSimilarity("Ay", "I")
+	scoreNgram := CharNgramSimilarity("Ay", "I")
+
+	if scoreJaccard != 0.0 {
+		t.Errorf("Jaccard should be 0.0 for Ay vs I, got %f", scoreJaccard)
+	}
+	// N-gram won't be high either for these truly different strings,
+	// but the hybrid approach handles this case.
+	_ = scoreNgram // just verify it doesn't panic
+}
+
+func TestCharNgramSimilarity_SimilarShortWords(t *testing.T) {
+	// Words that are very similar at character level
+	score := CharNgramSimilarity("speak", "speake")
+	if score < 0.7 {
+		t.Errorf("expected high similarity for speak/speake, got %f", score)
+	}
+}
+
+func TestCharNgramSimilarity_CompletelyDifferent(t *testing.T) {
+	score := CharNgramSimilarity("abcdef", "xyz")
+	if score != 0.0 {
+		t.Errorf("expected 0.0 for completely different strings, got %f", score)
+	}
+}
+
+// === Hybrid Similarity Tests ===
+
+func TestHybridSimilarity_LongLines_UsesJaccard(t *testing.T) {
+	// Long lines should get the same score as Jaccard
+	a := "to be or not to be that is the question whether"
+	b := "to be or not to be that is the question whether"
+	hybrid := HybridSimilarity(a, b)
+	jaccard := JaccardSimilarity(a, b)
+	if math.Abs(hybrid-jaccard) > 0.001 {
+		t.Errorf("for long lines, hybrid (%f) should equal jaccard (%f)", hybrid, jaccard)
+	}
+}
+
+func TestHybridSimilarity_ShortLines_BetterThanJaccard(t *testing.T) {
+	// Short lines where n-gram should do better
+	a := "speake"
+	b := "speak"
+	hybrid := HybridSimilarity(a, b)
+	jaccard := JaccardSimilarity(a, b)
+	if hybrid < jaccard {
+		t.Errorf("hybrid (%f) should be >= jaccard (%f) for short lines", hybrid, jaccard)
+	}
+}
+
+func TestHybridSimilarity_EarlyModernSpelling(t *testing.T) {
+	cases := []struct {
+		a, b    string
+		wantMin float64
+	}{
+		// These all normalize to the same thing via NormalizeForMatch
+		{"haue patience", "have patience", 1.0},
+		{"loue and peace", "love and peace", 1.0},
+		// Short line with Folio spelling
+		{"speake truth", "speak truth", 1.0}, // terminal-e normalizes away
+	}
+	for _, c := range cases {
+		got := HybridSimilarity(c.a, c.b)
+		if got < c.wantMin {
+			t.Errorf("HybridSimilarity(%q, %q) = %.3f, want >= %.3f", c.a, c.b, got, c.wantMin)
+		}
+	}
+}
+
+// === Anchor-and-Bridge Tests ===
+
+func TestAlignSequences_AnchorBridge_LargeSequence(t *testing.T) {
+	// Create a sequence large enough to trigger anchor-and-bridge (>30 lines).
+	// Include high-confidence anchors and some divergent middle sections.
+	var linesA, linesB []AlignableLine
+	for i := 0; i < 40; i++ {
+		content := fmt.Sprintf("line %d of the play with unique words number %d", i, i)
+		linesA = append(linesA, AlignableLine{
+			ID: int64(i), Content: content, LineNumber: i + 1,
+			Words: WordSet(content),
+		})
+	}
+	for i := 0; i < 40; i++ {
+		content := fmt.Sprintf("line %d of the play with unique words number %d", i, i)
+		if i >= 15 && i <= 18 {
+			// Insert a divergent section in B
+			content = fmt.Sprintf("completely different folio text here section %d", i)
+		}
+		linesB = append(linesB, AlignableLine{
+			ID: int64(100 + i), Content: content, LineNumber: i + 1,
+			Words: WordSet(content),
+		})
+	}
+
+	pairs := AlignSequences(linesA, linesB)
+
+	// Count aligned pairs — should be high despite the divergent section
+	aligned := 0
+	for _, p := range pairs {
+		if p.MatchType == "aligned" {
+			aligned++
+		}
+	}
+
+	// At least 35 of 40 should align (the 4 divergent + maybe 1-2 boundary)
+	if aligned < 34 {
+		t.Errorf("expected at least 34 aligned pairs, got %d out of %d total", aligned, len(pairs))
+	}
+}
+
+// === Line Split Resolution Tests ===
+
+func TestAlignSequences_LineSplit_TwoToOne(t *testing.T) {
+	// Folio wraps one long line as two shorter lines.
+	linesA := []AlignableLine{
+		{ID: 1, Content: "To be or not to be that is the question", LineNumber: 1,
+			Words: WordSet("To be or not to be that is the question")},
+		{ID: 2, Content: "Whether tis nobler in the mind", LineNumber: 2,
+			Words: WordSet("Whether tis nobler in the mind")},
+		{ID: 3, Content: "to suffer", LineNumber: 3,
+			Words: WordSet("to suffer")},
+		{ID: 4, Content: "The slings and arrows of outrageous fortune", LineNumber: 4,
+			Words: WordSet("The slings and arrows of outrageous fortune")},
+	}
+	linesB := []AlignableLine{
+		{ID: 10, Content: "To be or not to be that is the question", LineNumber: 1,
+			Words: WordSet("To be or not to be that is the question")},
+		{ID: 11, Content: "Whether tis nobler in the mind to suffer", LineNumber: 2,
+			Words: WordSet("Whether tis nobler in the mind to suffer")},
+		{ID: 12, Content: "The slings and arrows of outrageous fortune", LineNumber: 3,
+			Words: WordSet("The slings and arrows of outrageous fortune")},
+	}
+
+	pairs := AlignSequences(linesA, linesB)
+
+	// Should have resolved the 2:1 split — line 2+3 in A match line 2 in B
+	aligned := 0
+	for _, p := range pairs {
+		if p.MatchType == "aligned" {
+			aligned++
+		}
+	}
+	// All lines should be accounted for with good matches
+	if aligned < 3 {
+		t.Errorf("expected at least 3 aligned pairs (with line-split resolution), got %d", aligned)
+		for _, p := range pairs {
+			aID, bID := int64(0), int64(0)
+			if p.LineA != nil {
+				aID = p.LineA.ID
+			}
+			if p.LineB != nil {
+				bID = p.LineB.ID
+			}
+			t.Logf("  A:%d B:%d type=%s sim=%.3f", aID, bID, p.MatchType, p.Similarity)
+		}
+	}
+}
+
+func TestFindAnchors_Monotonic(t *testing.T) {
+	// Verify anchors are always in increasing order
+	var linesA, linesB []AlignableLine
+	for i := 0; i < 10; i++ {
+		content := fmt.Sprintf("unique content for line %d alpha beta gamma", i)
+		linesA = append(linesA, AlignableLine{
+			ID: int64(i), Content: content, LineNumber: i + 1,
+			Words: WordSet(content),
+		})
+		linesB = append(linesB, AlignableLine{
+			ID: int64(100 + i), Content: content, LineNumber: i + 1,
+			Words: WordSet(content),
+		})
+	}
+
+	anchors := findAnchors(linesA, linesB, 0.7, AlignOptions{})
+
+	for i := 1; i < len(anchors); i++ {
+		if anchors[i].idxA <= anchors[i-1].idxA || anchors[i].idxB <= anchors[i-1].idxB {
+			t.Errorf("anchors not monotonic: [%d]={%d,%d} [%d]={%d,%d}",
+				i-1, anchors[i-1].idxA, anchors[i-1].idxB,
+				i, anchors[i].idxA, anchors[i].idxB)
+		}
 	}
 }

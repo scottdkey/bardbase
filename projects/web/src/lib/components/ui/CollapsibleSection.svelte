@@ -4,15 +4,17 @@
 	let {
 		label,
 		count,
+		open = false,
 		children
 	}: {
 		label: string;
 		count?: number;
+		open?: boolean;
 		children: Snippet;
 	} = $props();
 </script>
 
-<details class="collapsible">
+<details class="collapsible" {open}>
 	<summary class="toggle">{label}{count != null ? ` (${count})` : ''}</summary>
 	<div class="content">
 		{@render children()}
