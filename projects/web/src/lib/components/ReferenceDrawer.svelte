@@ -41,6 +41,13 @@
 		henley_farmer: 'Henley & Farmer Slang'
 	};
 
+	const SOURCE_HINTS: Record<string, string> = {
+		onions: 'Explains unfamiliar or archaic words',
+		abbott: 'Explains grammar and syntax',
+		bartlett: 'Every occurrence of this word in Shakespeare',
+		henley_farmer: 'Historical slang and colloquial usage'
+	};
+
 	// Entry data - one of these will be populated
 	let lexiconEntry = $state<LexiconEntryDetail | null>(null);
 	let referenceEntry = $state<{
@@ -167,20 +174,23 @@
 				{/if}
 
 				{#if sub.senses.length > 0}
-					<section class="senses">
-						{#each sub.senses as sense (sense.id)}
-							<div class="sense-block" class:sub-sense={sense.sub_sense}>
-								<div class="sense">
-									{#if sense.sub_sense}
-										<span class="sense-num sub">{sense.sub_sense})</span>
-									{:else}
-										<span class="sense-num">{sense.sense_number})</span>
-									{/if}
-									<p class="sense-def">{sense.definition_text}</p>
+					{@const otherSenses = sub.senses.filter(s => s.definition_text !== primaryDefinition)}
+					{#if otherSenses.length > 0}
+						<section class="senses">
+							{#each otherSenses as sense (sense.id)}
+								<div class="sense-block" class:sub-sense={sense.sub_sense}>
+									<div class="sense">
+										{#if sense.sub_sense}
+											<span class="sense-num sub">{sense.sub_sense})</span>
+										{:else}
+											<span class="sense-num">{sense.sense_number})</span>
+										{/if}
+										<p class="sense-def">{sense.definition_text}</p>
+									</div>
 								</div>
-							</div>
-						{/each}
-					</section>
+							{/each}
+						</section>
+					{/if}
 				{:else if sub.full_text}
 					<section class="full-text">
 						<p>{sub.full_text}</p>
@@ -189,18 +199,31 @@
 			{/each}
 
 			{#if lexiconEntry.references && lexiconEntry.references.length > 0}
-				{@const refsBySource = groupBy(lexiconEntry.references, (r) => r.source_name)}
+				{@const refsBySource = groupBy(lexiconEntry.references, (r) => r.source_code)}
 				<section class="reference-works">
 					<h3 class="ref-section-title">Reference Works</h3>
-					{#each [...refsBySource.entries()] as [sourceName, refs] (sourceName)}
-						<CollapsibleSection label={sourceName} count={refs.length} open={true}>
+					{#each [...refsBySource.entries()] as [sourceCode, refs] (sourceCode)}
+						{@const sourceDesc = SOURCE_HINTS[sourceCode] ?? ''}
+						<CollapsibleSection label={refs[0].source_name} count={refs.length} open={true}>
+							{#if sourceDesc}
+								<p class="source-hint">{sourceDesc}</p>
+							{/if}
 							<ul class="ref-citation-list">
 								{#each refs as r, idx (idx)}
 									<li class="ref-citation-item">
-										<span class="ref-location">
-											{r.work_title ?? r.work_abbrev ?? ''}
-											{r.act != null ? `${r.act}.${r.scene ?? ''}.${r.line ?? ''}` : ''}
-										</span>
+										{#if r.work_slug && r.act != null}
+											<button class="ref-location clickable" onclick={() => goto(`/text/${r.work_slug}/${r.act}/${r.scene ?? 1}${r.line != null ? `?line=${r.line}` : ''}`)}>
+												{r.work_title ?? r.work_abbrev ?? ''} {r.act}.{r.scene ?? ''}.{r.line ?? ''}
+											</button>
+										{:else}
+											<span class="ref-location">
+												{r.work_title ?? r.work_abbrev ?? ''}
+												{r.act != null ? ` ${r.act}.${r.scene ?? ''}.${r.line ?? ''}` : ''}
+											</span>
+										{/if}
+										{#if r.entry_id}
+											<button class="ref-entry-link" onclick={() => goto(`/reference/${r.entry_id}`)}>view</button>
+										{/if}
 									</li>
 								{/each}
 							</ul>
@@ -510,6 +533,49 @@
 		font-weight: 600;
 		color: var(--color-text);
 		margin-right: 4px;
+	}
+
+	.ref-location.clickable {
+		border: none;
+		background: none;
+		font: inherit;
+		font-weight: 600;
+		color: var(--color-accent);
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.ref-location.clickable:hover {
+		text-decoration: underline;
+	}
+
+	.ref-entry-link {
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: 0.6rem;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		padding: 1px 4px;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+	}
+
+	.ref-entry-link:hover {
+		color: var(--color-accent);
+	}
+
+	.source-hint {
+		margin: 0 0 6px;
+		font-size: 0.65rem;
+		color: var(--color-text-muted);
+		font-style: italic;
+	}
+
+	.ref-citation-item {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
 	}
 
 	@media (max-width: 600px) {

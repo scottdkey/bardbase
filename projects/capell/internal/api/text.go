@@ -22,12 +22,28 @@ type alignedSceneRow struct {
 	Editions map[int]*alignedEditionLine `json:"editions"`
 }
 
+type characterInfo struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	SpeechCount int     `json:"speech_count"`
+}
+
 type multiEditionScene struct {
 	WorkTitle         string            `json:"work_title"`
 	Act               int               `json:"act"`
 	Scene             int               `json:"scene"`
 	AvailableEditions []editionInfo     `json:"available_editions"`
+	Characters        []characterInfo   `json:"characters"`
 	Rows              []alignedSceneRow `json:"rows"`
+}
+
+type lineRow struct {
+	id            int
+	editionID     int
+	lineNumber    *int
+	content       string
+	contentType   *string
+	characterName *string
 }
 
 func (s *Server) handleScene(w http.ResponseWriter, r *http.Request) {
@@ -120,15 +136,6 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 	}
 	defer lineRows.Close()
 
-	type lineRow struct {
-		id            int
-		editionID     int
-		lineNumber    *int
-		content       string
-		contentType   *string
-		characterName *string
-	}
-
 	linesByEdition := map[int][]lineRow{}
 	lineByID := map[int]lineRow{}
 	for lineRows.Next() {
@@ -159,7 +166,8 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 				},
 			}
 		}
-		return &multiEditionScene{WorkTitle: workTitle, Act: act, Scene: scene, AvailableEditions: availEditions, Rows: rows}, nil
+		characters := s.loadCharacters(workId)
+		return &multiEditionScene{WorkTitle: workTitle, Act: act, Scene: scene, AvailableEditions: availEditions, Characters: characters, Rows: rows}, nil
 	}
 
 	// Load line_mappings between anchor and other editions
@@ -284,5 +292,184 @@ func (s *Server) getMultiEditionScene(workId, act, scene int) (*multiEditionScen
 		}
 	}
 
-	return &multiEditionScene{WorkTitle: workTitle, Act: act, Scene: scene, AvailableEditions: availEditions, Rows: rows}, nil
+	// Check for editions with work-level mappings (act=0, scene=0) that aren't
+	// already present. This handles structurally divergent editions like the First
+	// Folio which stores all lines in act-level scenes. The work-level alignment
+	// maps anchor lines to Folio lines regardless of scene structure.
+	rows, availEditions = s.mergeWorkLevelEditions(workId, anchorID, anchorLines, rows, availEditions, charCoalesce)
+
+	characters := s.loadCharacters(workId)
+	return &multiEditionScene{WorkTitle: workTitle, Act: act, Scene: scene, AvailableEditions: availEditions, Characters: characters, Rows: rows}, nil
+}
+
+func (s *Server) mergeWorkLevelEditions(
+	workId, anchorID int,
+	anchorLines []lineRow,
+	rows []alignedSceneRow,
+	availEditions []editionInfo,
+	charCoalesce string,
+) ([]alignedSceneRow, []editionInfo) {
+	// Find editions that have work-level mappings but aren't already in availEditions.
+	presentEditions := map[int]bool{}
+	for _, e := range availEditions {
+		presentEditions[e.ID] = true
+	}
+
+	wlRows, err := s.db.Query(`SELECT DISTINCT
+		CASE WHEN lm.edition_a_id = ? THEN lm.edition_b_id ELSE lm.edition_a_id END AS other_ed_id,
+		e.short_code, e.name
+		FROM line_mappings lm
+		JOIN editions e ON e.id = CASE WHEN lm.edition_a_id = ? THEN lm.edition_b_id ELSE lm.edition_a_id END
+		WHERE lm.work_id = ? AND lm.act = 0 AND lm.scene = 0
+		  AND (lm.edition_a_id = ? OR lm.edition_b_id = ?)
+		  AND e.id IN (1,2,3,4,5)`,
+		anchorID, anchorID, workId, anchorID, anchorID)
+	if err != nil {
+		return rows, availEditions
+	}
+	defer wlRows.Close()
+
+	var wlEditions []editionInfo
+	for wlRows.Next() {
+		var e editionInfo
+		if err := wlRows.Scan(&e.ID, &e.Code, &e.Name); err != nil {
+			continue
+		}
+		if !presentEditions[e.ID] {
+			wlEditions = append(wlEditions, e)
+		}
+	}
+
+	if len(wlEditions) == 0 {
+		return rows, availEditions
+	}
+
+	// Build anchor line ID → row index map
+	anchorIDToRow := map[int]int{}
+	for _, al := range anchorLines {
+		for i, row := range rows {
+			if ed, ok := row.Editions[anchorID]; ok && ed.Content == al.content {
+				anchorIDToRow[al.id] = i
+				break
+			}
+		}
+	}
+
+	for _, wlEd := range wlEditions {
+		// Load work-level mappings between anchor and this edition
+		mapRows, err := s.db.Query(`SELECT lm.line_a_id, lm.line_b_id
+			FROM line_mappings lm
+			WHERE lm.work_id = ? AND lm.act = 0 AND lm.scene = 0
+			  AND ((lm.edition_a_id = ? AND lm.edition_b_id = ?)
+			    OR (lm.edition_a_id = ? AND lm.edition_b_id = ?))`,
+			workId, anchorID, wlEd.ID, wlEd.ID, anchorID)
+		if err != nil {
+			continue
+		}
+
+		// Collect the other-edition line IDs that map to our anchor lines
+		otherLineIDs := map[int]bool{}
+		anchorToOther := map[int]int{}
+		for mapRows.Next() {
+			var lineA, lineB *int
+			if err := mapRows.Scan(&lineA, &lineB); err != nil {
+				continue
+			}
+			var anchorLID, otherLID *int
+			if lineA != nil {
+				if _, ok := anchorIDToRow[*lineA]; ok {
+					anchorLID = lineA
+					otherLID = lineB
+				} else {
+					anchorLID = lineB
+					otherLID = lineA
+				}
+			} else {
+				anchorLID = lineB
+				otherLID = lineA
+			}
+			if anchorLID != nil && otherLID != nil {
+				anchorToOther[*anchorLID] = *otherLID
+				otherLineIDs[*otherLID] = true
+			}
+		}
+		mapRows.Close()
+
+		if len(otherLineIDs) == 0 {
+			continue
+		}
+
+		// Load the actual text lines for this edition
+		otherIDs := make([]int, 0, len(otherLineIDs))
+		for id := range otherLineIDs {
+			otherIDs = append(otherIDs, id)
+		}
+		olPlaceholders := makePlaceholders(len(otherIDs))
+		olArgs := intsToArgs(otherIDs)
+
+		olRows, err := s.db.Query(fmt.Sprintf(`SELECT tl.id, tl.line_number, tl.content, tl.content_type,
+			%s AS character_name
+			FROM text_lines tl
+			LEFT JOIN characters c ON c.id = tl.character_id
+			WHERE tl.id IN (%s)`, charCoalesce, olPlaceholders), olArgs...)
+		if err != nil {
+			continue
+		}
+		otherLines := map[int]lineRow{}
+		for olRows.Next() {
+			var lr lineRow
+			lr.editionID = wlEd.ID
+			if err := olRows.Scan(&lr.id, &lr.lineNumber, &lr.content, &lr.contentType, &lr.characterName); err != nil {
+				continue
+			}
+			otherLines[lr.id] = lr
+		}
+		olRows.Close()
+
+		// Merge into existing rows
+		merged := false
+		for _, al := range anchorLines {
+			otherLID, ok := anchorToOther[al.id]
+			if !ok {
+				continue
+			}
+			ol, ok := otherLines[otherLID]
+			if !ok {
+				continue
+			}
+			rowIdx, ok := anchorIDToRow[al.id]
+			if !ok {
+				continue
+			}
+			rows[rowIdx].Editions[wlEd.ID] = &alignedEditionLine{
+				LineNumber: ol.lineNumber, Content: ol.content,
+				ContentType: ol.contentType, CharacterName: ol.characterName,
+			}
+			merged = true
+		}
+
+		if merged {
+			availEditions = append(availEditions, wlEd)
+		}
+	}
+
+	return rows, availEditions
+}
+
+func (s *Server) loadCharacters(workId int) []characterInfo {
+	rows, err := s.db.Query(`SELECT name, description, COALESCE(speech_count, 0)
+		FROM characters WHERE work_id = ? ORDER BY name`, workId)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var chars []characterInfo
+	for rows.Next() {
+		var c characterInfo
+		if err := rows.Scan(&c.Name, &c.Description, &c.SpeechCount); err != nil {
+			continue
+		}
+		chars = append(chars, c)
+	}
+	return chars
 }

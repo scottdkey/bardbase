@@ -178,7 +178,7 @@
 
 <div class="entry-page">
 	<div class="entry-header">
-		<IconButton onclick={() => goto('/references?source=schmidt')} label="Back to Lexicon" size={36}>
+		<IconButton onclick={() => history.back()} label="Back" size={36}>
 			<IconBack size={20} />
 		</IconButton>
 		<h1 class="entry-word">{entry.key}</h1>

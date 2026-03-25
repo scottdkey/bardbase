@@ -249,9 +249,18 @@
 
 			if (data.isReference) {
 				const candidateLine = data.line;
-				const result = findHeadwordRow(scene, candidateLine, data.editionId, data.headword);
-				highlightRow = result.rowIndex;
-				matchQuality = result.quality;
+				if (data.headword) {
+					const result = findHeadwordRow(scene, candidateLine, data.editionId, data.headword);
+					highlightRow = result.rowIndex;
+					matchQuality = result.quality;
+				} else if (candidateLine != null) {
+					// Line-only reference (no headword): find the row by line number
+					const idx = scene.rows.findIndex((r) =>
+						Object.values(r.editions).some((ed) => ed && ed.line_number === candidateLine)
+					);
+					highlightRow = idx >= 0 ? idx : null;
+					matchQuality = idx >= 0 ? 'exact' : 'unmatched';
+				}
 				scrollToHighlight();
 			} else {
 				highlightRow = null;
@@ -384,6 +393,18 @@
 		return null;
 	}
 
+	// Build character name → description map for tooltips
+	let charDescriptions = $derived.by(() => {
+		const map = new Map<string, string>();
+		if (!scene.characters) return map;
+		for (const c of scene.characters) {
+			if (c.description) {
+				map.set(c.name, c.description);
+			}
+		}
+		return map;
+	});
+
 	function sceneTitle(): string {
 		if (scene.work_title === 'Sonnets') return `Sonnet ${scene.scene}`;
 		if (scene.scene === 0) return scene.work_title;
@@ -391,11 +412,7 @@
 	}
 
 	function goBack() {
-		if (data.isReference) {
-			history.back();
-		} else {
-			goto('/');
-		}
+		history.back();
 	}
 
 	function gotoScene(act: number, sc: number) {
@@ -553,8 +570,13 @@
 				{@const char = getRowCharacter(row)}
 				{@const prevChar = rowIdx > 0 ? getRowCharacter(scene.rows[rowIdx - 1]) : null}
 				{#if char && char !== prevChar}
+					{@const desc = charDescriptions.get(char)}
 					<div class="speaker-row">
-						<span class="speaker-name">{char}</span>
+						{#if desc}
+							<span class="speaker-name has-desc" tabindex="0">{char}<span class="speaker-desc">{desc}</span></span>
+						{:else}
+							<span class="speaker-name">{char}</span>
+						{/if}
 					</div>
 				{/if}
 				<div
@@ -643,7 +665,7 @@
 								{:else}
 									Scene {sc.scene}
 								{/if}
-								<span class="toc-line-count">{sc.line_count} lines</span>
+								<!-- line count removed -->
 							</button>
 						</li>
 					{/each}
@@ -889,6 +911,36 @@
 		color: var(--color-accent);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
+	}
+
+	.speaker-name.has-desc {
+		cursor: pointer;
+		position: relative;
+	}
+
+	.speaker-desc {
+		display: none;
+		position: absolute;
+		left: 0;
+		top: 100%;
+		font-size: 0.65rem;
+		color: var(--color-text-secondary);
+		font-style: italic;
+		text-transform: none;
+		letter-spacing: normal;
+		font-weight: 400;
+		padding: 4px 8px;
+		background: var(--color-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		z-index: 10;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+		max-width: 300px;
+	}
+
+	.speaker-name.has-desc:hover .speaker-desc,
+	.speaker-name.has-desc:focus .speaker-desc {
+		display: block;
 	}
 
 	.aligned-row {

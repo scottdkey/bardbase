@@ -60,8 +60,11 @@ export interface LexiconSubEntryDetail {
 export interface ReferenceCitation {
 	source_name: string;
 	source_code: string;
+	entry_id: number;
+	entry_headword: string;
 	work_title: string | null;
 	work_abbrev: string | null;
+	work_slug: string | null;
 	act: number | null;
 	scene: number | null;
 	line: number | null;
@@ -97,11 +100,18 @@ export interface AlignedSceneRow {
 	editions: Record<number, AlignedEditionLine | null>;
 }
 
+export interface CharacterInfo {
+	name: string;
+	description?: string;
+	speech_count: number;
+}
+
 export interface MultiEditionScene {
 	work_title: string;
 	act: number;
 	scene: number;
 	available_editions: EditionInfo[];
+	characters: CharacterInfo[];
 	rows: AlignedSceneRow[];
 }
 

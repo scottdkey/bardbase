@@ -52,7 +52,7 @@ export async function load({ params, url }) {
 			slug,
 			act,
 			sceneNum: scene,
-			isReference: !!url.searchParams.get('hw'),
+			isReference: !!url.searchParams.get('hw') || url.searchParams.has('line'),
 			headword: url.searchParams.get('hw') ?? '',
 			line: url.searchParams.has('line')
 				? parseInt(url.searchParams.get('line')!, 10)

@@ -22,6 +22,19 @@
 		henley_farmer: 'Henley & Farmer'
 	};
 
+	const SOURCE_DESCRIPTIONS: Record<string, string> = {
+		schmidt:
+			'Alexander Schmidt\'s Shakespeare Lexicon (1902) is the definitive dictionary of Shakespeare\'s language. Every word Shakespeare used is catalogued with definitions and citations. Use it to look up the meaning of any word as Shakespeare used it.',
+		onions:
+			'C. T. Onions\' Shakespeare Glossary (1911) explains words and phrases that have changed meaning since Shakespeare\'s time or are no longer in common use. More concise than Schmidt, it focuses on words that modern readers are likely to find unfamiliar.',
+		abbott:
+			'E. A. Abbott\'s Shakespearian Grammar (1877) explains Shakespeare\'s grammar, syntax, and rhetorical devices. Use it to understand unusual sentence structures, word order, and grammatical constructions that differ from modern English.',
+		bartlett:
+			'John Bartlett\'s Complete Concordance (1896) indexes every significant word in Shakespeare with the line where it appears. Use it to find every occurrence of a specific word across all plays and poems.',
+		henley_farmer:
+			'W. E. Henley and John S. Farmer\'s Slang and Its Analogues (1890\u20131904) documents historical slang, cant, and colloquial language. Use it to decode bawdy, vulgar, or underworld language in Shakespeare\'s text.'
+	};
+
 	// Initialize from URL params
 	let activeSource = $state<string>(page.url.searchParams.get('source') ?? '');
 	let query = $state(page.url.searchParams.get('q') ?? '');
@@ -153,6 +166,10 @@
 		{/each}
 	</div>
 
+	{#if activeSource && SOURCE_DESCRIPTIONS[activeSource]}
+		<p class="source-description">{SOURCE_DESCRIPTIONS[activeSource]}</p>
+	{/if}
+
 	<!-- Search + filter -->
 	<div class="filter-bar">
 		<div class="search-wrap">
@@ -240,6 +257,17 @@
 		font-size: 0.6rem;
 		color: var(--color-text-muted);
 		font-weight: 400;
+	}
+
+	.source-description {
+		margin: 0 0 12px;
+		padding: 10px 14px;
+		font-size: 0.78rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+		background: var(--color-surface);
+		border-radius: 6px;
+		border: 1px solid var(--color-border);
 	}
 
 	/* ─── Filter bar ─── */

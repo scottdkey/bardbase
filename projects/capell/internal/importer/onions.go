@@ -102,7 +102,32 @@ func parseOnionsEntries(path string) ([]referenceEntry, error) {
 		if curHeadword == "" {
 			return
 		}
-		raw := strings.TrimSpace(strings.Join(curLines, "\n"))
+		// Filter out page artifacts: bare page numbers, ALL-CAPS column
+		// headers, and very short OCR fragments.
+		var cleanedLines []string
+		for _, ln := range curLines {
+			trimmed := strings.TrimSpace(ln)
+			if trimmed == "" {
+				continue
+			}
+			// Skip bare page numbers
+			allDigits := true
+			for _, ch := range trimmed {
+				if !unicode.IsDigit(ch) && ch != ' ' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				continue
+			}
+			// Skip ALL-CAPS column headers (e.g. "ORDAIN", "ONCE")
+			if isAllCaps(trimmed) && len(trimmed) > 1 {
+				continue
+			}
+			cleanedLines = append(cleanedLines, ln)
+		}
+		raw := strings.TrimSpace(strings.Join(cleanedLines, "\n"))
 		if raw != "" {
 			entries = append(entries, referenceEntry{
 				headword: curHeadword,
@@ -170,7 +195,39 @@ func isOnionsEntryStart(line string) bool {
 	if len(prefix) > 80 {
 		prefix = prefix[:80]
 	}
-	return strings.ContainsAny(prefix, ":(")
+	delim := strings.IndexAny(prefix, ":(")
+	if delim < 0 {
+		return false
+	}
+
+	// Validate the headword portion (before the delimiter). Reject if it
+	// looks like a citation continuation line rather than a real headword.
+	hwPart := strings.TrimSpace(prefix[:delim])
+	hwWords := strings.Fields(hwPart)
+
+	// Real headwords are 1-4 words. Citation lines like
+	// "All'sW. IV. iii. 13 d. darkly with yon" have many tokens.
+	if len(hwWords) > 4 {
+		return false
+	}
+
+	// Headword portion should not contain digits (citation line numbers).
+	for _, ch := range hwPart {
+		if unicode.IsDigit(ch) {
+			return false
+		}
+	}
+
+	// Headword portion should not contain roman numeral patterns
+	// (i., ii., iii., iv., v., vi.) which indicate citation fragments.
+	hwLower := strings.ToLower(hwPart)
+	for _, rom := range []string{" i.", " ii.", " iii.", " iv.", " v.", " vi."} {
+		if strings.Contains(hwLower, rom) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // extractOnionsHeadword returns the headword portion of an entry-start line.

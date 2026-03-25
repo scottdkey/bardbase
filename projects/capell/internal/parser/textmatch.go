@@ -82,6 +82,9 @@ func NormalizeForMatch(s string) string {
 	// normalization is consistent even when one side uses the elided form and the
 	// other uses the full form.
 	s = elisionExpander.Replace(s)
+	// Remove hyphens without inserting a space so that hyphenation variants
+	// match: "fore-past" → "forepast", "to-night" → "tonight".
+	s = strings.ReplaceAll(s, "-", "")
 	var result strings.Builder
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {

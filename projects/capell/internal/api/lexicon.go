@@ -52,14 +52,17 @@ type subEntryDetail struct {
 }
 
 type referenceCitation struct {
-	SourceName   string           `json:"source_name"`
-	SourceCode   string           `json:"source_code"`
-	WorkTitle    *string          `json:"work_title"`
-	WorkAbbrev   *string          `json:"work_abbrev"`
-	Act          *int             `json:"act"`
-	Scene        *int             `json:"scene"`
-	Line         *int             `json:"line"`
-	EditionLines []editionLineRef `json:"edition_lines"`
+	SourceName    string           `json:"source_name"`
+	SourceCode    string           `json:"source_code"`
+	EntryID       int              `json:"entry_id"`
+	EntryHeadword string           `json:"entry_headword"`
+	WorkTitle     *string          `json:"work_title"`
+	WorkAbbrev    *string          `json:"work_abbrev"`
+	WorkSlug      *string          `json:"work_slug"`
+	Act           *int             `json:"act"`
+	Scene         *int             `json:"scene"`
+	Line          *int             `json:"line"`
+	EditionLines  []editionLineRef `json:"edition_lines"`
 }
 
 type lexiconEntryResponse struct {
@@ -372,6 +375,7 @@ func (s *Server) getLexiconEntryFull(id int) (*lexiconEntryResponse, error) {
 
 func (s *Server) getReferenceCitations(baseKey string) []referenceCitation {
 	rows, err := s.db.Query(`SELECT rc.id, src.name AS source_name, src.short_code AS source_code,
+		re.id AS entry_id, re.headword AS entry_headword,
 		w.title AS work_title, rc.work_abbrev, rc.act, rc.scene, rc.line
 		FROM reference_citations rc
 		JOIN reference_entries re ON re.id = rc.entry_id
@@ -385,19 +389,21 @@ func (s *Server) getReferenceCitations(baseKey string) []referenceCitation {
 	defer rows.Close()
 
 	type refRow struct {
-		id         int
-		sourceName string
-		sourceCode string
-		workTitle  *string
-		workAbbrev *string
-		act        *int
-		scene      *int
-		line       *int
+		id            int
+		sourceName    string
+		sourceCode    string
+		entryID       int
+		entryHeadword string
+		workTitle     *string
+		workAbbrev    *string
+		act           *int
+		scene         *int
+		line          *int
 	}
 	var refRows []refRow
 	for rows.Next() {
 		var r refRow
-		if err := rows.Scan(&r.id, &r.sourceName, &r.sourceCode, &r.workTitle, &r.workAbbrev, &r.act, &r.scene, &r.line); err != nil {
+		if err := rows.Scan(&r.id, &r.sourceName, &r.sourceCode, &r.entryID, &r.entryHeadword, &r.workTitle, &r.workAbbrev, &r.act, &r.scene, &r.line); err != nil {
 			continue
 		}
 		refRows = append(refRows, r)
@@ -442,15 +448,23 @@ func (s *Server) getReferenceCitations(baseKey string) []referenceCitation {
 		if eds == nil {
 			eds = []editionLineRef{}
 		}
+		var workSlug *string
+		if r.workTitle != nil {
+			s := slugify(*r.workTitle)
+			workSlug = &s
+		}
 		result[i] = referenceCitation{
-			SourceName:   r.sourceName,
-			SourceCode:   r.sourceCode,
-			WorkTitle:    r.workTitle,
-			WorkAbbrev:   r.workAbbrev,
-			Act:          r.act,
-			Scene:        r.scene,
-			Line:         r.line,
-			EditionLines: eds,
+			SourceName:    r.sourceName,
+			SourceCode:    r.sourceCode,
+			EntryID:       r.entryID,
+			EntryHeadword: r.entryHeadword,
+			WorkTitle:     r.workTitle,
+			WorkAbbrev:    r.workAbbrev,
+			WorkSlug:      workSlug,
+			Act:           r.act,
+			Scene:         r.scene,
+			Line:          r.line,
+			EditionLines:  eds,
 		}
 	}
 	return result

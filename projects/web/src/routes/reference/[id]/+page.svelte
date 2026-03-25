@@ -64,7 +64,8 @@
 	function openScene(c: Citation) {
 		if (!c.work_slug || c.act == null) return;
 		const scene = c.scene ?? 1;
-		goto(`/text/${c.work_slug}/${c.act}/${scene}`);
+		const lineParam = c.line != null ? `?line=${c.line}` : '';
+		goto(`/text/${c.work_slug}/${c.act}/${scene}${lineParam}`);
 	}
 </script>
 
@@ -74,7 +75,7 @@
 
 <div class="reference-page">
 	<div class="reference-header">
-		<IconButton onclick={() => goto(`/references?source=${entry.source_code}`)} label="Back to References" size={36}>
+		<IconButton onclick={() => history.back()} label="Back" size={36}>
 			<IconBack size={20} />
 		</IconButton>
 		<div class="header-text">
@@ -84,7 +85,7 @@
 	</div>
 
 	<div class="entry-body">
-		<p class="definition">{#each textSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<button class="citation-inline" onclick={() => goto(`/text/${seg.span!.work_slug}/${seg.span!.act}/${seg.span!.scene ?? 1}`)}>{seg.text}</button>{:else}{seg.text}{/if}{/each}</p>
+		<p class="definition">{#each textSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<button class="citation-inline" onclick={() => goto(`/text/${seg.span!.work_slug}/${seg.span!.act}/${seg.span!.scene ?? 1}${seg.span!.line != null ? `?line=${seg.span!.line}` : ''}`)}>{seg.text}</button>{:else}{seg.text}{/if}{/each}</p>
 
 		{#if entry.citations.length > 0}
 			{#if entry.source_code === 'bartlett'}
