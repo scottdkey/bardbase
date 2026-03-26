@@ -64,15 +64,21 @@ func ParsePerseusTEI(xmlData []byte) ([]PerseusLine, error) {
 		return nil, nil
 	}
 
-	// Walk div1 (acts) — skip cast list (n="cast")
+	// Walk div1 (acts) — skip cast list but include prologues/epilogues.
+	// Non-numeric act labels like "induction", "prologue", "epilogue" are
+	// mapped to act 0 so they can be stored and aligned.
 	for _, div1 := range body.Children {
 		if div1.Name != "div1" {
 			continue
 		}
-		if div1.Attr("type") != "act" || !isNumeric(div1.Attr("n")) {
+		if div1.Attr("type") != "act" {
 			continue
 		}
-		act, _ := strconv.Atoi(div1.Attr("n"))
+		nAttr := div1.Attr("n")
+		if nAttr == "cast" {
+			continue
+		}
+		act, _ := strconv.Atoi(nAttr) // non-numeric → 0
 
 		// Walk div2 (scenes)
 		for _, div2 := range div1.Children {

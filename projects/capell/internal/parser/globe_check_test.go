@@ -9,25 +9,27 @@ import (
 
 func TestCheckJCGlobeNumbers(t *testing.T) {
 	perseusDir := filepath.Join("..", "..", "..", "sources", "perseus-plays")
-	data, err := os.ReadFile(filepath.Join(perseusDir, "1999.03.0027.xml"))
-	if err != nil { t.Skipf("file not found: %v", err) }
+	data, _ := os.ReadFile(filepath.Join(perseusDir, "1999.03.0042.xml"))
+	lines, _ := ParsePerseusTEI(data)
 
-	lines, err := ParsePerseusTEI(data)
-	if err != nil { t.Fatalf("parse error: %v", err) }
+	type key struct{ a, s int }
+	counts := map[key]int{}
+	for _, l := range lines { counts[key{l.Act, l.Scene}]++ }
 
-	// Show Globe milestones for ALL of Act 3
-	fmt.Println("=== JC Act 3 — ALL Globe milestones ===")
-	fmt.Printf("%-6s %-6s %-7s %s\n", "Scene", "N", "Globe", "Text (first 50)")
-	n := 0
-	for _, l := range lines {
-		if l.Act == 3 {
-			n++
-			if l.GlobeLine > 0 {
-				text := l.Text
-				if len(text) > 50 { text = text[:50] }
-				fmt.Printf("%-6d %-6d %-7d %s\n", l.Scene, n, l.GlobeLine, text)
+	fmt.Println("=== Troilus parser output ===")
+	fmt.Printf("%-8s %-8s %-8s\n", "Act", "Scene", "Lines")
+	total := 0
+	for a := 1; a <= 5; a++ {
+		for s := 1; s <= 15; s++ {
+			if c, ok := counts[key{a, s}]; ok {
+				fmt.Printf("%-8d %-8d %-8d\n", a, s, c)
+				total += c
 			}
 		}
 	}
-	fmt.Printf("\nTotal Act 3 lines: %d\n", n)
+	fmt.Printf("Total: %d\n", total)
+	
+	// Now check: XML has Act 2 Scene 4 — OSS doesn't have that scene
+	// What does OSS have for this play?
+	fmt.Println("\nNote: XML Act 2 has scenes 1,2,3,4 but OSS may split differently")
 }
