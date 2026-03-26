@@ -322,7 +322,7 @@ func (s *Server) mergeWorkLevelEditions(
 		JOIN editions e ON e.id = CASE WHEN lm.edition_a_id = ? THEN lm.edition_b_id ELSE lm.edition_a_id END
 		WHERE lm.work_id = ? AND lm.act = 0 AND lm.scene = 0
 		  AND (lm.edition_a_id = ? OR lm.edition_b_id = ?)
-		  AND e.id IN (1,2,3,4,5)`,
+		  AND e.id NOT IN (0, 10, 11)`,
 		anchorID, anchorID, workId, anchorID, anchorID)
 	if err != nil {
 		return rows, availEditions

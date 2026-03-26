@@ -66,7 +66,7 @@ help:
 	@echo "Usage: make <project> <action>"
 	@echo ""
 	@echo "Projects:"
-	@echo "  capell      Go pipeline (build, test, run, run-cached, lint, clean)"
+	@echo "  capell      Go pipeline (build, test, run, release, lint, clean)"
 	@echo "  api         Go HTTP API server (build, run, docker)"
 	@echo "  web         SvelteKit app (run, build, test, preview, clean)"
 	@echo "  sources     Original texts — READ ONLY (verify, list, stats)"

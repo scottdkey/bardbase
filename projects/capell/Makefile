@@ -11,7 +11,7 @@
 #   make capell lint          # Run go vet
 #   make capell clean         # Remove build artifacts
 
-.PHONY: build test run run-fresh lint cover setup clean api-build api-run api-docker
+.PHONY: build test run run-fresh lint cover setup clean release release-upload api-build api-run api-docker
 
 # Compile the CLI binary to the repo-root bin/ directory
 build:
@@ -27,8 +27,12 @@ cover:
 	go tool cover -html=coverage.out -o coverage.html
 
 # Run the full build pipeline (output goes to repo-root build/)
+# Use EXCLUDE to skip sources: make capell run EXCLUDE=folger
 run: build
-	../../bin/shakespeare-build -output build
+	../../bin/shakespeare-build -output build $(if $(EXCLUDE),$(foreach src,$(subst $(comma),$(space),$(EXCLUDE)),--exclude $(src)))
+
+comma := ,
+space := $(subst ,, )
 
 # Re-download all source files before building
 run-fresh: build
@@ -45,6 +49,36 @@ lint:
 # Install/tidy dependencies
 setup:
 	go mod tidy
+
+# ─── Release ─────────────────────────────────────────────────────────────
+#
+# Build the database locally and publish as a GitHub release.
+# The API container downloads the latest release on startup (entrypoint.sh).
+#
+# Usage:
+#   make capell release                    # Build and release (excludes Folger by default)
+#   make capell release EXCLUDE=           # Build and release with all sources
+#   make capell release EXCLUDE=folger,wordhoard
+
+EXCLUDE ?= folger
+VERSION := v$(shell date -u +%Y.%m.%d)-$(shell git rev-parse --short HEAD)
+DB := ../../build/bardbase.db
+
+release: run release-upload
+
+release-upload:
+	@if [ ! -f "$(DB)" ]; then echo "Error: $(DB) not found. Run 'make run' first."; exit 1; fi
+	@echo "Creating release $(VERSION)..."
+	@DB_SIZE=$$(du -h "$(DB)" | cut -f1) && \
+	TEXT_LINES=$$(sqlite3 "$(DB)" "SELECT COUNT(*) FROM text_lines") && \
+	LEXICON=$$(sqlite3 "$(DB)" "SELECT COUNT(*) FROM lexicon_entries") && \
+	CITATIONS=$$(sqlite3 "$(DB)" "SELECT COUNT(*) FROM lexicon_citations") && \
+	WORKS=$$(sqlite3 "$(DB)" "SELECT COUNT(*) FROM works") && \
+	gh release create "$(VERSION)" \
+		--title "Bardbase $(VERSION)" \
+		--notes "## Bardbase Database Build$$(printf '\n\n')| Metric | Count |$$(printf '\n')|--------|-------|$$(printf '\n')| **Works** | $$WORKS |$$(printf '\n')| **Text lines** | $$TEXT_LINES |$$(printf '\n')| **Lexicon entries** | $$LEXICON |$$(printf '\n')| **Citations** | $$CITATIONS |$$(printf '\n')| **Database size** | $$DB_SIZE |$$(printf '\n\n')Excluded sources: $(EXCLUDE)$$(printf '\n')Built from commit $$(git rev-parse HEAD)" \
+		"$(DB)"
+	@echo "✓ Released $(VERSION)"
 
 # ─── API Server (invoked via `make api build/run/docker` at repo root) ───
 

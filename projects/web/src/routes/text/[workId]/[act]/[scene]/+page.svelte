@@ -935,7 +935,8 @@
 		border-radius: 4px;
 		z-index: 10;
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-		max-width: 300px;
+		width: max-content;
+		max-width: min(500px, 90vw);
 	}
 
 	.speaker-name.has-desc:hover .speaker-desc,

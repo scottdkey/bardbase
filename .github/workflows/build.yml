@@ -1,84 +1,71 @@
-name: Build Bardbase Database
+name: Release Bardbase Database
 
 on:
   workflow_dispatch:
     inputs:
-      exclude_sources:
-        description: 'Comma-separated source keys to exclude (e.g. folger,wordhoard). Folger is excluded by default (CC BY-NC 3.0).'
+      tag:
+        description: 'Release tag (leave blank for auto-generated v{date}-{sha})'
         required: false
-        default: 'folger'
-      release:
-        description: 'Create a release with the built database'
-        required: true
-        default: false
-        type: boolean
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - name: Download database from artifact
+        uses: actions/download-artifact@v4
         with:
-          go-version-file: projects/capell/go.mod
+          name: bardbase
+          path: build/
+        continue-on-error: true
 
-      - name: Build database
-        working-directory: projects/capell
+      - name: Check for database
         run: |
-          EXCLUDE="${{ inputs.exclude_sources }}"
-          EXCLUDE_FLAG=""
-          IFS=',' read -ra SOURCES <<< "$EXCLUDE"
-          for src in "${SOURCES[@]}"; do
-            src="${src// /}"
-            if [ -n "$src" ]; then
-              EXCLUDE_FLAG="$EXCLUDE_FLAG --exclude $src"
-            fi
-          done
-          go run ./cmd/build -output build $EXCLUDE_FLAG
-
-      - name: Run tests
-        working-directory: projects/capell
-        run: go test ./... -v
+          if [ ! -f build/bardbase.db ]; then
+            echo "::error::No bardbase.db found. Build locally with 'make capell release' instead."
+            echo ""
+            echo "The database build is too resource-intensive for CI."
+            echo "Build locally and use 'make capell release' to create a GitHub release."
+            exit 1
+          fi
 
       - name: Generate build info
         id: info
         run: |
+          sudo apt-get install -y sqlite3 > /dev/null 2>&1 || true
           DB_SIZE=$(du -h build/bardbase.db | cut -f1)
           TEXT_LINES=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM text_lines")
           LEXICON=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_entries")
           CITATIONS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM lexicon_citations")
           WORKS=$(sqlite3 build/bardbase.db "SELECT COUNT(*) FROM works")
 
-          VERSION="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
           echo "text_lines=$TEXT_LINES" >> $GITHUB_OUTPUT
           echo "lexicon=$LEXICON" >> $GITHUB_OUTPUT
           echo "citations=$CITATIONS" >> $GITHUB_OUTPUT
           echo "works=$WORKS" >> $GITHUB_OUTPUT
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bardbase
-          path: build/bardbase.db
-          retention-days: 90
-
       - name: Create release
-        if: inputs.release == true
         env:
           GH_TOKEN: ${{ github.token }}
-          EXCLUDED: ${{ inputs.exclude_sources != '' && format('`{0}`', inputs.exclude_sources) || 'None' }}
         run: |
-          VERSION="${{ steps.info.outputs.version }}"
+          TAG="${{ steps.info.outputs.tag }}"
 
-          BODY="## Bardbase Database Build
+          gh release create "$TAG" \
+            --title "Bardbase $TAG" \
+            --notes "## Bardbase Database Build
 
           | Metric | Count |
           |--------|-------|
@@ -88,12 +75,5 @@ jobs:
           | **Citations** | ${{ steps.info.outputs.citations }} |
           | **Database size** | ${{ steps.info.outputs.db_size }} |
 
-          ### Excluded sources
-          ${EXCLUDED}
-
-          Built from commit ${{ github.sha }}"
-
-          gh release create "$VERSION" \
-            --title "Bardbase $VERSION" \
-            --notes "$BODY" \
+          Built from commit ${{ github.sha }}" \
             build/bardbase.db
