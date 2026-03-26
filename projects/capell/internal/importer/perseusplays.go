@@ -143,11 +143,14 @@ func ImportPerseusPlays(database *sql.DB, sourcesDir string) error {
 				charName = ""
 			}
 
-			insertStmt.Exec(
+			if _, err := insertStmt.Exec(
 				work.ID, editionID,
 				line.Act, line.Scene, lineNum,
 				charID, nilIfEmpty(charName),
-				line.Text, ct, countWords(line.Text))
+				line.Text, ct, countWords(line.Text)); err != nil {
+				fmt.Printf("  WARN: insert failed for %s act %d scene %d: %v\n",
+					work.Title, line.Act, line.Scene, err)
+			}
 
 			actScenes = append(actScenes, [2]int{line.Act, line.Scene})
 		}
