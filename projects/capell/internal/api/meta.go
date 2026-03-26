@@ -26,6 +26,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	var buildTime string
+	err := s.db.QueryRow(`SELECT MAX(timestamp) FROM import_log`).Scan(&buildTime)
+	if err != nil || buildTime == "" {
+		buildTime = "unknown"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"build": buildTime})
+}
+
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	var stats struct {
 		WorkCount      int `json:"work_count"`

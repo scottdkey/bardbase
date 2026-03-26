@@ -21,7 +21,29 @@
 
 	onMount(() => {
 		theme.init();
+		checkServerVersion();
 	});
+
+	async function checkServerVersion() {
+		try {
+			const res = await fetch('/api/version');
+			if (!res.ok) return;
+			const { build } = await res.json();
+			const stored = localStorage.getItem('bardbase-server-version');
+			if (stored && stored !== build) {
+				// Server version changed — clear stale API caches
+				if ('caches' in window) {
+					await caches.delete('bardbase-meta');
+					await caches.delete('bardbase-data');
+					await caches.delete('bardbase-search');
+				}
+				console.log(`[bardbase] Server version changed (${stored} → ${build}), caches cleared`);
+			}
+			localStorage.setItem('bardbase-server-version', build);
+		} catch {
+			// Version check is best-effort — don't block app load
+		}
+	}
 </script>
 
 <svelte:head>

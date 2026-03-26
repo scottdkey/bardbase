@@ -70,8 +70,9 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) routes() {
-	// Health check — no auth required
+	// Health check + version — no auth required
 	s.mux.HandleFunc("GET /health", cors(s.handleHealth))
+	s.mux.HandleFunc("GET /api/version", cors(s.handleVersion))
 	s.mux.HandleFunc("GET /api/stats", cors(s.auth(s.handleStats)))
 	s.mux.HandleFunc("GET /api/attributions", cors(s.auth(s.handleAttributions)))
 	s.mux.HandleFunc("GET /api/works", cors(s.auth(s.handleWorks)))
