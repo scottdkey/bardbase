@@ -310,19 +310,6 @@ func extractLinesFromP(p *XMLNode, act, scene int, charID, speaker string, count
 	return lines
 }
 
-// isNumeric returns true if s is a non-empty string of digits.
-func isNumeric(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 // cleanText trims whitespace and collapses internal runs of whitespace to single spaces.
 func cleanText(s string) string {
 	s = strings.TrimSpace(s)
