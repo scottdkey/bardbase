@@ -1,6 +1,26 @@
 import { error, redirect } from '@sveltejs/kit';
 import { api } from '$lib/server/api';
 
+export async function entries() {
+	const works = await api.getWorks();
+	const all = [...works.plays, ...works.poetry];
+
+	// Fetch all TOCs in parallel — Go API runs locally during build so this is fast.
+	const tocs = await Promise.all(
+		all.map((work) =>
+			api.getWorkTOC(work.slug).then((toc) => ({ slug: work.slug, toc }))
+		)
+	);
+
+	const paths: { workId: string; act: string; scene: string }[] = [];
+	for (const { slug, toc } of tocs) {
+		for (const div of toc) {
+			paths.push({ workId: slug, act: String(div.act), scene: String(div.scene) });
+		}
+	}
+	return paths;
+}
+
 export async function load({ params, url }) {
 	const act = parseInt(params.act, 10);
 	const scene = parseInt(params.scene, 10);

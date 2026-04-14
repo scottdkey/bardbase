@@ -123,6 +123,30 @@ func (s *Server) handleReferenceSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+// handleReferenceIndex returns all reference entry IDs as a flat array.
+// Used by the SvelteKit entries() function to enumerate prerender paths.
+func (s *Server) handleReferenceIndex(w http.ResponseWriter, _ *http.Request) {
+	rows, err := s.db.Query(`SELECT id FROM reference_entries ORDER BY id`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if ids == nil {
+		ids = []int{}
+	}
+	writeJSON(w, http.StatusOK, ids)
+}
+
 func (s *Server) handleReferenceSources(w http.ResponseWriter, _ *http.Request) {
 	type source struct {
 		Code  string `json:"code"`

@@ -310,9 +310,13 @@ func (s *Server) mergeWorkLevelEditions(
 	charCoalesce string,
 ) ([]alignedSceneRow, []editionInfo) {
 	// Find editions that have work-level mappings but aren't already in availEditions.
-	presentEditions := map[int]bool{}
-	for _, e := range availEditions {
-		presentEditions[e.ID] = true
+	editionsWithContent := map[int]bool{}
+	for _, row := range rows {
+		for edID := range row.Editions {
+			if edID != anchorID {
+				editionsWithContent[edID] = true
+			}
+		}
 	}
 
 	wlRows, err := s.db.Query(`SELECT DISTINCT
@@ -335,7 +339,7 @@ func (s *Server) mergeWorkLevelEditions(
 		if err := wlRows.Scan(&e.ID, &e.Code, &e.Name); err != nil {
 			continue
 		}
-		if !presentEditions[e.ID] {
+		if !editionsWithContent[e.ID] {
 			wlEditions = append(wlEditions, e)
 		}
 	}
@@ -449,8 +453,19 @@ func (s *Server) mergeWorkLevelEditions(
 		}
 
 		if merged {
-			availEditions = append(availEditions, wlEd)
+			// Only append if not already in availEditions
+			alreadyPresent := false
+			for _, e := range availEditions {
+				if e.ID == wlEd.ID {
+					alreadyPresent = true
+					break
+				}
+			}
+			if !alreadyPresent {
+				availEditions = append(availEditions, wlEd)
+			}
 		}
+
 	}
 
 	return rows, availEditions

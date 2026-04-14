@@ -1,5 +1,7 @@
 import { api } from '$lib/server/api';
 
+export const prerender = false;
+
 export async function load() {
 	try {
 		const [sources, works] = await Promise.all([

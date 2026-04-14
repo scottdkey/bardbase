@@ -3,12 +3,11 @@
     LexiconEntryDetail,
     LexiconCitationDetail,
     LexiconSubEntryDetail,
-    MultiEditionScene,
     EditionLineRef,
   } from "$lib/types";
   import CorrectionForm from "./CorrectionForm.svelte";
-  import SceneViewer from "./SceneViewer.svelte";
   import IconClose from "$lib/components/icons/IconClose.svelte";
+  import { goto } from "$app/navigation";
   import IconFlag from "$lib/components/icons/IconFlag.svelte";
   import IconButton from "$lib/components/ui/IconButton.svelte";
   import CollapsibleSection from "$lib/components/ui/CollapsibleSection.svelte";
@@ -24,14 +23,6 @@
   } = $props();
 
   let expandedCitations = new SvelteSet<number>();
-  let sceneData = $state<MultiEditionScene | null>(null);
-  let sceneCitation = $state<LexiconCitationDetail | null>(null);
-  let savedScrollTop = $state(0);
-  let correctionLine = $state<{
-    lineNumber: number;
-    content: string;
-    characterName: string | null;
-  } | null>(null);
   let correctionEntry = $state<{
     type: "entry" | "citation";
     currentText: string;
@@ -129,48 +120,27 @@
     return c.matched_character || null;
   }
 
-  async function openScene(c: LexiconCitationDetail) {
-    if (!c.work_id || c.act == null) return;
-    const body = document.querySelector(".modal-body");
-    if (body) savedScrollTop = body.scrollTop;
-    sceneCitation = c;
-    try {
-      const scene = c.scene ?? 1;
-      const res = await fetch(`/api/text/scene/${c.work_id}/${c.act}/${scene}`);
-      if (res.ok) {
-        sceneData = await res.json();
-      }
-    } finally {
-      // loading done
-    }
+  function slugify(title: string): string {
+    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   }
 
-  function closeScene() {
-    sceneData = null;
-    sceneCitation = null;
-    // Restore scroll position after the entry view re-renders
-    requestAnimationFrame(() => {
-      const body = document.querySelector(".modal-body");
-      if (body) body.scrollTop = savedScrollTop;
-    });
+  function openScene(c: LexiconCitationDetail) {
+    if (!c.work_title || c.act == null) return;
+    const scene = c.scene ?? 1;
+    const slug = slugify(c.work_title);
+    const line = c.line != null ? `?line=${c.line}` : '';
+    goto(`/text/${slug}/${c.act}/${scene}${line}`);
   }
 
   // Reset state when entry changes
   $effect(() => {
     if (entry) {
       expandedCitations.clear();
-      sceneData = null;
     }
   });
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      if (sceneData) {
-        closeScene();
-      } else {
-        onclose();
-      }
-    }
+    if (e.key === "Escape") onclose();
   }
 </script>
 
@@ -236,7 +206,7 @@
 {#if entry}
   <div
     class="modal-backdrop"
-    onclick={() => (sceneData ? closeScene() : onclose())}
+    onclick={onclose}
     onkeydown={handleKeydown}
     role="presentation"
   ></div>
@@ -248,18 +218,6 @@
     onkeydown={handleKeydown}
     tabindex="-1"
   >
-    {#if sceneData}
-      <SceneViewer
-        data={sceneData}
-        citation={sceneCitation}
-        headword={entry?.key ?? ''}
-        onback={closeScene}
-        {onclose}
-        {formatRef}
-        citationText={citationText}
-        citationSpeaker={citationSpeaker}
-      />
-    {:else}
       <!-- Entry detail view -->
       <div class="modal-header">
         <h2 class="entry-word">{entry.key}</h2>
@@ -349,17 +307,9 @@
                 <ul class="ref-citation-list">
                   {#each refs as ref, refIdx (refIdx)}
                     <li class="ref-citation-item">
-                      <span class="ref-location"
-                        >{ref.work_title ?? ref.work_abbrev ?? ""}
-                        {ref.act != null
-                          ? `${ref.act}.${ref.scene ?? ""}.${ref.line ?? ""}`
-                          : ""}</span
-                      >
-                      {#if ref.edition_lines.length > 0}
-                        <span class="edition-refs"
-                          >{formatEditionLines(ref.edition_lines)}</span
-                        >
-                      {/if}
+                      <button class="ref-entry-link" onclick={() => goto(`/reference/${ref.entry_id}`)}>
+                        {ref.entry_headword}
+                      </button>
                     </li>
                   {/each}
                 </ul>
@@ -368,23 +318,7 @@
           </section>
         {/if}
       </div>
-    {/if}
   </div>
-{/if}
-
-{#if correctionLine && sceneData && entry}
-  <CorrectionForm
-    type="line"
-    entryKey={entry.key}
-    workTitle={sceneData.work_title}
-    act={sceneData.act}
-    scene={sceneData.scene}
-    lineNumber={correctionLine.lineNumber}
-    currentText={correctionLine.content}
-    characterName={correctionLine.characterName}
-    editionName="Multi-edition"
-    onclose={() => (correctionLine = null)}
-  />
 {/if}
 
 {#if correctionEntry && entry}
@@ -664,12 +598,6 @@
     padding: 2px 0;
     font-size: 0.75rem;
     color: var(--color-text-secondary);
-  }
-
-  .ref-location {
-    font-weight: 600;
-    color: var(--color-text);
-    margin-right: 6px;
   }
 
 </style>

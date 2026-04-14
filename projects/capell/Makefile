@@ -80,6 +80,17 @@ release-upload:
 		"$(DB)"
 	@echo "✓ Released $(VERSION)"
 
+# ─── Search DB Export ────────────────────────────────────────────────────
+#
+# Builds bardbase-search.sql for import into Cloudflare D1.
+# Requires bardbase.db to exist (run `make capell run` first).
+#
+# Usage:
+#   make capell export-search
+
+export-search:
+	go run ./cmd/export-search -src ../../build/bardbase.db -out ../../build/bardbase-search.sql
+
 # ─── API Server (invoked via `make api build/run/docker` at repo root) ───
 
 # Compile the API server binary (output to build/ alongside the database)

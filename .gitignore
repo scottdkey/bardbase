@@ -27,6 +27,9 @@ coverage.html
 # Environment
 .env
 
+# Wrangler (contains cached credentials and account info — never commit)
+.wrangler/
+
 # OS
 .DS_Store
 

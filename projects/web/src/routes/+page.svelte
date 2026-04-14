@@ -7,8 +7,6 @@
 	let { data } = $props();
 
 	let expandedWorkId = $state<number | null>(null);
-	let tocCache = $state<Record<number, WorkDivision[]>>({});
-	let tocLoading = $state(false);
 
 	const TYPE_LABELS: Record<string, string> = {
 		comedy: 'Comedies',
@@ -34,25 +32,8 @@
 		return groups;
 	});
 
-	async function toggleWork(workId: number) {
-		if (expandedWorkId === workId) {
-			expandedWorkId = null;
-			return;
-		}
-		expandedWorkId = workId;
-		if (!tocCache[workId]) {
-			tocLoading = true;
-			try {
-				const res = await fetch(`/api/works/${workId}/toc`);
-				if (res.ok) {
-					tocCache = { ...tocCache, [workId]: await res.json() };
-				}
-			} catch (err) {
-				console.error('[texts] failed to load TOC:', err);
-			} finally {
-				tocLoading = false;
-			}
-		}
+	function toggleWork(workId: number) {
+		expandedWorkId = expandedWorkId === workId ? null : workId;
 	}
 
 	function gotoScene(work: { slug?: string; title: string; id: number }, act: number, scene: number) {
@@ -91,10 +72,8 @@
 				Continue reading &mdash; {formatPosition(work.id)}
 			</button>
 		{/if}
-		{#if tocLoading && !tocCache[work.id]}
-			<div class="toc-loading">Loading&hellip;</div>
-		{:else if tocCache[work.id]}
-			{@const acts = tocByAct(tocCache[work.id])}
+		{#if data.tocs[work.id]}
+			{@const acts = tocByAct(data.tocs[work.id])}
 			{#each [...acts.entries()] as [actNum, scenes] (actNum)}
 				<div class="toc-act">
 					{#if actNum > 0}
@@ -284,12 +263,6 @@
 
 	.continue-btn:hover {
 		background: var(--color-hover);
-	}
-
-	.toc-loading {
-		padding: 8px 12px;
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
 	}
 
 	.toc-act {

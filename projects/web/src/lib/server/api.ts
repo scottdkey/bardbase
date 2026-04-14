@@ -139,6 +139,11 @@ export interface WorkDivision {
 	line_count: number;
 }
 
+export interface LexiconIndexEntry {
+	id: number;
+	key: string;
+}
+
 export const api = {
 	getAttributions: () => apiFetch<FooterAttribution[]>('/api/attributions'),
 	getCorrections: (state = 'all') =>
@@ -163,6 +168,8 @@ export const api = {
 		apiFetch<WorkEdition[]>(`/api/works/${idOrSlug}/editions`),
 	getWorkTOC: (idOrSlug: number | string) =>
 		apiFetch<WorkDivision[]>(`/api/works/${idOrSlug}/toc`),
+	getLexiconIndex: () => apiFetch<LexiconIndexEntry[]>('/api/lexicon/index'),
+	getReferenceIndex: () => apiFetch<number[]>('/api/reference/index'),
 	search: (q: string, limit = 20) =>
 		apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`)
 };

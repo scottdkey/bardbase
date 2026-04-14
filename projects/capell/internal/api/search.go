@@ -85,6 +85,34 @@ func (s *Server) handleLexiconLetters(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// handleLexiconIndex returns [{id, key}] for all lexicon entries.
+// Used by the SvelteKit entries() function to enumerate prerender paths.
+func (s *Server) handleLexiconIndex(w http.ResponseWriter, _ *http.Request) {
+	rows, err := s.db.Query(`SELECT id, key FROM lexicon_entries ORDER BY id`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	type entry struct {
+		ID  int    `json:"id"`
+		Key string `json:"key"`
+	}
+	var result []entry
+	for rows.Next() {
+		var e entry
+		if err := rows.Scan(&e.ID, &e.Key); err != nil {
+			continue
+		}
+		result = append(result, e)
+	}
+	if result == nil {
+		result = []entry{}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleLexiconKeys(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT DISTINCT LOWER(base_key) FROM lexicon_entries ORDER BY 1`)
 	if err != nil {
