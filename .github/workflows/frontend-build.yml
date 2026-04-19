@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'projects/web/**'
+      - '.github/workflows/frontend-build.yml'
 
 permissions:
   contents: read
@@ -23,6 +24,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get latest DB release tag
+        id: db-release
+        run: |
+          TAG=$(gh release view --json tagName --jq '.tagName' 2>/dev/null || echo "none")
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache bardbase.db
+        id: db-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/bardbase.db
+          key: bardbase-db-${{ steps.db-release.outputs.tag }}
+
+      - name: Download bardbase.db
+        if: steps.db-cache.outputs.cache-hit != 'true'
+        run: |
+          gh release download --pattern "bardbase.db" --dir /tmp --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -33,17 +56,19 @@ jobs:
       - name: Start Go API
         run: |
           docker run -d --name bardbase-api -p 8080:8080 \
+            -v /tmp/bardbase.db:/app/bardbase.db \
+            -e DB_PATH=/app/bardbase.db \
             ghcr.io/${{ github.repository }}/api:latest
 
       - name: Wait for API
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 24); do
             if curl -sf http://localhost:8080/api/works > /dev/null 2>&1; then
               echo "API ready after $((i * 5))s"
               break
             fi
-            if [ $i -eq 30 ]; then
-              echo "API failed to start"
+            if [ $i -eq 24 ]; then
+              echo "API failed to start after 120s"
               docker logs bardbase-api
               exit 1
             fi
