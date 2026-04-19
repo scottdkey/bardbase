@@ -25,8 +25,7 @@ export default defineConfig({
 			manifest: {
 				name: 'Variorum',
 				short_name: 'Variorum',
-				description:
-					'Complete works of Shakespeare with multi-edition texts, lexicon, and full-text search',
+				description: 'Complete works of Shakespeare with multi-edition texts, lexicon, and full-text search',
 				theme_color: '#1a1a2e',
 				background_color: '#1a1a2e',
 				display: 'standalone',
@@ -54,7 +53,7 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['**/*.{js,css,svg,png,woff2}'],
 				globIgnores: ['prerendered/**/*'],
-				maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+				maximumFileSizeToCacheInBytes: 11 * 1024 * 1024, // 11 MB, to accommodate large lexicon search results
 				runtimeCaching: [
 					{
 						// Static metadata — changes only when the DB is rebuilt, serve from cache immediately

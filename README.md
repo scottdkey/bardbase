@@ -1,9 +1,7 @@
 # Bardbase
 
-[![API](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml)
 [![Frontend](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml)
 ![Downloads](https://img.shields.io/github/downloads/scottdkey/bardbase/total)
-
 
 A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and reference works — built on SQLite, Go, and SvelteKit.
 
@@ -11,30 +9,30 @@ A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and re
 **Preview:** [bardbase.pages.dev](https://bardbase.pages.dev)
 
 ## Warning --- alpha ----
-This project should be considered in alpha. There are many issues left to resolve, if you end up using the app and find an issue, please report issues to the github repository. Within the web app there is an issue reporter in many places(but not all) in the application. Please keep in mind that this project is something that is worked on for free and in spare time. While I want to provide the best possible experience, some things are outside of my control.  
+This project should be considered in alpha. There are many issues left to resolve, if you end up using the app and find an issue, please report issues to the github repository. Within the web app there is an issue reporter in many places(but not all) in the application. Please keep in mind that this project is something that is worked on for free and in spare time. While I want to provide the best possible experience, some things are outside of my control.
 
 
 
 ## Architecture
 
 ```
-Build time:
-┌──────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
-│  Go API      │────▶│  SvelteKit prerender  │────▶│  Cloudflare Pages   │
-│  (CI Docker) │     │  (static HTML)        │     │  (static delivery)  │
-└──────────────┘     └──────────────────────┘     └─────────────────────┘
+Database build (local):
+┌──────────────────────┐     ┌─────────────────────┐
+│  capell Go pipeline  │────▶│  GitHub Release      │
+│  (make capell run)   │     │  (bardbase.db)       │
+└──────────────────────┘     └─────────────────────┘
 
-Runtime:
-┌─────────────────────┐     ┌──────────────────────┐
-│  Cloudflare Pages   │────▶│  Cloudflare D1        │
-│  (static HTML/JS)   │     │  (FTS5 search only)   │
-└─────────────────────┘     └──────────────────────┘
+CI deploy (on push to main):
+┌─────────────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
+│  Download           │────▶│  SvelteKit build      │────▶│  Cloudflare Pages   │
+│  bardbase.db        │     │  (prerender + bundle) │     │  (static + Workers) │
+│  (GitHub Release)   │     │  reads SQLite direct  │     │                     │
+└─────────────────────┘     └──────────────────────┘     └─────────────────────┘
 ```
 
-- **Go HTTP API** — serves `bardbase.db` during CI prerender only; not deployed at runtime
-- **SvelteKit on Cloudflare Pages** — fully prerendered static site; no server-side rendering at runtime
-- **Cloudflare D1** — SQLite at the edge, powers live full-text search only
-- **Docker Compose** — local dev with hot reload (air + vite)
+- **capell** — Go pipeline that reads committed source texts and builds `bardbase.db`; published to GitHub Releases via `make capell release`
+- **SvelteKit** — reads `bardbase.db` directly via `node:sqlite` during build; prerenders all pages; dynamic routes (search, etc.) run as Cloudflare Workers edge functions
+- **Cloudflare Pages** — serves prerendered HTML + JS; no separate API server at runtime
 
 ## Quick Start
 
@@ -48,15 +46,16 @@ make setup      # configures local git hooks
 
 ```bash
 # Build the database (requires Go)
-make capell run
+make capell run          # full build → build/bardbase.db
 
-# Start dev stack (requires podman/docker)
-podman compose up --build
-docker compose up --build
+# Start the SvelteKit dev server
+make web run             # dev server on :5173, reads build/bardbase.db by default
+```
 
-# Or run services individually
-make api run    # Go API on :8080
-make web run    # SvelteKit on :5173
+The dev server reads `DB_PATH` from the environment (defaults to `../../build/bardbase.db` relative to `projects/web/`). Set it explicitly if your db is elsewhere:
+
+```bash
+DB_PATH=/path/to/bardbase.db make web run
 ```
 
 ### Build Database from Source
@@ -94,27 +93,23 @@ make capell test         # run tests
 - **Slug URLs** — `/text/hamlet/1/4` instead of `/text/8/1/4`
 - **Light/dark mode** — warm parchment light theme, deep dark theme
 
-## API Endpoints
+## API Routes
 
-All endpoints accept work slugs or numeric IDs (e.g. `/api/works/hamlet/toc` or `/api/works/8/toc`).
+SvelteKit server routes (run as Cloudflare Workers in production, Node.js in dev). All work endpoints accept slugs or numeric IDs (e.g. `/api/works/hamlet/toc` or `/api/works/8/toc`).
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Health check (no auth) |
 | `GET /api/works` | List plays and poetry |
 | `GET /api/works/{id}/toc` | Act/scene structure |
-| `GET /api/works/{id}/editions` | Available editions |
 | `GET /api/text/scene/{work}/{act}/{scene}` | Multi-edition aligned text |
-| `GET /api/text/scene/{work}/{act}/{scene}/references` | Lexicon + reference citations for scene |
 | `GET /api/search?q=term` | FTS5 lexicon search |
 | `GET /api/lexicon/entry/{id}` | Full lexicon entry detail |
 | `GET /api/reference/entry/{id}` | Reference work entry (Onions, Abbott, etc.) |
 | `GET /api/reference/search?q=&source=&work_id=` | Search reference entries |
 | `GET /api/reference/sources` | List reference sources with counts |
-| `GET /api/resolve/{slug}` | Resolve work slug to ID |
 | `GET /api/corrections?state=all` | GitHub issues labeled "correction" |
 | `GET /api/attributions` | Footer attribution data |
-| `GET /api/stats` | Database statistics |
+| `GET /api/version` | Build version info |
 
 ## Structure
 
@@ -123,14 +118,13 @@ bardbase/
 ├── projects/
 │   ├── sources/        source texts (committed, read-only)
 │   ├── data/           reference JSON (work mappings, attributions)
-│   ├── capell/         Go build pipeline + HTTP API
-│   │   ├── cmd/api/    API server entry point
-│   │   ├── cmd/build/  Database build pipeline
-│   │   └── internal/   API handlers, DB queries
+│   ├── capell/         Go build pipeline
+│   │   ├── cmd/build/  Database build pipeline (19-phase)
+│   │   └── internal/   Parsers, importers, aligner, citation resolver
 │   └── web/            SvelteKit frontend (Cloudflare Pages)
-│       ├── src/routes/  Page routes + API proxy routes
-│       └── src/lib/     Components, stores, utilities
-├── docker-compose.yml  Dev stack (Go API + SvelteKit)
+│       ├── src/routes/  Page routes + SvelteKit API routes
+│       └── src/lib/     Components, stores, server DB access
+├── build/              Generated database (gitignored)
 ├── Makefile            Project-level make targets
 └── .github/workflows/  CI/CD pipelines
 ```
@@ -139,9 +133,8 @@ bardbase/
 
 | Service | Platform | Trigger |
 |---------|----------|---------|
-| Database build | Local | `make capell release` — builds and publishes to GitHub Releases |
-| Go API image | GitHub Container Registry | Push to main (capell changes) |
-| Frontend deploy | Cloudflare Pages | Push to main (web changes) — pulls API image from GHCR to prerender |
+| Database build | Local | `make capell release` — builds `bardbase.db` and publishes to GitHub Releases |
+| Frontend deploy | Cloudflare Pages | Push to main (web changes) — downloads latest DB release, prerenders, deploys |
 
 ### Required Secrets
 
@@ -149,7 +142,6 @@ bardbase/
 |--------|-------|---------|
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions | Cloudflare Pages deploy |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Cloudflare account |
-| `API_KEY` | Cloudflare Pages dashboard | Go API key used during prerender (optional if API is public) |
 
 ## Documentation
 
