@@ -59,6 +59,7 @@ export async function load({ params, url }) {
 	}
 
 	try {
+		console.log(`[prerender] ${slug} ${act}.${scene}`);
 		const [sceneData, toc, references] = await Promise.all([
 			api.getScene(slug, act, scene),
 			api.getWorkTOC(slug),

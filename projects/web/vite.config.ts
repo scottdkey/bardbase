@@ -52,7 +52,9 @@ export default defineConfig({
 				]
 			},
 			workbox: {
-				globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+				globPatterns: ['**/*.{js,css,svg,png,woff2}'],
+				globIgnores: ['prerendered/**/*'],
+				maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
 				runtimeCaching: [
 					{
 						// Static metadata — changes only when the DB is rebuilt, serve from cache immediately

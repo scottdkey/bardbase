@@ -194,7 +194,8 @@
 					currentText:
 						entry.senses
 							.map(
-								(s) => `${s.sense_number}${s.sub_sense || ''}) ${s.definition_text}`
+								(s: { sense_number: number; sub_sense: string | null; definition_text: string | null }) =>
+									`${s.sense_number}${s.sub_sense || ''}) ${s.definition_text}`
 							)
 							.join('\n') ||
 						entry.full_text ||
@@ -259,7 +260,7 @@
 		{/each}
 
 		{#if entry.references && entry.references.length > 0}
-			{@const refsBySource = groupBy(entry.references, (r) => r.source_name)}
+			{@const refsBySource = groupBy(entry.references, (r: { source_name: string; entry_id: number; entry_headword: string }) => r.source_name)}
 			<section class="reference-works">
 				<h3 class="ref-section-title">Reference Works</h3>
 				{#each [...refsBySource.entries()] as [sourceName, refs] (sourceName)}
@@ -267,17 +268,9 @@
 						<ul class="ref-citation-list">
 							{#each refs as ref, refIdx (refIdx)}
 								<li class="ref-citation-item">
-									<span class="ref-location"
-										>{ref.work_title ?? ref.work_abbrev ?? ''}
-										{ref.act != null
-											? `${ref.act}.${ref.scene ?? ''}.${ref.line ?? ''}`
-											: ''}</span
-									>
-									{#if ref.edition_lines.length > 0}
-										<span class="edition-refs"
-											>{formatEditionLines(ref.edition_lines)}</span
-										>
-									{/if}
+									<button class="ref-link" onclick={() => goto(`/reference/${ref.entry_id}`)}>
+										{ref.entry_headword}
+									</button>
 								</li>
 							{/each}
 						</ul>
@@ -529,9 +522,21 @@
 		color: var(--color-text-secondary);
 	}
 
-	.ref-location {
-		font-weight: 600;
-		color: var(--color-text);
-		margin-right: 6px;
+	.ref-link {
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		font-size: 0.75rem;
+		color: var(--color-accent);
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		text-underline-offset: 2px;
 	}
+
+	.ref-link:hover {
+		text-decoration-style: solid;
+	}
+
 </style>

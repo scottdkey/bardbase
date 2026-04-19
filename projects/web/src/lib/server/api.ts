@@ -1,6 +1,5 @@
 import type {
     FooterAttribution,
-    LexiconEntryDetail,
     MultiEditionScene,
     SearchResult
 } from '$lib/types';
@@ -228,12 +227,6 @@ function getLexiconLetters(): LexiconLetter[] {
         .all() as unknown as LexiconLetter[];
 }
 
-function getLexiconIndex(): LexiconIndexEntry[] {
-    const db = getDb();
-    return db
-        .prepare('SELECT id, key FROM lexicon_entries ORDER BY id')
-        .all() as unknown as LexiconIndexEntry[];
-}
 
 function getReferenceSources(): ReferenceSource[] {
     const db = getDb();
@@ -289,293 +282,6 @@ async function getCorrections(state = 'all'): Promise<CorrectionIssue[]> {
         updated_at: i.updated_at,
         labels: i.labels.map((l) => l.name),
         body: i.body
-    }));
-}
-
-function getLexiconEntry(id: number): LexiconEntryDetail {
-    const db = getDb();
-
-    const baseEntry = db
-        .prepare(
-            'SELECT id, key, base_key, orthography, entry_type, full_text FROM lexicon_entries WHERE id = ?'
-        )
-        .get(id) as
-        | {
-              id: number;
-              key: string;
-              base_key: string;
-              orthography: string | null;
-              entry_type: string | null;
-              full_text: string | null;
-          }
-        | undefined;
-    if (!baseEntry) throw new Error(`Lexicon entry not found: ${id}`);
-
-    const groupRows = db
-        .prepare(
-            'SELECT id, key, orthography, entry_type, full_text FROM lexicon_entries WHERE base_key = ? ORDER BY sense_group, id'
-        )
-        .all(baseEntry.base_key) as {
-            id: number;
-            key: string;
-            orthography: string | null;
-            entry_type: string | null;
-            full_text: string | null;
-        }[];
-
-    const entryIds = groupRows.map((r) => r.id);
-    const ph = placeholders(entryIds.length);
-
-    const senseRows = db
-        .prepare(
-            `SELECT ls.id, ls.entry_id, ls.sense_number, ls.sub_sense, ls.definition_text
-            FROM lexicon_senses ls
-            JOIN lexicon_entries le ON le.id = ls.entry_id
-            WHERE ls.entry_id IN (${ph})
-            ORDER BY le.sense_group, ls.sense_number, COALESCE(ls.sub_sense, '')`
-        )
-        .all(...entryIds) as {
-            id: number;
-            entry_id: number;
-            sense_number: number;
-            sub_sense: string | null;
-            definition_text: string | null;
-        }[];
-
-    const citRows = db
-        .prepare(
-            `SELECT MIN(lc.id) AS id, lc.entry_id, lc.sense_id, lc.work_id, lc.work_abbrev,
-            w.title AS work_title,
-            lc.act, lc.scene, lc.line,
-            MAX(lc.quote_text) AS quote_text, lc.display_text, lc.raw_bibl,
-            tl.content AS matched_line,
-            tl.line_number AS matched_line_number,
-            COALESCE(
-              (SELECT ch.name FROM characters ch WHERE ch.id = tl.character_id),
-              tl.char_name
-            ) AS matched_character,
-            cm.edition_id AS matched_edition_id
-            FROM lexicon_citations lc
-            LEFT JOIN works w ON w.id = lc.work_id
-            LEFT JOIN citation_matches cm ON cm.citation_id = lc.id
-              AND cm.id = (
-                SELECT cm2.id FROM citation_matches cm2
-                WHERE cm2.citation_id = lc.id
-                ORDER BY CASE WHEN cm2.edition_id = 3 THEN 0 ELSE 1 END, cm2.confidence DESC
-                LIMIT 1
-              )
-            LEFT JOIN text_lines tl ON tl.id = cm.text_line_id
-            WHERE lc.entry_id IN (${ph})
-            GROUP BY lc.entry_id, lc.work_id, COALESCE(lc.act, -1), COALESCE(lc.scene, -1), COALESCE(lc.line, -1)
-            ORDER BY w.title, lc.act, lc.scene, lc.line`
-        )
-        .all(...entryIds) as {
-            id: number;
-            entry_id: number;
-            sense_id: number | null;
-            work_id: number | null;
-            work_abbrev: string | null;
-            work_title: string | null;
-            act: number | null;
-            scene: number | null;
-            line: number | null;
-            quote_text: string | null;
-            display_text: string | null;
-            raw_bibl: string | null;
-            matched_line: string | null;
-            matched_line_number: number | null;
-            matched_character: string | null;
-            matched_edition_id: number | null;
-        }[];
-
-    const headword = baseEntry.base_key.replace(/\d+$/, '').toLowerCase();
-    const hwPattern = new RegExp('\\b' + headword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-    const allCitations = citRows.map((c) => ({ ...c, edition_lines: [] as { edition_id: number; edition_code: string; line_number: number | null }[] }));
-
-    for (const c of allCitations) {
-        if (c.matched_line && hwPattern.test(c.matched_line)) continue;
-        if (c.work_id === null || c.act === null || c.scene === null) continue;
-
-        const edId = c.matched_edition_id ?? 3;
-        const target = c.matched_line_number ?? c.line ?? 0;
-
-        const nearby = db
-            .prepare(
-                `SELECT line_number, content, char_name
-                FROM text_lines
-                WHERE work_id = ? AND edition_id = ? AND act = ? AND scene = ?
-                  AND line_number BETWEEN ? AND ?
-                ORDER BY line_number`
-            )
-            .all(c.work_id, edId, c.act, c.scene, target - 10, target + 10) as {
-                line_number: number;
-                content: string;
-                char_name: string | null;
-            }[];
-
-        let found = false;
-        outer: for (let offset = 0; offset <= 10; offset++) {
-            const deltas = offset === 0 ? [0] : [-offset, offset];
-            for (const delta of deltas) {
-                for (const nl of nearby) {
-                    if (nl.line_number === target + delta && hwPattern.test(nl.content)) {
-                        c.matched_line = nl.content;
-                        c.matched_line_number = nl.line_number;
-                        c.matched_character = nl.char_name;
-                        c.line = nl.line_number;
-                        found = true;
-                        break outer;
-                    }
-                }
-            }
-        }
-        if (!found) {
-            c.matched_line = null;
-        }
-    }
-
-    if (allCitations.length > 0) {
-        const citIds = allCitations.map((c) => c.id);
-        const citPh = placeholders(citIds.length);
-        const edRows = db
-            .prepare(
-                `SELECT cm.citation_id, cm.edition_id, e.short_code, tl.line_number
-                FROM citation_matches cm
-                JOIN text_lines tl ON tl.id = cm.text_line_id
-                JOIN editions e ON e.id = cm.edition_id
-                WHERE cm.citation_id IN (${citPh})
-                  AND cm.edition_id IN (1, 2, 3, 4, 5)
-                ORDER BY cm.citation_id, cm.edition_id`
-            )
-            .all(...citIds) as {
-                citation_id: number;
-                edition_id: number;
-                short_code: string;
-                line_number: number | null;
-            }[];
-
-        const edMap = new Map<number, { edition_id: number; edition_code: string; line_number: number | null }[]>();
-        for (const row of edRows) {
-            if (!edMap.has(row.citation_id)) edMap.set(row.citation_id, []);
-            edMap.get(row.citation_id)!.push({
-                edition_id: row.edition_id,
-                edition_code: row.short_code,
-                line_number: row.line_number
-            });
-        }
-        for (const c of allCitations) {
-            c.edition_lines = edMap.get(c.id) ?? [];
-        }
-    }
-
-    const references = getReferenceCitations(baseEntry.base_key);
-
-    const sensesByEntry = new Map<number, typeof senseRows>();
-    for (const s of senseRows) {
-        if (!sensesByEntry.has(s.entry_id)) sensesByEntry.set(s.entry_id, []);
-        sensesByEntry.get(s.entry_id)!.push(s);
-    }
-    const citsByEntry = new Map<number, typeof allCitations>();
-    for (const c of allCitations) {
-        if (!citsByEntry.has(c.entry_id)) citsByEntry.set(c.entry_id, []);
-        citsByEntry.get(c.entry_id)!.push(c);
-    }
-
-    const subEntries = groupRows.map((ge) => ({
-        id: ge.id,
-        key: ge.key,
-        entry_type: ge.entry_type,
-        full_text: ge.full_text,
-        orthography: ge.orthography,
-        senses: sensesByEntry.get(ge.id) ?? [],
-        citations: citsByEntry.get(ge.id) ?? []
-    }));
-
-    return {
-        id: baseEntry.id,
-        key: baseEntry.base_key,
-        orthography: baseEntry.orthography,
-        entry_type: baseEntry.entry_type,
-        full_text: baseEntry.full_text,
-        subEntries,
-        senses: senseRows,
-        citations: allCitations,
-        references
-    };
-}
-
-function getReferenceCitations(baseKey: string) {
-    const db = getDb();
-    const rows = db
-        .prepare(
-            `SELECT rc.id, src.name AS source_name, src.short_code AS source_code,
-            re.id AS entry_id, re.headword AS entry_headword,
-            w.title AS work_title, rc.work_abbrev, rc.act, rc.scene, rc.line
-            FROM reference_citations rc
-            JOIN reference_entries re ON re.id = rc.entry_id
-            JOIN sources src ON src.id = rc.source_id
-            LEFT JOIN works w ON w.id = rc.work_id
-            WHERE LOWER(re.headword) = LOWER(?)
-            ORDER BY src.name, w.title, rc.act, rc.scene, rc.line`
-        )
-        .all(baseKey) as {
-            id: number;
-            source_name: string;
-            source_code: string;
-            entry_id: number;
-            entry_headword: string;
-            work_title: string | null;
-            work_abbrev: string | null;
-            act: number | null;
-            scene: number | null;
-            line: number | null;
-        }[];
-
-    if (rows.length === 0) return [];
-
-    const refIds = rows.map((r) => r.id);
-    const refPh = placeholders(refIds.length);
-    const db2 = getDb();
-    const edRows = db2
-        .prepare(
-            `SELECT rcm.ref_citation_id, rcm.edition_id, e.short_code, tl.line_number
-            FROM reference_citation_matches rcm
-            JOIN text_lines tl ON tl.id = rcm.text_line_id
-            JOIN editions e ON e.id = rcm.edition_id
-            WHERE rcm.ref_citation_id IN (${refPh})
-              AND rcm.edition_id IN (1, 2, 3, 4, 5)
-            ORDER BY rcm.ref_citation_id, rcm.edition_id`
-        )
-        .all(...refIds) as {
-            ref_citation_id: number;
-            edition_id: number;
-            short_code: string;
-            line_number: number | null;
-        }[];
-
-    const edMap = new Map<number, { edition_id: number; edition_code: string; line_number: number | null }[]>();
-    for (const row of edRows) {
-        if (!edMap.has(row.ref_citation_id)) edMap.set(row.ref_citation_id, []);
-        edMap.get(row.ref_citation_id)!.push({
-            edition_id: row.edition_id,
-            edition_code: row.short_code,
-            line_number: row.line_number
-        });
-    }
-
-    return rows.map((r) => ({
-        source_name: r.source_name,
-        source_code: r.source_code,
-        entry_id: r.entry_id,
-        entry_headword: r.entry_headword,
-        work_title: r.work_title,
-        work_abbrev: r.work_abbrev,
-        work_slug: r.work_title ? slugify(r.work_title) : null,
-        act: r.act,
-        scene: r.scene,
-        line: r.line,
-        edition_lines: edMap.get(r.id) ?? []
     }));
 }
 
@@ -1073,7 +779,6 @@ async function search(q: string, limit = 20): Promise<SearchResult[]> {
 export const api = {
     getAttributions: () => Promise.resolve(getAttributions()),
     getCorrections: (state = 'all') => getCorrections(state),
-    getLexiconEntry: (id: number) => Promise.resolve(getLexiconEntry(id)),
     getReferenceSources: () => Promise.resolve(getReferenceSources()),
     getLexiconKeys: () => Promise.resolve(getLexiconKeys()),
     getLexiconLetters: () => Promise.resolve(getLexiconLetters()),
@@ -1085,6 +790,5 @@ export const api = {
     getWorks: () => Promise.resolve(getWorks()),
     getWorkEditions: (idOrSlug: number | string) => Promise.resolve(getWorkEditions(idOrSlug)),
     getWorkTOC: (idOrSlug: number | string) => Promise.resolve(getWorkTOC(idOrSlug)),
-    getLexiconIndex: () => Promise.resolve(getLexiconIndex()),
     search: (q: string, limit = 20) => search(q, limit)
 };
