@@ -5,16 +5,16 @@
 # Usage:
 #   make capell test           → runs tests for the Go pipeline
 #   make capell build          → compiles the builder binary
-#   make web dev               → starts the SvelteKit dev server (future)
+#   make web dev               → starts the SvelteKit dev server
 #   make sources verify        → checksums original source files
 #   make data validate         → validates reference JSON files
 #   make test-all              → runs tests across all projects
 #   make clean-all             → cleans build artifacts in all projects
 
-.PHONY: capell web api sources data test-all clean-all setup help
+.PHONY: capell web sources data test-all clean-all setup help
 
 # All project directories that have their own Makefile
-PROJECTS := capell web api sources data
+PROJECTS := capell web sources data
 
 # ─── Namespace Delegation ─────────────────────────────────────────────
 # Captures `make <project> <action>` and forwards to projects/<project>/Makefile.
@@ -24,9 +24,6 @@ capell:
 
 web:
 	@$(MAKE) -C projects/web $(filter-out $@,$(MAKECMDGOALS))
-
-api:
-	@$(MAKE) -C projects/api $(filter-out $@,$(MAKECMDGOALS))
 
 sources:
 	@$(MAKE) -C projects/sources $(filter-out $@,$(MAKECMDGOALS))
@@ -74,7 +71,6 @@ help:
 	@echo ""
 	@echo "Projects:"
 	@echo "  capell      Go pipeline (build, test, run, release, lint, clean)"
-	@echo "  api         Go HTTP API server (build, run, docker)"
 	@echo "  web         SvelteKit app (run, build, test, preview, clean)"
 	@echo "  sources     Original texts — READ ONLY (verify, list, stats)"
 	@echo "  data        Reference JSON mappings (validate, list, clean)"
