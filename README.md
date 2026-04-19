@@ -8,7 +8,8 @@
 
 A multi-edition Shakespeare reader with lexicon, cross-edition alignment, and reference works — built on SQLite, Go, and SvelteKit.
 
-**Live:** [bardbase.pages.dev](https://bardbase.pages.dev)
+**Live:** [bardbase.scottkey.dev](https://bardbase.scottkey.dev)
+**Preview:** [bardbase.pages.dev](https://bardbase.pages.dev)
 
 ## Warning --- alpha ----
 This project should be considered in alpha. There are many issues left to resolve, if you end up using the app and find an issue, please report issues to the github repository. Within the web app there is an issue reporter in many places(but not all) in the application. Please keep in mind that this project is something that is worked on for free and in spare time. While I want to provide the best possible experience, some things are outside of my control.  
@@ -18,17 +19,31 @@ This project should be considered in alpha. There are many issues left to resolv
 ## Architecture
 
 ```
+Build time:
+┌──────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
+│  Go API      │────▶│  SvelteKit prerender  │────▶│  Cloudflare Pages   │
+│  (CI Docker) │     │  (static HTML)        │     │  (static delivery)  │
+└──────────────┘     └──────────────────────┘     └─────────────────────┘
+
+Runtime:
 ┌─────────────────────┐     ┌──────────────────────┐
-│  Cloudflare Pages   │────▶│  Go API (Railway)     │
-│  SvelteKit SSR      │     │  SQLite + bardbase.db │
+│  Cloudflare Pages   │────▶│  Cloudflare D1        │
+│  (static HTML/JS)   │     │  (FTS5 search only)   │
 └─────────────────────┘     └──────────────────────┘
 ```
 
-- **Go HTTP API** — serves `bardbase.db` via native SQLite, REST endpoints, API key auth
-- **SvelteKit on Cloudflare** — SSR at the edge, server routes call the Go API
+- **Go HTTP API** — serves `bardbase.db` during CI prerender only; not deployed at runtime
+- **SvelteKit on Cloudflare Pages** — fully prerendered static site; no server-side rendering at runtime
+- **Cloudflare D1** — SQLite at the edge, powers live full-text search only
 - **Docker Compose** — local dev with hot reload (air + vite)
 
 ## Quick Start
+
+### Setup (first clone)
+
+```bash
+make setup      # configures local git hooks
+```
 
 ### Local Development
 
@@ -125,10 +140,9 @@ bardbase/
 
 | Service | Platform | Trigger |
 |---------|----------|---------|
-| Database build | GitHub Actions | Manual dispatch |
+| Database build | Local | `make capell release` — builds and publishes to GitHub Releases |
 | Go API image | GitHub Container Registry | Push to main (capell changes) |
-| Go API deploy | Railway | Auto-deploys from GHCR image |
-| Frontend deploy | Cloudflare Pages | Push to main (web changes) |
+| Frontend deploy | Cloudflare Pages | Push to main (web changes) — pulls API image from GHCR to prerender |
 
 ### Required Secrets
 
@@ -136,7 +150,7 @@ bardbase/
 |--------|-------|---------|
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions | Cloudflare Pages deploy |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Cloudflare account |
-| `API_KEY` | Railway + Cloudflare | Shared auth between frontend and API |
+| `API_KEY` | Cloudflare Pages dashboard | Go API key used during prerender (optional if API is public) |
 
 ## Documentation
 

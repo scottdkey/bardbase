@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Pre-push hook: block pushes to main unless a bardbase.db GitHub release exists.
+# The frontend CI pipeline depends on the Go API container, which downloads
+# bardbase.db from the latest release at startup. Without a release, CI fails.
+#
+# Install: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+PUSHING_TO_MAIN=false
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" ]]; then
+    PUSHING_TO_MAIN=true
+  fi
+done
+
+if ! $PUSHING_TO_MAIN; then
+  exit 0
+fi
+
+if ! command -v gh &>/dev/null; then
+  echo "⚠️  gh CLI not found — skipping bardbase.db release check."
+  echo "   Install gh: https://cli.github.com"
+  exit 0
+fi
+
+echo "Checking GitHub releases for bardbase.db..."
+
+if ! gh release view --json assets --jq '.assets[].name' 2>/dev/null | grep -q '^bardbase\.db$'; then
+  echo ""
+  echo "✗ No bardbase.db found in GitHub releases."
+  echo ""
+  echo "  The frontend CI pipeline requires a released bardbase.db to start the Go API."
+  echo "  Build and publish one first:"
+  echo ""
+  echo "    make capell release"
+  echo ""
+  echo "  Then push again."
+  exit 1
+fi
+
+echo "✓ bardbase.db release found — push allowed."

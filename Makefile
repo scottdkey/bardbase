@@ -11,7 +11,7 @@
 #   make test-all              → runs tests across all projects
 #   make clean-all             → cleans build artifacts in all projects
 
-.PHONY: capell web api sources data test-all clean-all help
+.PHONY: capell web api sources data test-all clean-all setup help
 
 # All project directories that have their own Makefile
 PROJECTS := capell web api sources data
@@ -38,6 +38,13 @@ data:
 # Without this, `make capell test` would error on "test" as a root target.
 %:
 	@:
+
+# ─── Repo Setup ───────────────────────────────────────────────────────
+
+# Configure local git hooks. Run once after cloning.
+setup:
+	git config core.hooksPath .githooks
+	@echo "✓ Git hooks configured (.githooks/pre-push active)"
 
 # ─── Cross-Project Convenience ────────────────────────────────────────
 
@@ -73,5 +80,6 @@ help:
 	@echo "  data        Reference JSON mappings (validate, list, clean)"
 	@echo ""
 	@echo "Cross-project:"
+	@echo "  setup       Configure local git hooks (run once after cloning)"
 	@echo "  test-all    Run tests in all projects"
 	@echo "  clean-all   Clean build artifacts in all projects"
