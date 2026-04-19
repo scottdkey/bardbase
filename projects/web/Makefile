@@ -1,7 +1,7 @@
-# web — SvelteKit application (future)
+# web — SvelteKit PWA
 #
-# This project will contain the SvelteKit PWA that reads the Shakespeare
-# SQLite database at build time and deploys to Cloudflare Pages/Workers.
+# Reads the Shakespeare SQLite database directly via better-sqlite3 and
+# deploys to Cloudflare Pages (prerendered; no Go API server required).
 #
 # Usage (from repo root):
 #   make web run         # Start dev server
