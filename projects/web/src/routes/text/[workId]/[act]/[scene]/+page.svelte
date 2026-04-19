@@ -7,11 +7,26 @@
 	import WordPopover from '$lib/components/WordPopover.svelte';
 	import ReferenceDrawer from '$lib/components/ReferenceDrawer.svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { readingPosition } from '$lib/stores/reading-position.svelte';
 	import { findAdjacentScenes } from '$lib/utils/scene-nav';
 
 	let { data } = $props();
 	let scene: MultiEditionScene = $derived(data.scene);
+
+	// Read URL params directly — prerendered data doesn't carry query params on client-side navigation.
+	// Use $state + $effect (not $derived) because $derived evaluates during SSR and throws on searchParams.
+	let headword = $state('');
+	let isReference = $state(false);
+	let line = $state<number | null>(null);
+	let editionId = $state<number | null>(null);
+
+	$effect(() => {
+		headword = page.url.searchParams.get('hw') ?? '';
+		isReference = !!headword || page.url.searchParams.has('line');
+		line = page.url.searchParams.has('line') ? parseInt(page.url.searchParams.get('line')!, 10) : null;
+		editionId = page.url.searchParams.has('ed') ? parseInt(page.url.searchParams.get('ed')!, 10) : null;
+	});
 	let adjacent = $derived(findAdjacentScenes(data.toc, data.act, data.sceneNum));
 
 	// References: pre-loaded from DB, keyed by line number
@@ -228,9 +243,9 @@
 				// Use saved preference, filtered to what's available in this scene
 				const filtered = preferred.filter((id) => available.includes(id));
 				visibleEditions = filtered.length > 0 ? filtered : [available[0]];
-			} else if (data.isReference && data.editionId) {
+			} else if (isReference && editionId) {
 				// Reference mode: show the referenced edition + one other
-				const matchedEd = data.editionId;
+				const matchedEd = editionId;
 				const first = available.includes(matchedEd) ? matchedEd : available[0];
 				const second = available.find((id) => id !== first) ?? available[0];
 				visibleEditions = [first, second];
@@ -243,14 +258,13 @@
 				}
 			}
 
-			if (data.isReference) {
-				const candidateLine = data.line;
-				if (data.headword) {
-					const result = findHeadwordRow(scene, candidateLine, data.editionId, data.headword);
+			if (isReference) {
+				const candidateLine = line;
+				if (headword) {
+					const result = findHeadwordRow(scene, candidateLine, editionId, headword);
 					highlightRow = result.rowIndex;
 					matchQuality = result.quality;
 				} else if (candidateLine != null) {
-					// Line-only reference (no headword): find the row by line number
 					const idx = scene.rows.findIndex((r) =>
 						Object.values(r.editions).some((ed) => ed && ed.line_number === candidateLine)
 					);
@@ -278,7 +292,7 @@
 
 	// Reading position: save on scene load and restore scroll
 	onMount(() => {
-		if (!data.isReference) {
+		if (!isReference) {
 			const saved = readingPosition.get(data.workId);
 			if (saved && saved.act === data.act && saved.scene === data.sceneNum && saved.scrollY > 0) {
 				requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
@@ -300,7 +314,7 @@
 			lastScrollY = y;
 
 			// Save reading position (debounced)
-			if (!data.isReference) {
+			if (!isReference) {
 				clearTimeout(scrollTimer);
 				scrollTimer = setTimeout(() => {
 					readingPosition.save(data.workId, data.act, data.sceneNum, window.scrollY);
@@ -424,13 +438,13 @@
 	}
 
 	function handleTouchStart(e: TouchEvent) {
-		if (data.isReference) return;
+		if (isReference) return;
 		touchStartX = e.touches[0].clientX;
 		touchStartY = e.touches[0].clientY;
 	}
 
 	function handleTouchEnd(e: TouchEvent) {
-		if (data.isReference) return;
+		if (isReference) return;
 		const dx = e.changedTouches[0].clientX - touchStartX;
 		const dy = e.changedTouches[0].clientY - touchStartY;
 		if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -476,7 +490,7 @@
 			<IconButton onclick={goBack} label="Back" size={36}>
 				<IconBack size={20} />
 			</IconButton>
-			{#if !data.isReference}
+			{#if !isReference}
 				<button class="toc-btn" onclick={() => (tocOpen = !tocOpen)} aria-label="Table of contents">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
@@ -624,7 +638,7 @@
 {/if}
 
 <!-- Floating nav arrows (reading mode only) -->
-{#if !data.isReference}
+{#if !isReference}
 	{#if adjacent.prev}
 		<button class="nav-arrow nav-prev" onclick={gotoPrev} aria-label="Previous scene">
 			&#8249;
@@ -657,6 +671,8 @@
 							>
 								{#if actNum === 0}
 									{sc.description ?? `${sc.scene}`}
+								{:else if scene.work_title === 'Sonnets'}
+									Sonnet {sc.scene}
 								{:else}
 									Scene {sc.scene}
 								{/if}

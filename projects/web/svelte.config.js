@@ -6,9 +6,10 @@ import adapterNode from '@sveltejs/adapter-node';
 const adapter = process.env.CF_PAGES
 	? adapterCloudflare({
 			routes: { include: ['/*'], exclude: ['<all>'] },
-			// Use in-memory D1 during prerendering so concurrent workers don't
-			// fight over the same Miniflare SQLite state files (SQLITE_BUSY).
-			platformProxy: { persist: false }
+			// Disable platformProxy — prerendered routes read from node:sqlite, not D1.
+			// Leaving it enabled spawns a workerd child process that never terminates,
+			// causing `vite build` to hang after prerender completes.
+			platformProxy: false
 	  })
 	: adapterNode();
 

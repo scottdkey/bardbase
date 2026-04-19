@@ -127,9 +127,9 @@ func (s *Server) handleWorks(w http.ResponseWriter, _ *http.Request) {
 		}
 		w.Slug = slugify(w.Title)
 		switch w.WorkType {
-		case "comedy", "tragedy", "history":
+		case "comedy", "tragedy", "history", "apocrypha":
 			plays = append(plays, w)
-		case "poem", "sonnet_sequence", "apocrypha":
+		case "poem", "sonnet_sequence":
 			poetry = append(poetry, w)
 		// Skip biblical_reference, classical_reference, lexicon_appendix
 		}

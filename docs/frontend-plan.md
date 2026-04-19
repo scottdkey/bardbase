@@ -75,8 +75,7 @@
 
 ## Tech Notes
 
-- Go API at `projects/capell/` — stdlib `net/http`, modernc.org/sqlite (pure Go)
 - SvelteKit at `projects/web/` — Svelte 5 runes, adapter-cloudflare (prod) / adapter-node (dev)
-- Docker Compose for local dev with hot reload
-- API auth via shared `API_KEY` (Bearer token)
-- All work endpoints accept slugs or numeric IDs
+- Data access: SvelteKit server routes query the SQLite database directly via `better-sqlite3` (no intermediate API server)
+- Search is handled by a SvelteKit API route (`/api/search`) backed by FTS5 virtual tables
+- Deployed to Cloudflare Pages via `frontend-build.yml`; the SQLite DB is fetched from the latest GitHub release at build time

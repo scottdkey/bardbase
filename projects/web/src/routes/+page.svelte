@@ -56,9 +56,10 @@
 		return acts;
 	}
 
-	function formatPosition(workId: number): string {
-		const pos = readingPosition.get(workId);
+	function formatPosition(work: { id: number; title: string }): string {
+		const pos = readingPosition.get(work.id);
 		if (!pos) return '';
+		if (work.title === 'Sonnets') return `Sonnet ${pos.scene}`;
 		if (pos.act === 0) return `at ${pos.scene}`;
 		return `Act ${pos.act}, Scene ${pos.scene}`;
 	}
@@ -69,7 +70,7 @@
 	<div class="work-toc">
 		{#if saved}
 			<button class="continue-btn" onclick={() => continueReading(work)}>
-				Continue reading &mdash; {formatPosition(work.id)}
+				Continue reading &mdash; {formatPosition(work)}
 			</button>
 		{/if}
 		{#if data.tocs[work.id]}
@@ -88,6 +89,8 @@
 								>
 									{#if actNum === 0}
 										{sc.description ?? `${sc.scene}`}
+									{:else if work.title === 'Sonnets'}
+										Sonnet {sc.scene}
 									{:else}
 										Scene {sc.scene}
 									{/if}
@@ -121,7 +124,7 @@
 							<button class="work-btn" onclick={() => toggleWork(work.id)}>
 								<span class="work-title">{work.title}</span>
 								{#if saved}
-									<span class="reading-badge">{formatPosition(work.id)}</span>
+									<span class="reading-badge">{formatPosition(work)}</span>
 								{/if}
 								<span class="expand-icon">{expandedWorkId === work.id ? '\u25B4' : '\u25BE'}</span>
 							</button>
@@ -145,7 +148,7 @@
 						<button class="work-btn" onclick={() => toggleWork(work.id)}>
 							<span class="work-title">{work.title}</span>
 							{#if saved}
-								<span class="reading-badge">{formatPosition(work.id)}</span>
+								<span class="reading-badge">{formatPosition(work)}</span>
 							{/if}
 							<span class="expand-icon">{expandedWorkId === work.id ? '\u25B4' : '\u25BE'}</span>
 						</button>
