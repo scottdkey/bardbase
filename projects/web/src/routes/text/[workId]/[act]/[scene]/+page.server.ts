@@ -5,7 +5,6 @@ export async function entries() {
 	const works = await api.getWorks();
 	const all = [...works.plays, ...works.poetry];
 
-	// Fetch all TOCs in parallel — Go API runs locally during build so this is fast.
 	const tocs = await Promise.all(
 		all.map((work) =>
 			api.getWorkTOC(work.slug).then((toc) => ({ slug: work.slug, toc }))
