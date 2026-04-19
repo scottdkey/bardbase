@@ -1,6 +1,5 @@
 # Bardbase
 
-[![Build](https://github.com/scottdkey/bardbase/actions/workflows/build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/build.yml)
 [![API](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/api-deploy.yml)
 [![Frontend](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml/badge.svg)](https://github.com/scottdkey/bardbase/actions/workflows/frontend-build.yml)
 ![Downloads](https://img.shields.io/github/downloads/scottdkey/bardbase/total)
