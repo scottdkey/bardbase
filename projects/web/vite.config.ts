@@ -52,8 +52,16 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,svg,png,woff2}'],
-				globIgnores: ['prerendered/**/*'],
-				maximumFileSizeToCacheInBytes: 11 * 1024 * 1024, // 11 MB, to accommodate large lexicon search results
+				// Prerendered HTML scenes can be 7-11 MB (multi-edition text + references inline).
+				// Let the plugin find them (avoids Workbox "empty pattern" warning), but strip
+				// them from the SW manifest via manifestTransforms — they must never be precached.
+				maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
+				manifestTransforms: [
+					(entries) => ({
+						manifest: entries.filter((e) => !e.url.startsWith('prerendered/')),
+						warnings: []
+					})
+				],
 				runtimeCaching: [
 					{
 						// Static metadata — changes only when the DB is rebuilt, serve from cache immediately
