@@ -3,6 +3,11 @@ import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	ssr: {
+		// node:sqlite is used only during prerender (Node.js). Mark it external
+		// so it is never bundled into the Cloudflare Workers output.
+		external: ['node:sqlite', 'node:path']
+	},
 	server: {
 		host: '0.0.0.0',
 		port: 5173,

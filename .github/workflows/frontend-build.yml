@@ -11,7 +11,6 @@ on:
 permissions:
   contents: read
   deployments: write
-  packages: read
 
 jobs:
   build-and-deploy:
@@ -41,39 +40,9 @@ jobs:
 
       - name: Download bardbase.db
         if: steps.db-cache.outputs.cache-hit != 'true'
-        run: |
-          gh release download --pattern "bardbase.db" --dir /tmp --clobber
+        run: gh release download --pattern "bardbase.db" --dir /tmp --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Start Go API
-        run: |
-          docker run -d --name bardbase-api -p 8080:8080 \
-            -v /tmp/bardbase.db:/app/bardbase.db \
-            -e DB_PATH=/app/bardbase.db \
-            ghcr.io/${{ github.repository }}/api:latest
-
-      - name: Wait for API
-        run: |
-          for i in $(seq 1 24); do
-            if curl -sf http://localhost:8080/api/works > /dev/null 2>&1; then
-              echo "API ready after $((i * 5))s"
-              break
-            fi
-            if [ $i -eq 24 ]; then
-              echo "API failed to start after 120s"
-              docker logs bardbase-api
-              exit 1
-            fi
-            sleep 5
-          done
 
       - uses: actions/setup-node@v4
         with:
@@ -91,7 +60,7 @@ jobs:
         run: npm run build
         env:
           CF_PAGES: "1"
-          API_URL: "http://localhost:8080"
+          DB_PATH: "/tmp/bardbase.db"
           NODE_OPTIONS: "--max-old-space-size=6144"
 
       - name: Deploy to Cloudflare Pages
@@ -101,7 +70,3 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: projects/web
           command: pages deploy .svelte-kit/cloudflare --project-name=bardbase
-
-      - name: Stop Go API
-        if: always()
-        run: docker stop bardbase-api 2>/dev/null || true

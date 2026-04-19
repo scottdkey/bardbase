@@ -20,7 +20,7 @@ const config = {
 			base: ''
 		},
 		prerender: {
-			concurrency: 4,
+			concurrency: 16,
 			handleHttpError: ({ status, path, referrer }) => {
 				if (status === 404) {
 					console.warn(`[prerender] 404 ${path} (linked from ${referrer})`);

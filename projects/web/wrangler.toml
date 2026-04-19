@@ -3,12 +3,8 @@ pages_build_output_dir = ".svelte-kit/cloudflare"
 compatibility_date = "2026-03-21"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-# API_URL is only needed during the static build phase (Go API runs locally in CI).
-# At runtime the site is fully static — no Go API dependency.
-API_URL = "http://localhost:8080"
-
-# API_KEY is set as a secret in Cloudflare Pages dashboard, not here
+# No [vars] needed — site is fully static. DB_PATH is set in CI env only (build phase).
+# API_KEY is no longer used (Go API removed).
 
 # Search database — D1 SQLite, populated by `make capell export-search` in CI.
 # Database ID changes when the search DB is rotated (see docs/search-db-rotation.md).

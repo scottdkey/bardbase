@@ -100,13 +100,17 @@
 		const rowIdx = parseInt(target.dataset.row ?? '', 10);
 		if (isNaN(rowIdx)) return;
 		const rect = target.getBoundingClientRect();
-		if (e.type === 'click') {
+		hoverTimer = setTimeout(() => {
 			showWordPopover(target.textContent ?? '', rowIdx, rect.left, rect.bottom);
-		} else {
-			hoverTimer = setTimeout(() => {
-				showWordPopover(target.textContent ?? '', rowIdx, rect.left, rect.bottom);
-			}, 300);
-		}
+		}, 300);
+	}
+
+	function handleWordClick(e: MouseEvent) {
+		const target = e.currentTarget as HTMLElement;
+		const rowIdx = parseInt(target.dataset.row ?? '', 10);
+		if (isNaN(rowIdx)) return;
+		const rect = target.getBoundingClientRect();
+		showWordPopover(target.textContent ?? '', rowIdx, rect.left, rect.bottom);
 	}
 
 	function handleWordLeave() {
@@ -587,13 +591,12 @@
 						>
 							{#if cell}
 								<span class="line-number">{cell.line_number ?? ''}</span>
-								<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<span
 									class="line-content"
 									onmouseenter={handleWordInteraction}
 									onmouseleave={handleWordLeave}
-									onclick={handleWordInteraction}
-								>{#if rowRefs.has(rowIdx)}{#each cell.content.split(/(\s+)/) as part}{#if /\s/.test(part)}{part}{:else if hasWordRef(rowIdx, part)}<span class="word ref" data-row={rowIdx}>{part}</span>{:else}{part}{/if}{/each}{:else}{cell.content}{/if}</span>
+								>{#if rowRefs.has(rowIdx)}{#each cell.content.split(/(\s+)/) as part}{#if /\s/.test(part)}{part}{:else if hasWordRef(rowIdx, part)}<button type="button" class="word ref" data-row={rowIdx} onclick={handleWordClick}>{part}</button>{:else}{part}{/if}{/each}{:else}{cell.content}{/if}</span>
 							{:else}
 								<span class="line-empty">&mdash;</span>
 							{/if}
