@@ -55,14 +55,6 @@ export interface ReferenceSource {
     count: number;
 }
 
-export interface ReferenceEntryCitation {
-    work_title: string | null;
-    act: number | null;
-    scene: number | null;
-    line: number | null;
-    work_slug: string | null;
-}
-
 export interface CitationSpan {
     start: number;
     end: number;
@@ -70,16 +62,6 @@ export interface CitationSpan {
     act?: number;
     scene?: number;
     line?: number;
-}
-
-export interface ReferenceEntryDetail {
-    id: number;
-    headword: string;
-    raw_text: string;
-    source_name: string;
-    source_code: string;
-    citations: ReferenceEntryCitation[];
-    citation_spans: CitationSpan[];
 }
 
 export interface WorkDivision {
@@ -253,14 +235,6 @@ function getLexiconIndex(): LexiconIndexEntry[] {
         .all() as unknown as LexiconIndexEntry[];
 }
 
-function getReferenceIndex(): number[] {
-    const db = getDb();
-    const rows = db
-        .prepare('SELECT id FROM reference_entries ORDER BY id')
-        .all() as { id: number }[];
-    return rows.map((r) => r.id);
-}
-
 function getReferenceSources(): ReferenceSource[] {
     const db = getDb();
     const result: ReferenceSource[] = [];
@@ -316,54 +290,6 @@ async function getCorrections(state = 'all'): Promise<CorrectionIssue[]> {
         labels: i.labels.map((l) => l.name),
         body: i.body
     }));
-}
-
-function getReferenceEntry(id: number): ReferenceEntryDetail {
-    const db = getDb();
-    const entry = db
-        .prepare(
-            `SELECT re.id, re.headword, re.raw_text, s.name, s.short_code
-            FROM reference_entries re
-            JOIN sources s ON s.id = re.source_id
-            WHERE re.id = ?`
-        )
-        .get(id) as
-        | { id: number; headword: string; raw_text: string; name: string; short_code: string }
-        | undefined;
-    if (!entry) throw new Error(`Reference entry not found: ${id}`);
-
-    const citRows = db
-        .prepare(
-            `SELECT w.title, rc.act, rc.scene, rc.line
-            FROM reference_citations rc
-            LEFT JOIN works w ON w.id = rc.work_id
-            WHERE rc.entry_id = ?
-            ORDER BY w.title, rc.act, rc.scene, rc.line`
-        )
-        .all(id) as {
-            title: string | null;
-            act: number | null;
-            scene: number | null;
-            line: number | null;
-        }[];
-
-    const citations: ReferenceEntryCitation[] = citRows.map((r) => ({
-        work_title: r.title,
-        act: r.act,
-        scene: r.scene,
-        line: r.line,
-        work_slug: r.title ? slugify(r.title) : null
-    }));
-
-    return {
-        id: entry.id,
-        headword: entry.headword,
-        raw_text: entry.raw_text,
-        source_name: entry.name,
-        source_code: entry.short_code,
-        citations,
-        citation_spans: []
-    };
 }
 
 function getLexiconEntry(id: number): LexiconEntryDetail {
@@ -1148,7 +1074,6 @@ export const api = {
     getAttributions: () => Promise.resolve(getAttributions()),
     getCorrections: (state = 'all') => getCorrections(state),
     getLexiconEntry: (id: number) => Promise.resolve(getLexiconEntry(id)),
-    getReferenceEntry: (id: number) => Promise.resolve(getReferenceEntry(id)),
     getReferenceSources: () => Promise.resolve(getReferenceSources()),
     getLexiconKeys: () => Promise.resolve(getLexiconKeys()),
     getLexiconLetters: () => Promise.resolve(getLexiconLetters()),
@@ -1161,6 +1086,5 @@ export const api = {
     getWorkEditions: (idOrSlug: number | string) => Promise.resolve(getWorkEditions(idOrSlug)),
     getWorkTOC: (idOrSlug: number | string) => Promise.resolve(getWorkTOC(idOrSlug)),
     getLexiconIndex: () => Promise.resolve(getLexiconIndex()),
-    getReferenceIndex: () => Promise.resolve(getReferenceIndex()),
     search: (q: string, limit = 20) => search(q, limit)
 };
