@@ -138,7 +138,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="drawer-backdrop" onclick={onclose} role="presentation"></div>
-<aside class="drawer" role="complementary" aria-label="Reference details">
+<aside class="drawer" aria-label="Reference details">
 	<div class="drawer-header">
 		<div class="header-content">
 			<h2 class="headword">{ref.entry_key}</h2>

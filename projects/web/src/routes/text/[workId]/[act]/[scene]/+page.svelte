@@ -151,14 +151,6 @@
 	const EDITION_PREF_KEY = 'bardbase-preferred-editions';
 	const REF_PREF_KEY = 'bardbase-preferred-refs';
 
-	const SOURCE_LABELS: Record<string, string> = {
-		schmidt: 'Schmidt',
-		onions: 'Onions',
-		abbott: 'Abbott',
-		bartlett: 'Bartlett',
-		henley_farmer: 'H&F'
-	};
-
 	// Reference source toggles
 	let enabledSources = $state<Set<string>>(new Set());
 
@@ -470,7 +462,7 @@
 	<title>{scene.work_title} {sceneTitle()} &mdash; Bardbase</title>
 </svelte:head>
 
-<div
+<main
 	class="scene-page"
 	ontouchstart={handleTouchStart}
 	ontouchend={handleTouchEnd}
@@ -573,7 +565,7 @@
 					{@const desc = charDescriptions.get(char)}
 					<div class="speaker-row">
 						{#if desc}
-							<span class="speaker-name has-desc" tabindex="0">{char}<span class="speaker-desc">{desc}</span></span>
+							<button type="button" class="speaker-name has-desc" aria-label="{char}: {desc}">{char}<span class="speaker-desc" aria-hidden="true">{desc}</span></button>
 						{:else}
 							<span class="speaker-name">{char}</span>
 						{/if}
@@ -595,7 +587,7 @@
 						>
 							{#if cell}
 								<span class="line-number">{cell.line_number ?? ''}</span>
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 								<span
 									class="line-content"
 									onmouseenter={handleWordInteraction}
@@ -611,7 +603,7 @@
 			{/each}
 		</div>
 	</div>
-</div>
+</main>
 
 {#if popoverWord}
 	<WordPopover
@@ -1135,13 +1127,6 @@
 		background: var(--color-active);
 		font-weight: 700;
 		color: var(--color-accent);
-	}
-
-	.toc-line-count {
-		font-size: 0.65rem;
-		color: var(--color-text-muted);
-		flex-shrink: 0;
-		margin-left: 8px;
 	}
 
 	@media (max-width: 600px) {

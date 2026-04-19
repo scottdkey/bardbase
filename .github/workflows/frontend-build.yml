@@ -92,6 +92,7 @@ jobs:
         env:
           CF_PAGES: "1"
           API_URL: "http://localhost:8080"
+          NODE_OPTIONS: "--max-old-space-size=6144"
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
