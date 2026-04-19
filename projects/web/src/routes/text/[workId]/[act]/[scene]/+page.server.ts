@@ -64,6 +64,18 @@ export async function load({ params, url }) {
 			api.getWorkTOC(slug),
 			api.getSceneReferences(slug, act, scene)
 		]);
+		let isReference = false;
+		let headword = '';
+		let line: number | null = null;
+		let editionId: number | null = null;
+		try {
+			headword = url.searchParams.get('hw') ?? '';
+			isReference = !!headword || url.searchParams.has('line');
+			line = url.searchParams.has('line') ? parseInt(url.searchParams.get('line')!, 10) : null;
+			editionId = url.searchParams.has('ed') ? parseInt(url.searchParams.get('ed')!, 10) : null;
+		} catch {
+			// url.searchParams not accessible during prerender — defaults are fine
+		}
 		return {
 			scene: sceneData,
 			toc,
@@ -72,14 +84,10 @@ export async function load({ params, url }) {
 			slug,
 			act,
 			sceneNum: scene,
-			isReference: !!url.searchParams.get('hw') || url.searchParams.has('line'),
-			headword: url.searchParams.get('hw') ?? '',
-			line: url.searchParams.has('line')
-				? parseInt(url.searchParams.get('line')!, 10)
-				: null,
-			editionId: url.searchParams.has('ed')
-				? parseInt(url.searchParams.get('ed')!, 10)
-				: null
+			isReference,
+			headword,
+			line,
+			editionId
 		};
 	} catch (err) {
 		console.error('[text/scene]', err);

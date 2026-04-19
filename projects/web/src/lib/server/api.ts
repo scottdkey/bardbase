@@ -165,12 +165,12 @@ function getWorkTOC(idOrSlug: number | string): WorkDivision[] {
             )
             ORDER BY act, scene`
         )
-        .all(workId, workId) as WorkDivision[];
+        .all(workId, workId) as unknown as WorkDivision[];
 }
 
-function getWorkBySlug(slug: string): { id: number; title: string; slug: string } | null {
+function getWorkBySlug(slug: string): { id: number; title: string; slug: string } {
     const db = getDb();
-    const rows = db.prepare('SELECT id, title FROM works').all() as {
+    const rows = db.prepare('SELECT id, title FROM works').all() as unknown as {
         id: number;
         title: string;
     }[];
@@ -179,7 +179,7 @@ function getWorkBySlug(slug: string): { id: number; title: string; slug: string 
             return { id: row.id, title: row.title, slug };
         }
     }
-    return null;
+    throw new Error(`Work not found: ${slug}`);
 }
 
 function getWorkEditions(idOrSlug: number | string): WorkEdition[] {
@@ -196,7 +196,7 @@ function getWorkEditions(idOrSlug: number | string): WorkEdition[] {
             )
             ORDER BY e.id`
         )
-        .all(workId) as WorkEdition[];
+        .all(workId) as unknown as WorkEdition[];
 }
 
 function getAttributions(): FooterAttribution[] {
@@ -243,14 +243,14 @@ function getLexiconLetters(): LexiconLetter[] {
         .prepare(
             'SELECT letter, COUNT(*) AS count FROM lexicon_entries GROUP BY letter ORDER BY letter'
         )
-        .all() as LexiconLetter[];
+        .all() as unknown as LexiconLetter[];
 }
 
 function getLexiconIndex(): LexiconIndexEntry[] {
     const db = getDb();
     return db
         .prepare('SELECT id, key FROM lexicon_entries ORDER BY id')
-        .all() as LexiconIndexEntry[];
+        .all() as unknown as LexiconIndexEntry[];
 }
 
 function getReferenceIndex(): number[] {
@@ -318,7 +318,7 @@ async function getCorrections(state = 'all'): Promise<CorrectionIssue[]> {
     }));
 }
 
-function getReferenceEntry(id: number): ReferenceEntryDetail | null {
+function getReferenceEntry(id: number): ReferenceEntryDetail {
     const db = getDb();
     const entry = db
         .prepare(
@@ -330,7 +330,7 @@ function getReferenceEntry(id: number): ReferenceEntryDetail | null {
         .get(id) as
         | { id: number; headword: string; raw_text: string; name: string; short_code: string }
         | undefined;
-    if (!entry) return null;
+    if (!entry) throw new Error(`Reference entry not found: ${id}`);
 
     const citRows = db
         .prepare(
@@ -366,7 +366,7 @@ function getReferenceEntry(id: number): ReferenceEntryDetail | null {
     };
 }
 
-function getLexiconEntry(id: number): LexiconEntryDetail | null {
+function getLexiconEntry(id: number): LexiconEntryDetail {
     const db = getDb();
 
     const baseEntry = db
@@ -383,7 +383,7 @@ function getLexiconEntry(id: number): LexiconEntryDetail | null {
               full_text: string | null;
           }
         | undefined;
-    if (!baseEntry) return null;
+    if (!baseEntry) throw new Error(`Lexicon entry not found: ${id}`);
 
     const groupRows = db
         .prepare(
@@ -801,15 +801,15 @@ function mergeWorkLevelEditions(
     return [rows, availEditions];
 }
 
-function getScene(workIdOrSlug: number | string, act: number, scene: number): MultiEditionScene | null {
+function getScene(workIdOrSlug: number | string, act: number, scene: number): MultiEditionScene {
     const db = getDb();
     const workId = resolveWorkId(workIdOrSlug);
-    if (workId === null) return null;
+    if (workId === null) throw new Error(`Work not found: ${workIdOrSlug}`);
 
     const workRow = db
         .prepare('SELECT title, work_type FROM works WHERE id = ?')
         .get(workId) as { title: string; work_type: string } | undefined;
-    if (!workRow) return null;
+    if (!workRow) throw new Error(`Work not found: ${workId}`);
 
     const edRows = db
         .prepare(
@@ -821,7 +821,7 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
         )
         .all(workId, act, scene) as { id: number; short_code: string; name: string }[];
 
-    if (edRows.length === 0) return null;
+    if (edRows.length === 0) throw new Error(`Scene not found: ${workIdOrSlug} ${act}.${scene}`);
 
     let availEditions: EditionInfo[] = edRows.map((e) => ({ id: e.id, code: e.short_code, name: e.name }));
     const editionIds = availEditions.map((e) => e.id);
@@ -1033,12 +1033,13 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
 
 function loadCharacters(workId: number) {
     const db = getDb();
-    return db
+    const rows = db
         .prepare(
             `SELECT name, description, COALESCE(speech_count, 0) AS speech_count
             FROM characters WHERE work_id = ? ORDER BY name`
         )
-        .all(workId) as { name: string; description: string | null; speech_count: number }[];
+        .all(workId) as unknown as { name: string; description: string | null; speech_count: number }[];
+    return rows.map((r) => ({ ...r, description: r.description ?? undefined }));
 }
 
 function getSceneReferences(
