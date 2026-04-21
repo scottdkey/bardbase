@@ -109,7 +109,6 @@ export-search:
 	@echo "→ row counts"
 	@sqlite3 $(SEARCH_DB) \
 		"SELECT 'works' AS t, COUNT(*) FROM works \
-
 		 UNION ALL SELECT 'sources', COUNT(*) FROM sources \
 		 UNION ALL SELECT 'editions', COUNT(*) FROM editions \
 		 UNION ALL SELECT 'attributions', COUNT(*) FROM attributions \
