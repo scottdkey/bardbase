@@ -1,6 +1,8 @@
 import { error, redirect } from '@sveltejs/kit';
 import { api } from '$lib/server/api';
 
+export const prerender = true;
+
 export async function entries() {
 	const works = await api.getWorks();
 	const all = [...works.plays, ...works.poetry];
