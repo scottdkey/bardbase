@@ -41,7 +41,7 @@
 	let activeSource = $derived(data.initialSource ?? '');
 
 	// Local input state; syncs from URL on navigation, otherwise updated by typing
-	let query = $state(data.initialQuery ?? '');
+	let query = $state('');
 	$effect(() => { query = data.initialQuery ?? ''; });
 
 	// Multi-source toggles — only used on the "all" page (activeSource === '')
