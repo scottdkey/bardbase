@@ -82,12 +82,18 @@ release-upload:
 
 # ─── Search DB Export ────────────────────────────────────────────────────
 #
-# Builds bardbase-search.sql for import into Cloudflare D1 and validates
-# it by loading into a throwaway local sqlite3 DB and printing row counts.
-# Requires bardbase.db to exist (run `make capell run` first).
+# Two-step export: the Go tool emits a D1/Turso-compatible SQL dump
+# (`bardbase-search.sql`), then sqlite3 builds `bardbase-search.db` from it.
+# The .db file is the canonical runtime artifact — it's what Turso imports
+# and what local dev reads via `db.ts`'s file:// fallback.
+#
+# Requires bardbase.db (the full intermediate produced by `make capell run`).
 #
 # Usage:
 #   make capell export-search
+#
+# Then:
+#   turso db import build/bardbase-search.db    # production upload
 
 SEARCH_SQL := ../../build/bardbase-search.sql
 SEARCH_DB := ../../build/bardbase-search.db
@@ -103,6 +109,7 @@ export-search:
 	  echo "PRAGMA temp_store=MEMORY;"; \
 	  echo "PRAGMA cache_size=-1000000;"; \
 	  cat $(SEARCH_SQL)) | sqlite3 $(SEARCH_DB)
+	@sqlite3 $(SEARCH_DB) "PRAGMA journal_mode=WAL" >/dev/null
 	@ls -lh $(SEARCH_DB)
 	@echo "→ row counts"
 	@sqlite3 $(SEARCH_DB) \
@@ -127,8 +134,8 @@ export-search:
 		 UNION ALL SELECT 'reference_spans', COUNT(*) FROM reference_spans \
 		 UNION ALL SELECT 'lexicon_drawer', COUNT(*) FROM lexicon_drawer;"
 	@echo "✓ export-search complete — $(SEARCH_SQL) and $(SEARCH_DB) ready"
-	@echo "   • Turso upload: turso db create bardbase --from-dump $(SEARCH_SQL)"
-	@echo "   • Local dev:   uses $(SEARCH_DB) via db.ts file:// fallback"
+	@echo "   • Turso upload: turso db import $(SEARCH_DB)"
+	@echo "   • Local dev:    $(SEARCH_DB) via db.ts file:// fallback"
 
 # ─── Turso Dump ──────────────────────────────────────────────────────────
 #
