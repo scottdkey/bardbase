@@ -38,14 +38,12 @@
 	// Initialize from URL params
 	let activeSource = $state<string>(page.url.searchParams.get('source') ?? '');
 	let query = $state(page.url.searchParams.get('q') ?? '');
-	let workFilter = $state(page.url.searchParams.get('work') ?? '');
 
 	// Sync state to URL
 	function updateUrl() {
 		const params = new URLSearchParams();
 		if (activeSource) params.set('source', activeSource);
 		if (query.trim()) params.set('q', query.trim());
-		if (workFilter) params.set('work', workFilter);
 		const qs = params.toString();
 		const url = qs ? `/references?${qs}` : '/references';
 		goto(url, { replaceState: true, keepFocus: true, noScroll: true });
@@ -70,7 +68,6 @@
 		const params = new URLSearchParams();
 		if (query.trim()) params.set('q', query.trim());
 		if (activeSource) params.set('source', activeSource);
-		if (workFilter) params.set('work_id', workFilter);
 		params.set('limit', String(PAGE_SIZE));
 		params.set('offset', String(offset));
 
@@ -102,7 +99,6 @@
 	// React to filter/search changes
 	$effect(() => {
 		const _s = activeSource;
-		const _w = workFilter;
 		const _q = query;
 
 		clearTimeout(debounceTimer);
@@ -175,12 +171,6 @@
 		<div class="search-wrap">
 			<SearchInput bind:value={query} placeholder="Search references..." />
 		</div>
-		<select class="work-filter" bind:value={workFilter}>
-			<option value="">All works</option>
-			{#each data.works as work (work.id)}
-				<option value={String(work.id)}>{work.title}</option>
-			{/each}
-		</select>
 	</div>
 
 	<!-- Results -->
@@ -280,23 +270,6 @@
 
 	.search-wrap {
 		flex: 1;
-	}
-
-	.work-filter {
-		padding: 6px 10px;
-		border: 1px solid var(--color-border);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-family: inherit;
-		font-size: 0.8rem;
-		border-radius: 8px;
-		cursor: pointer;
-		max-width: 200px;
-	}
-
-	.work-filter:focus {
-		outline: none;
-		border-color: var(--color-accent);
 	}
 
 	/* ─── Results ─── */

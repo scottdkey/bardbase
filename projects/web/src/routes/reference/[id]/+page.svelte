@@ -3,7 +3,6 @@
 	import IconBack from '$lib/components/icons/IconBack.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import CollapsibleSection from '$lib/components/ui/CollapsibleSection.svelte';
-	import { goto } from '$app/navigation';
 	import { groupBy } from '$lib/utils';
 
 	let { data } = $props();
@@ -61,12 +60,6 @@
 		return loc;
 	}
 
-	function openScene(c: Citation) {
-		if (!c.work_slug || c.act == null) return;
-		const scene = c.scene ?? 1;
-		const lineParam = c.line != null ? `?line=${c.line}` : '';
-		goto(`/text/${c.work_slug}/${c.act}/${scene}${lineParam}`);
-	}
 </script>
 
 <svelte:head>
@@ -85,7 +78,7 @@
 	</div>
 
 	<div class="entry-body">
-		<p class="definition">{#each textSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<button class="citation-inline" onclick={() => goto(`/text/${seg.span!.work_slug}/${seg.span!.act}/${seg.span!.scene ?? 1}${seg.span!.line != null ? `?line=${seg.span!.line}` : ''}`)}>{seg.text}</button>{:else}{seg.text}{/if}{/each}</p>
+		<p class="definition">{#each textSegments as seg}{#if seg.span && seg.span.work_slug && seg.span.act != null}<a class="citation-inline" href={`/text/${seg.span.work_slug}/${seg.span.act}/${seg.span.scene ?? 1}${seg.span.line != null ? `?line=${seg.span.line}` : ''}`}>{seg.text}</a>{:else}{seg.text}{/if}{/each}</p>
 
 		{#if entry.citations.length > 0}
 			{#if entry.source_code === 'bartlett'}
@@ -100,9 +93,9 @@
 									{#each citations as c, i (i)}
 										<li>
 											{#if c.work_slug && c.act != null}
-												<button class="citation-item clickable" onclick={() => openScene(c)}>
+												<a class="citation-item clickable" href={`/text/${c.work_slug}/${c.act}/${c.scene ?? 1}${c.line != null ? `?line=${c.line}` : ''}`}>
 													<span class="citation-ref">{formatLoc(c)}</span>
-												</button>
+												</a>
 											{:else}
 												<span class="citation-item">
 													<span class="citation-ref">{formatLoc(c)}</span>
@@ -125,9 +118,9 @@
 									{#each citations as c, i (i)}
 										<li>
 											{#if c.work_slug && c.act != null}
-												<button class="citation-item clickable" onclick={() => openScene(c)}>
+												<a class="citation-item clickable" href={`/text/${c.work_slug}/${c.act}/${c.scene ?? 1}${c.line != null ? `?line=${c.line}` : ''}`}>
 													<span class="citation-ref">{formatLoc(c)}</span>
-												</button>
+												</a>
 											{:else}
 												<span class="citation-item">
 													<span class="citation-ref">{formatLoc(c)}</span>
