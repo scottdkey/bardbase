@@ -109,6 +109,7 @@ let attributionsCache: FooterAttribution[] | null = null;
 let referenceSourcesCache: ReferenceSource[] | null = null;
 let lexiconKeysCache: string[] | null = null;
 let lexiconLettersCache: LexiconLetter[] | null = null;
+let allEditionsCache: { id: number; short_code: string; name: string }[] | null = null;
 const workTOCCache = new Map<string | number, WorkDivision[]>();
 const workBySlugCache = new Map<string, { id: number; title: string; slug: string }>();
 const workEditionsCache = new Map<string | number, WorkEdition[]>();
@@ -116,6 +117,17 @@ const charactersCache = new Map<number, { name: string; description?: string; sp
 
 // slug → id lookup, built lazily from getWorks.
 let slugToIdCache: Map<string, number> | null = null;
+
+async function getAllEditions(
+    db: D1Database
+): Promise<{ id: number; short_code: string; name: string }[]> {
+    if (allEditionsCache) return allEditionsCache;
+    const { results } = await db
+        .prepare('SELECT id, short_code, name FROM editions ORDER BY id')
+        .all<{ id: number; short_code: string; name: string }>();
+    allEditionsCache = results ?? [];
+    return allEditionsCache;
+}
 
 async function resolveWorkId(db: D1Database, idOrSlug: number | string): Promise<number | null> {
     if (typeof idOrSlug === 'number') return idOrSlug;
