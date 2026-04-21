@@ -15,6 +15,9 @@ const config = {
 			base: ''
 		},
 		prerender: {
+			// Nothing prerendered by default — all routes depend on D1 at runtime.
+			// Truly static pages (/about, /help) opt in via `export const prerender = true`.
+			default: false,
 			handleHttpError: ({ status, path, referrer }) => {
 				if (status === 404) {
 					console.warn(`[prerender] 404 ${path} (linked from ${referrer})`);
