@@ -102,9 +102,7 @@ export-search:
 	  echo "PRAGMA journal_mode=OFF;"; \
 	  echo "PRAGMA temp_store=MEMORY;"; \
 	  echo "PRAGMA cache_size=-1000000;"; \
-	  echo "BEGIN;"; \
-	  cat $(SEARCH_SQL); \
-	  echo "COMMIT;") | sqlite3 $(SEARCH_DB)
+	  cat $(SEARCH_SQL)) | sqlite3 $(SEARCH_DB)
 	@ls -lh $(SEARCH_DB)
 	@echo "→ row counts"
 	@sqlite3 $(SEARCH_DB) \
