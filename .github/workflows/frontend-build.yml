@@ -64,6 +64,8 @@ jobs:
           CF_PAGES: "1"
           DB_PATH: "/tmp/bardbase.db"
           NODE_OPTIONS: "--max-old-space-size=6144"
+          TURSO_URL: ${{ vars.TURSO_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
