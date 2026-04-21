@@ -107,7 +107,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 
 		return json(results, { headers: { 'cache-control': CACHE_SHORT } });
 	} catch (err) {
-		console.error('[reference/search] D1 query failed:', err);
+		console.error('[reference/search] query failed:', err);
 		return json([]);
 	}
 };

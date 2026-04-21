@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Scott Key
 
-// Command export-search builds a D1-compatible SQL file for the bardbase
+// Command export-search builds a Turso-compatible SQL dump for the bardbase
 // production database. It reads from the full bardbase.db and writes a SQL
-// file containing:
+// file that `sqlite3` can load into a slim runtime .db, which `turso db import`
+// then uploads as the production DB. The SQL file also happens to be
+// D1-compatible for fallback imports via `wrangler d1 execute --file`.
+//
+// Pipeline:
+//   cmd/build  → bardbase.db           (full, intermediate)
+//   export-search → bardbase-search.sql (Turso/D1-compatible dump)
+//   sqlite3 < .sql → bardbase-search.db (canonical runtime artifact)
+//   turso db import bardbase-search.db (production)
+//
+// The SQL file contains:
 //
 //   - All core app tables (works, sources, editions, attributions, characters,
 //     text_divisions, text_lines, line_mappings, lexicon_*, citation_*,

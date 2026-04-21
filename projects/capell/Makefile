@@ -11,7 +11,7 @@
 #   make capell lint          # Run go vet
 #   make capell clean         # Remove build artifacts
 
-.PHONY: build test run run-fresh lint cover setup clean release release-upload api-build api-run api-docker export-search turso-dump
+.PHONY: build test run run-fresh lint cover setup clean release release-upload api-build api-run api-docker export-search
 
 # Compile the CLI binary to the repo-root bin/ directory
 build:
@@ -137,23 +137,6 @@ export-search:
 	@echo "   • Turso upload: turso db import $(SEARCH_DB)"
 	@echo "   • Local dev:    $(SEARCH_DB) via db.ts file:// fallback"
 
-# ─── Turso Dump ──────────────────────────────────────────────────────────
-#
-# Generates a Turso-compatible SQL dump from bardbase.db. Use it for:
-#   turso db create bardbase --from-file build/bardbase.dump.sql
-#
-# Usage:
-#   make capell turso-dump
-
-TURSO_DUMP := ../../build/bardbase.dump.sql
-
-turso-dump:
-	@echo "→ dumping ../../build/bardbase.db → $(TURSO_DUMP)"
-	@sqlite3 ../../build/bardbase.db .dump | grep -v '^/\*' > $(TURSO_DUMP)
-	@ls -lh $(TURSO_DUMP)
-	@head -1 $(TURSO_DUMP) | grep -q "^PRAGMA foreign_keys=OFF;" \
-		&& echo "✓ dump valid — import with: turso db create bardbase --from-dump $(TURSO_DUMP)" \
-		|| (echo "✗ dump does not start with PRAGMA foreign_keys=OFF"; exit 1)
 
 # ─── API Server (invoked via `make api build/run/docker` at repo root) ───
 
