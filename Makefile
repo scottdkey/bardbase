@@ -5,6 +5,7 @@
 # Usage:
 #   make capell test           → runs tests for the Go pipeline
 #   make capell build          → compiles the builder binary
+#   make capell run            → runs the builder binary and outputs sqlite db to /build/
 #   make web dev               → starts the SvelteKit dev server
 #   make sources verify        → checksums original source files
 #   make data validate         → validates reference JSON files

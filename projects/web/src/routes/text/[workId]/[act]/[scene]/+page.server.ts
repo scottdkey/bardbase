@@ -1,28 +1,8 @@
 import { error, redirect } from '@sveltejs/kit';
-import { api } from '$lib/server/api';
+import { getScene, getSceneReferences, getWorkBySlug, getWorkTOC, getWorks } from '$lib/server/api';
+import { getDb } from '$lib/server/db';
 
-export const prerender = true;
-
-export async function entries() {
-	const works = await api.getWorks();
-	const all = [...works.plays, ...works.poetry];
-
-	const tocs = await Promise.all(
-		all.map((work) =>
-			api.getWorkTOC(work.slug).then((toc) => ({ slug: work.slug, toc }))
-		)
-	);
-
-	const paths: { workId: string; act: string; scene: string }[] = [];
-	for (const { slug, toc } of tocs) {
-		for (const div of toc) {
-			paths.push({ workId: slug, act: String(div.act), scene: String(div.scene) });
-		}
-	}
-	return paths;
-}
-
-export async function load({ params, url }) {
+export async function load({ params, url, platform }) {
 	const act = parseInt(params.act, 10);
 	const scene = parseInt(params.scene, 10);
 
@@ -30,15 +10,14 @@ export async function load({ params, url }) {
 		throw error(400, 'Invalid parameters');
 	}
 
+	const db = getDb(platform);
 	const workParam = params.workId;
-	let slug: string;
-	let workId: number;
 
-	// If numeric ID, redirect to slug URL
+	// Numeric ID → redirect to slug URL
 	const maybeId = parseInt(workParam, 10);
 	if (!isNaN(maybeId)) {
 		try {
-			const works = await api.getWorks();
+			const works = await getWorks(db);
 			const all = [...works.plays, ...works.poetry];
 			const work = all.find((w) => w.id === maybeId);
 			if (!work) throw error(404, 'Work not found');
@@ -50,34 +29,25 @@ export async function load({ params, url }) {
 		}
 	}
 
-	// Slug — resolve ID for local use, but pass slug to API
-	slug = workParam;
+	const slug = workParam;
+	let workId: number;
 	try {
-		const work = await api.getWorkBySlug(slug);
+		const work = await getWorkBySlug(db, slug);
 		workId = work.id;
 	} catch {
 		throw error(404, 'Work not found');
 	}
 
 	try {
-		console.log(`[prerender] ${slug} ${act}.${scene}`);
 		const [sceneData, toc, references] = await Promise.all([
-			api.getScene(slug, act, scene),
-			api.getWorkTOC(slug),
-			api.getSceneReferences(slug, act, scene)
+			getScene(db, slug, act, scene),
+			getWorkTOC(db, slug),
+			getSceneReferences(db, slug, act, scene)
 		]);
-		let isReference = false;
-		let headword = '';
-		let line: number | null = null;
-		let editionId: number | null = null;
-		try {
-			headword = url.searchParams.get('hw') ?? '';
-			isReference = !!headword || url.searchParams.has('line');
-			line = url.searchParams.has('line') ? parseInt(url.searchParams.get('line')!, 10) : null;
-			editionId = url.searchParams.has('ed') ? parseInt(url.searchParams.get('ed')!, 10) : null;
-		} catch {
-			// url.searchParams not accessible during prerender — defaults are fine
-		}
+		const headword = url.searchParams.get('hw') ?? '';
+		const isReference = !!headword || url.searchParams.has('line');
+		const line = url.searchParams.has('line') ? parseInt(url.searchParams.get('line')!, 10) : null;
+		const editionId = url.searchParams.has('ed') ? parseInt(url.searchParams.get('ed')!, 10) : null;
 		return {
 			scene: sceneData,
 			toc,

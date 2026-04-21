@@ -1,12 +1,13 @@
 import { json, error } from '@sveltejs/kit';
-import { api } from '$lib/server/api';
+import { getWorkTOC } from '$lib/server/api';
+import { getDb } from '$lib/server/db';
 
-export async function GET({ params }) {
+export async function GET({ params, platform }) {
 	const id = parseInt(params.id, 10);
 	if (isNaN(id)) throw error(400, 'Invalid work ID');
 
 	try {
-		const toc = await api.getWorkTOC(id);
+		const toc = await getWorkTOC(getDb(platform), id);
 		return json(toc);
 	} catch (err) {
 		console.error('[works/toc]', err);

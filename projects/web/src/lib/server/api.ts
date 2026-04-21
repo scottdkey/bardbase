@@ -1,9 +1,9 @@
+import type { D1Database } from '@cloudflare/workers-types';
 import type {
     FooterAttribution,
     MultiEditionScene,
     SearchResult
 } from '$lib/types';
-import { getDb } from './db';
 
 export interface LexiconLetter {
     letter: string;
@@ -98,27 +98,25 @@ function placeholders(n: number): string {
     return Array(n).fill('?').join(',');
 }
 
-function resolveWorkId(idOrSlug: number | string): number | null {
-    const db = getDb();
+async function resolveWorkId(db: D1Database, idOrSlug: number | string): Promise<number | null> {
     if (typeof idOrSlug === 'number') return idOrSlug;
     const n = Number(idOrSlug);
     if (!isNaN(n) && String(n) === idOrSlug) return n;
-    const rows = db.prepare('SELECT id, title FROM works').all() as { id: number; title: string }[];
-    for (const row of rows) {
+    const { results } = await db.prepare('SELECT id, title FROM works').all<{ id: number; title: string }>();
+    for (const row of results ?? []) {
         if (slugify(row.title) === idOrSlug) return row.id;
     }
     return null;
 }
 
-function getWorks(): { plays: Work[]; poetry: Work[] } {
-    const db = getDb();
-    const rows = db
+export async function getWorks(db: D1Database): Promise<{ plays: Work[]; poetry: Work[] }> {
+    const { results } = await db
         .prepare('SELECT id, title, work_type, date_composed FROM works ORDER BY title')
-        .all() as { id: number; title: string; work_type: string; date_composed: string | null }[];
+        .all<{ id: number; title: string; work_type: string; date_composed: string | null }>();
 
     const plays: Work[] = [];
     const poetry: Work[] = [];
-    for (const row of rows) {
+    for (const row of results ?? []) {
         const work: Work = { ...row, slug: slugify(row.title) };
         if (row.work_type === 'comedy' || row.work_type === 'tragedy' || row.work_type === 'history') {
             plays.push(work);
@@ -129,11 +127,10 @@ function getWorks(): { plays: Work[]; poetry: Work[] } {
     return { plays, poetry };
 }
 
-function getWorkTOC(idOrSlug: number | string): WorkDivision[] {
-    const db = getDb();
-    const workId = resolveWorkId(idOrSlug);
+export async function getWorkTOC(db: D1Database, idOrSlug: number | string): Promise<WorkDivision[]> {
+    const workId = await resolveWorkId(db, idOrSlug);
     if (workId === null) return [];
-    return db
+    const { results } = await db
         .prepare(
             `SELECT td.act, td.scene, td.description,
                 COUNT(tl.id) AS line_count
@@ -149,16 +146,14 @@ function getWorkTOC(idOrSlug: number | string): WorkDivision[] {
             GROUP BY td.act, td.scene
             ORDER BY td.act, td.scene`
         )
-        .all(workId, workId) as unknown as WorkDivision[];
+        .bind(workId, workId)
+        .all<WorkDivision>();
+    return results ?? [];
 }
 
-function getWorkBySlug(slug: string): { id: number; title: string; slug: string } {
-    const db = getDb();
-    const rows = db.prepare('SELECT id, title FROM works').all() as unknown as {
-        id: number;
-        title: string;
-    }[];
-    for (const row of rows) {
+export async function getWorkBySlug(db: D1Database, slug: string): Promise<{ id: number; title: string; slug: string }> {
+    const { results } = await db.prepare('SELECT id, title FROM works').all<{ id: number; title: string }>();
+    for (const row of results ?? []) {
         if (slugify(row.title) === slug) {
             return { id: row.id, title: row.title, slug };
         }
@@ -166,11 +161,10 @@ function getWorkBySlug(slug: string): { id: number; title: string; slug: string 
     throw new Error(`Work not found: ${slug}`);
 }
 
-function getWorkEditions(idOrSlug: number | string): WorkEdition[] {
-    const db = getDb();
-    const workId = resolveWorkId(idOrSlug);
+export async function getWorkEditions(db: D1Database, idOrSlug: number | string): Promise<WorkEdition[]> {
+    const workId = await resolveWorkId(db, idOrSlug);
     if (workId === null) return [];
-    return db
+    const { results } = await db
         .prepare(
             `SELECT e.id, e.name, e.short_code, e.year, s.name as source_name
             FROM editions e
@@ -180,12 +174,13 @@ function getWorkEditions(idOrSlug: number | string): WorkEdition[] {
             )
             ORDER BY e.id`
         )
-        .all(workId) as unknown as WorkEdition[];
+        .bind(workId)
+        .all<WorkEdition>();
+    return results ?? [];
 }
 
-function getAttributions(): FooterAttribution[] {
-    const db = getDb();
-    const rows = db
+export async function getAttributions(db: D1Database): Promise<FooterAttribution[]> {
+    const { results } = await db
         .prepare(
             `SELECT s.name AS source_name, a.attribution_html, a.license_notice_text,
             COALESCE(a.display_priority, 0) AS display_priority,
@@ -203,46 +198,41 @@ function getAttributions(): FooterAttribution[] {
               )
             ORDER BY a.display_priority DESC, s.name`
         )
-        .all() as {
+        .all<{
             source_name: string;
             attribution_html: string;
             license_notice_text: string | null;
             display_priority: number;
             required: number;
-        }[];
-    return rows.map((r) => ({ ...r, required: r.required === 1 }));
+        }>();
+    return (results ?? []).map((r) => ({ ...r, required: r.required === 1 }));
 }
 
-function getLexiconKeys(): string[] {
-    const db = getDb();
-    const rows = db
+export async function getLexiconKeys(db: D1Database): Promise<string[]> {
+    const { results } = await db
         .prepare('SELECT DISTINCT LOWER(base_key) AS key FROM lexicon_entries ORDER BY 1')
-        .all() as { key: string }[];
-    return rows.map((r) => r.key);
+        .all<{ key: string }>();
+    return (results ?? []).map((r) => r.key);
 }
 
-function getLexiconLetters(): LexiconLetter[] {
-    const db = getDb();
-    return db
-        .prepare(
-            'SELECT letter, COUNT(*) AS count FROM lexicon_entries GROUP BY letter ORDER BY letter'
-        )
-        .all() as unknown as LexiconLetter[];
+export async function getLexiconLetters(db: D1Database): Promise<LexiconLetter[]> {
+    const { results } = await db
+        .prepare('SELECT letter, COUNT(*) AS count FROM lexicon_entries GROUP BY letter ORDER BY letter')
+        .all<LexiconLetter>();
+    return results ?? [];
 }
 
-
-function getReferenceSources(): ReferenceSource[] {
-    const db = getDb();
+export async function getReferenceSources(db: D1Database): Promise<ReferenceSource[]> {
     const result: ReferenceSource[] = [];
 
-    const schmidtRow = db
+    const schmidtRow = await db
         .prepare('SELECT COUNT(DISTINCT base_key) AS cnt FROM lexicon_entries')
-        .get() as { cnt: number } | undefined;
+        .first<{ cnt: number }>();
     if (schmidtRow) {
         result.push({ code: 'schmidt', name: 'Schmidt Shakespeare Lexicon', count: schmidtRow.cnt });
     }
 
-    const rows = db
+    const { results } = await db
         .prepare(
             `SELECT s.short_code, s.name, COUNT(re.id) as entry_count
             FROM sources s
@@ -250,14 +240,14 @@ function getReferenceSources(): ReferenceSource[] {
             GROUP BY s.id
             ORDER BY s.name`
         )
-        .all() as { short_code: string; name: string; entry_count: number }[];
-    for (const row of rows) {
+        .all<{ short_code: string; name: string; entry_count: number }>();
+    for (const row of results ?? []) {
         result.push({ code: row.short_code, name: row.name, count: row.entry_count });
     }
     return result;
 }
 
-async function getCorrections(state = 'all'): Promise<CorrectionIssue[]> {
+export async function getCorrections(state = 'all'): Promise<CorrectionIssue[]> {
     const url = `https://api.github.com/repos/scottdkey/bardbase/issues?labels=correction&state=${state}&per_page=100&sort=created&direction=desc`;
     const res = await fetch(url, {
         headers: {
@@ -308,16 +298,26 @@ type AlignedLine = {
     character_name: string | null;
 };
 
-function mergeWorkLevelEditions(
+// Character-name coalesce expression: prefer the FK-joined characters.name, fall
+// back to a LIKE match against characters for the same work (catches abbreviations
+// like "Ham." when the character name is "Hamlet"), final fallback is the raw tag.
+const charCoalesceExpr = `COALESCE(
+    c.name,
+    (SELECT c2.name FROM characters c2
+     WHERE c2.work_id = tl.work_id
+       AND LOWER(c2.name) LIKE LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
+     LIMIT 1),
+    tl.char_name
+)`;
+
+async function mergeWorkLevelEditions(
+    db: D1Database,
     workId: number,
     anchorId: number,
     anchorLines: LineRow[],
     rows: { editions: Record<number, AlignedLine> }[],
-    availEditions: EditionInfo[],
-    charCoalesce: string
-): [{ editions: Record<number, AlignedLine> }[], EditionInfo[]] {
-    const db = getDb();
-
+    availEditions: EditionInfo[]
+): Promise<[{ editions: Record<number, AlignedLine> }[], EditionInfo[]]> {
     const editionsWithContent = new Set<number>();
     for (const row of rows) {
         for (const edId of Object.keys(row.editions)) {
@@ -325,7 +325,7 @@ function mergeWorkLevelEditions(
         }
     }
 
-    const wlEditions = db
+    const wlEditionsRes = await db
         .prepare(
             `SELECT DISTINCT
             CASE WHEN lm.edition_a_id = ? THEN lm.edition_b_id ELSE lm.edition_a_id END AS other_ed_id,
@@ -336,11 +336,9 @@ function mergeWorkLevelEditions(
               AND (lm.edition_a_id = ? OR lm.edition_b_id = ?)
               AND e.id NOT IN (0, 10, 11)`
         )
-        .all(anchorId, anchorId, workId, anchorId, anchorId) as {
-            other_ed_id: number;
-            short_code: string;
-            name: string;
-        }[];
+        .bind(anchorId, anchorId, workId, anchorId, anchorId)
+        .all<{ other_ed_id: number; short_code: string; name: string }>();
+    const wlEditions = wlEditionsRes.results ?? [];
 
     const candidateEditions = wlEditions.filter((e) => !editionsWithContent.has(e.other_ed_id));
     if (candidateEditions.length === 0) return [rows, availEditions];
@@ -357,7 +355,7 @@ function mergeWorkLevelEditions(
     }
 
     for (const wlEd of candidateEditions) {
-        const mapRows = db
+        const mapRowsRes = await db
             .prepare(
                 `SELECT lm.line_a_id, lm.line_b_id
                 FROM line_mappings lm
@@ -365,10 +363,9 @@ function mergeWorkLevelEditions(
                   AND ((lm.edition_a_id = ? AND lm.edition_b_id = ?)
                     OR (lm.edition_a_id = ? AND lm.edition_b_id = ?))`
             )
-            .all(workId, anchorId, wlEd.other_ed_id, wlEd.other_ed_id, anchorId) as {
-                line_a_id: number | null;
-                line_b_id: number | null;
-            }[];
+            .bind(workId, anchorId, wlEd.other_ed_id, wlEd.other_ed_id, anchorId)
+            .all<{ line_a_id: number | null; line_b_id: number | null }>();
+        const mapRows = mapRowsRes.results ?? [];
 
         const otherLineIds = new Set<number>();
         const anchorToOther = new Map<number, number>();
@@ -392,21 +389,23 @@ function mergeWorkLevelEditions(
 
         const otherIds = [...otherLineIds];
         const olPh = placeholders(otherIds.length);
-        const olRows = db
+        const olRowsRes = await db
             .prepare(
                 `SELECT tl.id, tl.line_number, tl.content, tl.content_type,
-                ${charCoalesce} AS character_name
+                ${charCoalesceExpr} AS character_name
                 FROM text_lines tl
                 LEFT JOIN characters c ON c.id = tl.character_id
                 WHERE tl.id IN (${olPh})`
             )
-            .all(...otherIds) as {
+            .bind(...otherIds)
+            .all<{
                 id: number;
                 line_number: number | null;
                 content: string;
                 content_type: string | null;
                 character_name: string | null;
-            }[];
+            }>();
+        const olRows = olRowsRes.results ?? [];
 
         const otherLines = new Map<number, typeof olRows[0]>();
         for (const ol of olRows) otherLines.set(ol.id, ol);
@@ -436,17 +435,22 @@ function mergeWorkLevelEditions(
     return [rows, availEditions];
 }
 
-function getScene(workIdOrSlug: number | string, act: number, scene: number): MultiEditionScene {
-    const db = getDb();
-    const workId = resolveWorkId(workIdOrSlug);
+export async function getScene(
+    db: D1Database,
+    workIdOrSlug: number | string,
+    act: number,
+    scene: number
+): Promise<MultiEditionScene> {
+    const workId = await resolveWorkId(db, workIdOrSlug);
     if (workId === null) throw new Error(`Work not found: ${workIdOrSlug}`);
 
-    const workRow = db
+    const workRow = await db
         .prepare('SELECT title, work_type FROM works WHERE id = ?')
-        .get(workId) as { title: string; work_type: string } | undefined;
+        .bind(workId)
+        .first<{ title: string; work_type: string }>();
     if (!workRow) throw new Error(`Work not found: ${workId}`);
 
-    const edRows = db
+    const edRowsRes = await db
         .prepare(
             `SELECT DISTINCT e.id, e.short_code, e.name
             FROM editions e JOIN text_lines tl ON tl.edition_id = e.id
@@ -454,41 +458,36 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
               AND e.id IN (1,2,3,4,5)
             ORDER BY e.id`
         )
-        .all(workId, act, scene) as { id: number; short_code: string; name: string }[];
+        .bind(workId, act, scene)
+        .all<{ id: number; short_code: string; name: string }>();
+    const edRows = edRowsRes.results ?? [];
 
     if (edRows.length === 0) throw new Error(`Scene not found: ${workIdOrSlug} ${act}.${scene}`);
 
     let availEditions: EditionInfo[] = edRows.map((e) => ({ id: e.id, code: e.short_code, name: e.name }));
     const editionIds = availEditions.map((e) => e.id);
 
-    const charCoalesce = `COALESCE(
-        c.name,
-        (SELECT c2.name FROM characters c2
-         WHERE c2.work_id = tl.work_id
-           AND LOWER(c2.name) LIKE LOWER(REPLACE(REPLACE(REPLACE(tl.char_name, '.', ''), 'æ', 'ae'), 'Æ', 'Ae')) || '%'
-         LIMIT 1),
-        tl.char_name
-    )`;
-
     const edPh = placeholders(editionIds.length);
-    const rawLineRows = db
+    const rawLineRowsRes = await db
         .prepare(
             `SELECT tl.id, tl.edition_id, tl.line_number, tl.content, tl.content_type,
-            ${charCoalesce} AS character_name
+            ${charCoalesceExpr} AS character_name
             FROM text_lines tl
             LEFT JOIN characters c ON c.id = tl.character_id
             WHERE tl.work_id = ? AND tl.edition_id IN (${edPh})
               AND tl.act = ? AND tl.scene = ?
             ORDER BY tl.edition_id, tl.line_number, tl.id`
         )
-        .all(workId, ...editionIds, act, scene) as {
+        .bind(workId, ...editionIds, act, scene)
+        .all<{
             id: number;
             edition_id: number;
             line_number: number | null;
             content: string;
             content_type: string | null;
             character_name: string | null;
-        }[];
+        }>();
+    const rawLineRows = rawLineRowsRes.results ?? [];
 
     const linesByEdition = new Map<number, LineRow[]>();
     const lineById = new Map<number, LineRow>();
@@ -521,7 +520,7 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
                 }
             }
         }));
-        const characters = loadCharacters(workId);
+        const characters = await loadCharacters(db, workId);
         return {
             work_title: workRow.title,
             act,
@@ -535,7 +534,7 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
     const otherIds = editionIds.filter((id) => id !== anchorId);
     const otherPh = placeholders(otherIds.length);
 
-    const mappingRows = db
+    const mappingRowsRes = await db
         .prepare(
             `SELECT lm.edition_a_id, lm.edition_b_id, lm.line_a_id, lm.line_b_id
             FROM line_mappings lm
@@ -546,12 +545,14 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
               )
             ORDER BY lm.edition_b_id, lm.align_order`
         )
-        .all(workId, act, scene, anchorId, ...otherIds, anchorId, ...otherIds) as {
+        .bind(workId, act, scene, anchorId, ...otherIds, anchorId, ...otherIds)
+        .all<{
             edition_a_id: number;
             edition_b_id: number;
             line_a_id: number | null;
             line_b_id: number | null;
-        }[];
+        }>();
+    const mappingRows = mappingRowsRes.results ?? [];
 
     const anchorToOther = new Map<number, Map<number, number>>();
     const gapsAfterAnchor = new Map<number, GapEntry[]>();
@@ -653,9 +654,9 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
         }
     }
 
-    [rows, availEditions] = mergeWorkLevelEditions(workId, anchorId, anchorLines, rows, availEditions, charCoalesce);
+    [rows, availEditions] = await mergeWorkLevelEditions(db, workId, anchorId, anchorLines, rows, availEditions);
 
-    const characters = loadCharacters(workId);
+    const characters = await loadCharacters(db, workId);
     return {
         work_title: workRow.title,
         act,
@@ -666,29 +667,29 @@ function getScene(workIdOrSlug: number | string, act: number, scene: number): Mu
     };
 }
 
-function loadCharacters(workId: number) {
-    const db = getDb();
-    const rows = db
+async function loadCharacters(db: D1Database, workId: number) {
+    const { results } = await db
         .prepare(
             `SELECT name, description, COALESCE(speech_count, 0) AS speech_count
             FROM characters WHERE work_id = ? ORDER BY name`
         )
-        .all(workId) as unknown as { name: string; description: string | null; speech_count: number }[];
-    return rows.map((r) => ({ ...r, description: r.description ?? undefined }));
+        .bind(workId)
+        .all<{ name: string; description: string | null; speech_count: number }>();
+    return (results ?? []).map((r) => ({ ...r, description: r.description ?? undefined }));
 }
 
-function getSceneReferences(
+export async function getSceneReferences(
+    db: D1Database,
     workIdOrSlug: number | string,
     act: number,
     scene: number
-): Record<string, LineReference[]> {
-    const db = getDb();
-    const workId = resolveWorkId(workIdOrSlug);
+): Promise<Record<string, LineReference[]>> {
+    const workId = await resolveWorkId(db, workIdOrSlug);
     if (workId === null) return {};
 
     const result: Record<string, LineReference[]> = {};
 
-    const schmidtRows = db
+    const schmidtRowsRes = await db
         .prepare(
             `SELECT tl.line_number, le.id, le.base_key, lc.sense_id, ls.definition_text, lc.quote_text,
                cm.edition_id, cm.confidence
@@ -702,7 +703,8 @@ function getSceneReferences(
             GROUP BY tl.line_number, le.id, cm.edition_id
             ORDER BY tl.line_number, le.base_key`
         )
-        .all(workId, act, scene) as {
+        .bind(workId, act, scene)
+        .all<{
             line_number: number;
             id: number;
             base_key: string;
@@ -711,9 +713,9 @@ function getSceneReferences(
             quote_text: string | null;
             edition_id: number;
             confidence: number;
-        }[];
+        }>();
 
-    for (const row of schmidtRows) {
+    for (const row of schmidtRowsRes.results ?? []) {
         const key = String(row.line_number);
         if (!result[key]) result[key] = [];
         result[key].push({
@@ -728,7 +730,7 @@ function getSceneReferences(
         });
     }
 
-    const refRows = db
+    const refRowsRes = await db
         .prepare(
             `SELECT tl.line_number, re.id, re.headword, s.name, s.short_code, re.raw_text,
                rcm.edition_id, rcm.confidence
@@ -742,7 +744,8 @@ function getSceneReferences(
             GROUP BY tl.line_number, re.id, rcm.edition_id
             ORDER BY tl.line_number, s.short_code, re.headword`
         )
-        .all(workId, act, scene) as {
+        .bind(workId, act, scene)
+        .all<{
             line_number: number;
             id: number;
             headword: string;
@@ -751,13 +754,13 @@ function getSceneReferences(
             raw_text: string;
             edition_id: number;
             confidence: number;
-        }[];
+        }>();
 
-    for (const row of refRows) {
+    for (const row of refRowsRes.results ?? []) {
         const key = String(row.line_number);
         if (!result[key]) result[key] = [];
         let def = row.raw_text;
-        if (def.length > 300) def = def.slice(0, 300) + '\u2026';
+        if (def.length > 300) def = def.slice(0, 300) + '…';
         result[key].push({
             entry_id: row.id,
             entry_key: row.headword,
@@ -773,25 +776,8 @@ function getSceneReferences(
     return result;
 }
 
-async function search(q: string, limit = 20): Promise<SearchResult[]> {
+export async function search(q: string, limit = 20): Promise<SearchResult[]> {
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`);
     if (!res.ok) throw new Error(`Search failed: ${res.status}`);
     return res.json() as Promise<SearchResult[]>;
 }
-
-export const api = {
-    getAttributions: () => Promise.resolve(getAttributions()),
-    getCorrections: (state = 'all') => getCorrections(state),
-    getReferenceSources: () => Promise.resolve(getReferenceSources()),
-    getLexiconKeys: () => Promise.resolve(getLexiconKeys()),
-    getLexiconLetters: () => Promise.resolve(getLexiconLetters()),
-    getScene: (workIdOrSlug: number | string, act: number, scene: number) =>
-        Promise.resolve(getScene(workIdOrSlug, act, scene)),
-    getSceneReferences: (workIdOrSlug: number | string, act: number, scene: number) =>
-        Promise.resolve(getSceneReferences(workIdOrSlug, act, scene)),
-    getWorkBySlug: (slug: string) => Promise.resolve(getWorkBySlug(slug)),
-    getWorks: () => Promise.resolve(getWorks()),
-    getWorkEditions: (idOrSlug: number | string) => Promise.resolve(getWorkEditions(idOrSlug)),
-    getWorkTOC: (idOrSlug: number | string) => Promise.resolve(getWorkTOC(idOrSlug)),
-    search: (q: string, limit = 20) => search(q, limit)
-};

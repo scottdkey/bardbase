@@ -1,15 +1,12 @@
-import { api } from '$lib/server/api';
+import { getAttributions, getWorks } from '$lib/server/api';
+import { getDb } from '$lib/server/db';
 import { building } from '$app/environment';
 
-export async function load() {
-	// During prerender (build time), D1 is unavailable — return empty shell.
-	// Sidebar data loads client-side on static pages; dynamic pages have D1 at runtime.
+export async function load({ platform }) {
 	if (building) return { attributions: [], works: { plays: [], poetry: [] } };
 	try {
-		const [attributions, works] = await Promise.all([
-			api.getAttributions(),
-			api.getWorks()
-		]);
+		const db = getDb(platform);
+		const [attributions, works] = await Promise.all([getAttributions(db), getWorks(db)]);
 		return { attributions, works };
 	} catch (err) {
 		console.error('[layout] failed to load:', err);
