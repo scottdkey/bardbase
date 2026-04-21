@@ -4,9 +4,10 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ url, platform }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
 	const sourceCode = url.searchParams.get('source') ?? '';
-	// Multi-source filter: comma-separated list (used by "all" page toggles)
 	const sourcesParam = url.searchParams.get('sources') ?? '';
-	const sourcesFilter = sourcesParam ? new Set(sourcesParam.split(',').map(s => s.trim()).filter(Boolean)) : null;
+	const sourcesFilter = sourcesParam
+		? new Set(sourcesParam.split(',').map((s) => s.trim()).filter(Boolean))
+		: null;
 	const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
 	const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
@@ -21,13 +22,13 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 
 		const includeSchmidt = sourcesFilter
 			? sourcesFilter.has('schmidt')
-			: (!sourceCode || sourceCode === 'schmidt');
+			: !sourceCode || sourceCode === 'schmidt';
 		const nonSchmidtSources = sourcesFilter
-			? [...sourcesFilter].filter(s => s !== 'schmidt')
+			? [...sourcesFilter].filter((s) => s !== 'schmidt')
 			: null;
 		const includeRefs = sourcesFilter
 			? nonSchmidtSources!.length > 0
-			: (!sourceCode || sourceCode !== 'schmidt');
+			: !sourceCode || sourceCode !== 'schmidt';
 
 		if (includeSchmidt) {
 			const schmidtArgs: unknown[] = [];
@@ -55,6 +56,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 		}
 
 		if (includeRefs) {
+			// Slim reference_fts has no source metadata — join through reference_entries → sources.
 			const refArgs: unknown[] = [];
 			const conditions: string[] = [];
 
@@ -74,14 +76,25 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 			const orderBy = q
 				? `ORDER BY CASE WHEN LOWER(re.headword) = LOWER(?) THEN 0 WHEN LOWER(re.headword) LIKE LOWER(?) || '%' THEN 1 ELSE 2 END, reference_fts.rank`
 				: `ORDER BY re.headword`;
-			if (q) { refArgs.push(q, q); }
-			const refQuery = `SELECT re.id AS id, re.headword, re.raw_text,
-				s.short_code AS source_code, s.name AS source_name
-				FROM reference_fts
-				JOIN reference_entries re ON re.id = reference_fts.rowid
-				JOIN sources s ON s.id = re.source_id
-				${where}
-				${orderBy} LIMIT ? OFFSET ?`;
+			if (q) {
+				refArgs.push(q, q);
+			}
+
+			// FTS branch: use the MATCH so ranks work; otherwise query reference_entries directly.
+			const refQuery = q
+				? `SELECT re.id AS id, re.headword, re.raw_text,
+					s.short_code AS source_code, s.name AS source_name
+					FROM reference_fts
+					JOIN reference_entries re ON re.id = reference_fts.rowid
+					JOIN sources s ON s.id = re.source_id
+					${where}
+					${orderBy} LIMIT ? OFFSET ?`
+				: `SELECT re.id AS id, re.headword, re.raw_text,
+					s.short_code AS source_code, s.name AS source_name
+					FROM reference_entries re
+					JOIN sources s ON s.id = re.source_id
+					${where}
+					${orderBy} LIMIT ? OFFSET ?`;
 
 			const refResult = await db
 				.prepare(refQuery)
