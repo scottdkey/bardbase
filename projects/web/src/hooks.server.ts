@@ -52,15 +52,22 @@ function makeD1Shim(db: DB) {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-	if (!event.platform?.env?.SEARCH_DB) {
+	// During prerender, adapter-cloudflare makes env property access throw intentionally.
+	// Wrap in try/catch so prerendered routes get the node:sqlite fallback gracefully.
+	let hasD1 = false;
+	try { hasD1 = !!event.platform?.env?.SEARCH_DB; } catch { hasD1 = false; }
+
+	if (!hasD1) {
 		if (!dbInitPromise) dbInitPromise = initDevDb();
 		await dbInitPromise;
 
 		if (devDb) {
 			const shim = makeD1Shim(devDb) as unknown as App.Platform['env']['SEARCH_DB'];
+			// Don't spread event.platform?.env — during prerender its property getters throw.
+			// We're in fallback mode so there are no other real bindings to preserve.
 			event.platform = {
-				...event.platform,
-				env: { ...event.platform?.env, SEARCH_DB: shim }
+				...(event.platform ?? {}),
+				env: { SEARCH_DB: shim } as App.Platform['env']
 			} as App.Platform;
 		}
 	}

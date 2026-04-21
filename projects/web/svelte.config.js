@@ -5,11 +5,8 @@ import adapterNode from '@sveltejs/adapter-node';
 // Locally and in Docker, adapter-node avoids the workerd binary requirement.
 const adapter = process.env.CF_PAGES
 	? adapterCloudflare({
-			routes: { include: ['/*'], exclude: ['<all>'] },
-			// Disable platformProxy — prerendered routes read from node:sqlite, not D1.
-			// Leaving it enabled spawns a workerd child process that never terminates,
-			// causing `vite build` to hang after prerender completes.
-			platformProxy: false
+			routes: { include: ['/*'], exclude: ['<all>'] }
+			// platformProxy uses defaults (wrangler.toml). wrangler 4.x broke `false` as a value.
 	  })
 	: adapterNode();
 
@@ -21,7 +18,7 @@ const config = {
 			base: ''
 		},
 		prerender: {
-			concurrency: 36,
+			concurrency: 4,
 			handleHttpError: ({ status, path, referrer }) => {
 				if (status === 404) {
 					console.warn(`[prerender] 404 ${path} (linked from ${referrer})`);
