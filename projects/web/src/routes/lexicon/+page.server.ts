@@ -1,6 +1,8 @@
 import { getLexiconLetters } from '$lib/server/api';
 import { getDb } from '$lib/server/db';
 
+export const prerender = true;
+
 export async function load({ platform }) {
 	try {
 		return { letters: await getLexiconLetters(getDb(platform)) };
