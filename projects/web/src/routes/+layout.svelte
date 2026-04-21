@@ -1,23 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
 	import { theme } from '$lib/stores/theme.svelte';
-	import { corrections } from '$lib/stores/corrections.svelte';
+	import { sidebar } from '$lib/stores/sidebar.svelte';
 	import type { LayoutProps } from './$types';
+	import Sidebar from '$lib/components/Sidebar.svelte';
 	import IconClose from '$lib/components/icons/IconClose.svelte';
 	import IconSun from '$lib/components/icons/IconSun.svelte';
 	import IconMoon from '$lib/components/icons/IconMoon.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	let { children, data }: LayoutProps = $props();
-	let footerOpen = $state(false);
-
-	let currentPath = $derived(page.url.pathname);
-
-	function isActive(href: string): boolean {
-		if (href === '/') return currentPath === '/';
-		return currentPath.startsWith(href);
-	}
+	let legalOpen = $state(false);
 
 	onMount(() => {
 		theme.init();
@@ -31,17 +24,15 @@
 			const { build } = await res.json();
 			const stored = localStorage.getItem('bardbase-server-version');
 			if (stored && stored !== build) {
-				// Server version changed — clear stale API caches
 				if ('caches' in window) {
 					await caches.delete('bardbase-meta');
 					await caches.delete('bardbase-data');
 					await caches.delete('bardbase-search');
 				}
-				console.log(`[bardbase] Server version changed (${stored} → ${build}), caches cleared`);
 			}
 			localStorage.setItem('bardbase-server-version', build);
 		} catch {
-			// Version check is best-effort — don't block app load
+			// best-effort
 		}
 	}
 </script>
@@ -50,80 +41,94 @@
 	<title>Bardbase</title>
 </svelte:head>
 
-<div class="app">
-	<div class="content">
-		{@render children()}
+<!-- Sidebar overlay (mobile) -->
+{#if sidebar.open}
+	<div
+		class="sidebar-overlay"
+		role="presentation"
+		onclick={() => sidebar.close()}
+		aria-hidden="true"
+	></div>
+{/if}
+
+<!-- Left sidebar -->
+<aside
+	class="sidebar-panel"
+	class:open={sidebar.open}
+	aria-label="Navigation sidebar"
+	aria-hidden={!sidebar.open}
+>
+	<div class="sidebar-header">
+		<span class="sidebar-wordmark">Bardbase</span>
+		<div class="sidebar-header-actions">
+			<IconButton
+				onclick={() => theme.toggle()}
+				label={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+				size={28}
+			>
+				{#if theme.isDark}
+					<IconSun size={14} />
+				{:else}
+					<IconMoon size={14} />
+				{/if}
+			</IconButton>
+			<IconButton onclick={() => sidebar.close()} label="Close navigation" size={28}>
+				<IconClose size={14} />
+			</IconButton>
+		</div>
 	</div>
 
-	<!-- Fixed footer -->
-	<footer class="site-footer" class:drawer-open={footerOpen}>
-		{#if footerOpen}
-			<div class="footer-drawer">
-				<div class="drawer-header">
-					<h3 class="drawer-title">Acknowledgements & Legal</h3>
-					<IconButton onclick={() => footerOpen = false} label="Close" size={28}>
-						<IconClose size={16} />
-					</IconButton>
-				</div>
-				<div class="drawer-body">
-					{#each data.attributions as attr (attr.source_name)}
-						<section class="attribution-section">
-							<h4>{attr.source_name}</h4>
-							<p>{@html attr.attribution_html}</p>
-							{#if attr.license_notice_text}
-								<p class="license-notice">{attr.license_notice_text}</p>
-							{/if}
-						</section>
-					{/each}
+	<Sidebar works={data.works} onclose={() => sidebar.close()} />
 
+	<div class="sidebar-footer">
+		<button class="legal-toggle" onclick={() => legalOpen = !legalOpen}>
+			{legalOpen ? 'Close' : 'Legal & Attribution'}
+		</button>
+		{#if legalOpen}
+			<div class="legal-body">
+				{#each data.attributions as attr (attr.source_name)}
 					<section class="attribution-section">
-						<h4>License</h4>
-						<p>
-							The compiled database is released under <strong>CC BY-SA 4.0</strong> due to Perseus content.
-							Build tooling is released under the <strong>MIT License</strong>.
-						</p>
+						<h4>{attr.source_name}</h4>
+						<p>{@html attr.attribution_html}</p>
+						{#if attr.license_notice_text}
+							<p class="license-notice">{attr.license_notice_text}</p>
+						{/if}
 					</section>
-				</div>
+				{/each}
+				<section class="attribution-section">
+					<h4>License</h4>
+					<p>
+						The compiled database is released under <strong>CC BY-SA 4.0</strong> due to Perseus content.
+						Build tooling is released under the <strong>MIT License</strong>.
+					</p>
+				</section>
 			</div>
 		{/if}
-		<div class="footer-bar">
-			<nav class="footer-nav">
-				<a href="/" class="nav-link" class:active={isActive('/') && !isActive('/references') && !isActive('/reference') && !isActive('/corrections') && !isActive('/lexicon')}>Texts</a>
-				<a href="/references" class="nav-link" class:active={isActive('/references') || isActive('/reference') || isActive('/lexicon')}>References</a>
-				<a href="/corrections" class="nav-link" class:active={isActive('/corrections')}>
-					Corrections
-					{#if corrections.pendingCount > 0}
-						<span class="corrections-badge">{corrections.pendingCount}</span>
-					{/if}
-				</a>
-			</nav>
-			<div class="footer-actions">
-				<button class="footer-toggle" onclick={() => footerOpen = !footerOpen}>
-					{footerOpen ? 'Close' : 'Legal'}
-				</button>
-				<IconButton
-					onclick={() => theme.toggle()}
-					label={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-					size={32}
-				>
-					{#if theme.isDark}
-						<IconSun size={16} />
-					{:else}
-						<IconMoon size={16} />
-					{/if}
-				</IconButton>
-			</div>
-		</div>
-	</footer>
+	</div>
+</aside>
+
+<!-- Hamburger toggle (always visible) -->
+{#if !sidebar.open}
+	<button
+		class="sidebar-toggle"
+		onclick={() => sidebar.toggle()}
+		aria-label="Open navigation"
+		aria-expanded={sidebar.open}
+	>
+		<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+		</svg>
+	</button>
+{/if}
+
+<!-- Main content -->
+<div class="app-content" class:sidebar-open={sidebar.open}>
+	{@render children()}
 </div>
 
 <style>
 	:global(*) {
 		box-sizing: border-box;
-	}
-
-	:global(html) {
-		--top-bar-height: 48px;
 	}
 
 	/* ─── Light theme ─── */
@@ -146,7 +151,7 @@
 		color-scheme: light;
 	}
 
-	/* ─── Dark theme: deeper, higher contrast ─── */
+	/* ─── Dark theme ─── */
 	:global([data-theme='dark']) {
 		--color-bg: #080E10;
 		--color-surface: #0E1519;
@@ -168,6 +173,7 @@
 
 	:global(html) {
 		font-size: 128%;
+		--hamburger-clearance: 56px;
 	}
 
 	:global(body) {
@@ -200,134 +206,90 @@
 		}
 	}
 
-	.app {
-		min-height: 100dvh;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.content {
-		flex: 1;
-		padding-bottom: 48px;
-	}
-
-	/* ─── Fixed Footer ─── */
-	.site-footer {
+	/* ─── Sidebar panel ─── */
+	.sidebar-panel {
 		position: fixed;
-		bottom: 0;
+		top: 0;
 		left: 0;
-		right: 0;
-		z-index: 200;
-		background: var(--color-bg);
-		border-top: 1px solid var(--color-border);
-	}
-
-	.footer-bar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 10px 16px;
-		gap: 12px;
-	}
-
-	.footer-actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-shrink: 0;
-	}
-
-	.footer-toggle {
-		background: none;
-		border: 1px solid var(--color-border);
-		color: var(--color-text-muted);
-		font-family: inherit;
-		font-size: 0.75rem;
-		font-weight: 600;
-		padding: 4px 10px;
-		border-radius: 6px;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.footer-toggle:hover {
-		color: var(--color-text);
-		background: var(--color-hover);
-	}
-
-	.footer-nav {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.nav-link {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 0.55rem;
-		font-weight: 600;
-		color: var(--color-text-muted) !important;
-		text-decoration: none;
-		padding: 4px 8px;
-		border-radius: 4px;
-		transition: color 0.15s;
-	}
-
-	.nav-link.active {
-		color: var(--color-accent) !important;
-	}
-
-	.nav-link:hover {
-		color: var(--color-text) !important;
-		background: var(--color-hover);
-	}
-
-	.corrections-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 14px;
-		height: 14px;
-		padding: 0 3px;
-		border-radius: 7px;
-		background: var(--color-warning);
-		color: var(--color-bg);
-		font-size: 0.4rem;
-		font-weight: 800;
-	}
-
-	/* ─── Footer Drawer ─── */
-	.footer-drawer {
-		max-height: 60dvh;
+		width: clamp(375px, 30vw, 600px);
+		height: 100dvh;
+		background: var(--color-surface);
+		border-right: 1px solid var(--color-border);
+		z-index: 300;
 		display: flex;
 		flex-direction: column;
-		border-bottom: 1px solid var(--color-border);
+		transform: translateX(-100%);
+		transition: transform 0.22s ease;
+		overflow: hidden;
 	}
 
-	.drawer-header {
+	.sidebar-panel.open {
+		transform: translateX(0);
+	}
+
+	.sidebar-overlay {
+		position: fixed;
+		inset: 0;
+		background: var(--color-overlay);
+		z-index: 299;
+	}
+
+	.sidebar-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 12px 16px 0;
+		padding: 10px 10px 10px 14px;
+		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
 	}
 
-	.drawer-title {
-		margin: 0;
+	.sidebar-wordmark {
 		font-size: 0.9rem;
 		font-weight: 700;
 		color: var(--color-text);
+		letter-spacing: 0.02em;
 	}
 
-	.drawer-body {
+	.sidebar-header-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.sidebar-footer {
+		border-top: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+
+	.legal-toggle {
+		display: block;
+		width: 100%;
+		padding: 10px 14px;
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 0.7rem;
+		font-weight: 600;
+		cursor: pointer;
+		text-align: left;
+		transition: color 0.15s;
+	}
+
+	.legal-toggle:hover {
+		color: var(--color-text);
+	}
+
+	.legal-body {
+		max-height: 40dvh;
 		overflow-y: auto;
-		padding: 12px 16px 16px;
+		padding: 8px 14px 14px;
+		border-top: 1px solid var(--color-border);
 	}
 
 	.attribution-section {
-		margin-bottom: 12px;
-		padding-bottom: 12px;
+		margin-bottom: 10px;
+		padding-bottom: 10px;
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -338,25 +300,70 @@
 	}
 
 	.attribution-section h4 {
-		margin: 0 0 4px;
-		font-size: 0.75rem;
+		margin: 0 0 3px;
+		font-size: 0.65rem;
 		font-weight: 700;
 		color: var(--color-text);
 	}
 
 	.attribution-section p {
-		margin: 0 0 4px;
-		font-size: 0.7rem;
+		margin: 0 0 3px;
+		font-size: 0.62rem;
 		color: var(--color-text-secondary);
 		line-height: 1.5;
 	}
 
-	.attribution-section p:last-child {
-		margin-bottom: 0;
+	.license-notice {
+		font-size: 0.58rem;
+		color: var(--color-text-muted);
 	}
 
-	.license-notice {
-		font-size: 0.65rem;
-		color: var(--color-text-muted);
+	/* ─── Hamburger toggle ─── */
+	.sidebar-toggle {
+		position: fixed;
+		top: 10px;
+		left: 10px;
+		z-index: 298;
+		width: 36px;
+		height: 36px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.sidebar-toggle:hover {
+		background: var(--color-hover);
+		color: var(--color-text);
+	}
+
+	/* ─── Main content ─── */
+	.app-content {
+		min-height: 100dvh;
+		padding-top: var(--hamburger-clearance);
+		transition: margin-left 0.22s ease;
+	}
+
+	@media (min-width: 900px) {
+		.sidebar-panel {
+			transform: translateX(-100%);
+		}
+
+		.sidebar-panel.open {
+			transform: translateX(0);
+		}
+
+		.sidebar-overlay {
+			display: none;
+		}
+
+		.app-content.sidebar-open {
+			margin-left: clamp(375px, 30vw, 600px);
+		}
 	}
 </style>

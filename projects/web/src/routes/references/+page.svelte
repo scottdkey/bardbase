@@ -2,7 +2,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
+	import { tick } from 'svelte';
 
 	let { data } = $props();
 
@@ -35,19 +35,28 @@
 			'W. E. Henley and John S. Farmer\'s Slang and Its Analogues (1890\u20131904) documents historical slang, cant, and colloquial language. Use it to decode bawdy, vulgar, or underworld language in Shakespeare\'s text.'
 	};
 
-	// Initialize from URL params
-	let activeSource = $state<string>(page.url.searchParams.get('source') ?? '');
-	let query = $state(page.url.searchParams.get('q') ?? '');
+	const ALL_SOURCES = Object.keys(SOURCE_LABELS);
 
-	// Sync state to URL
-	function updateUrl() {
-		const params = new URLSearchParams();
-		if (activeSource) params.set('source', activeSource);
-		if (query.trim()) params.set('q', query.trim());
-		const qs = params.toString();
-		const url = qs ? `/references?${qs}` : '/references';
-		goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+	// Purely driven by URL — updated automatically when SvelteKit re-runs load on navigation
+	let activeSource = $derived(data.initialSource ?? '');
+
+	// Local input state; syncs from URL on navigation, otherwise updated by typing
+	let query = $state(data.initialQuery ?? '');
+	$effect(() => { query = data.initialQuery ?? ''; });
+
+	// Multi-source toggles — only used on the "all" page (activeSource === '')
+	let enabledSources = $state<Set<string>>(new Set(ALL_SOURCES));
+
+	function toggleSource(src: string) {
+		const next = new Set(enabledSources);
+		if (next.has(src)) {
+			if (next.size > 1) next.delete(src); // keep at least one active
+		} else {
+			next.add(src);
+		}
+		enabledSources = next;
 	}
+
 	let results = $state<RefResult[]>([]);
 	let loading = $state(false);
 	let hasMore = $state(true);
@@ -55,7 +64,6 @@
 	const PAGE_SIZE = 50;
 
 	let debounceTimer: ReturnType<typeof setTimeout>;
-	let scrollEl: HTMLElement | null = null;
 
 	// Fetch results
 	async function fetchResults(reset = true) {
@@ -67,25 +75,32 @@
 
 		const params = new URLSearchParams();
 		if (query.trim()) params.set('q', query.trim());
-		if (activeSource) params.set('source', activeSource);
+		if (activeSource) {
+			params.set('source', activeSource);
+		} else if (enabledSources.size < ALL_SOURCES.length) {
+			params.set('sources', [...enabledSources].join(','));
+		}
 		params.set('limit', String(PAGE_SIZE));
 		params.set('offset', String(offset));
 
 		try {
 			const res = await fetch(`/api/reference/search?${params}`);
 			if (res.ok) {
-				const data: RefResult[] = await res.json();
-				if (reset) {
-					results = data;
-				} else {
-					results = [...results, ...data];
-				}
-				hasMore = data.length === PAGE_SIZE;
+				const fetched: RefResult[] = await res.json();
+				results = reset ? fetched : [...results, ...fetched];
+				hasMore = fetched.length === PAGE_SIZE;
 			}
 		} catch (err) {
 			console.error('[references]', err);
 		} finally {
 			loading = false;
+			// After a reset, the sentinel may already be visible but the observer
+			// won't re-fire (it only triggers on intersection changes). Check manually.
+			if (reset && hasMore && sentinelEl) {
+				await tick();
+				const rect = sentinelEl.getBoundingClientRect();
+				if (rect.top < window.innerHeight + 200) loadMore();
+			}
 		}
 	}
 
@@ -96,16 +111,14 @@
 		await fetchResults(false);
 	}
 
-	// React to filter/search changes
+	// React to filter/search/source-toggle changes
 	$effect(() => {
 		const _s = activeSource;
 		const _q = query;
+		const _e = enabledSources;
 
 		clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(() => {
-			fetchResults(true);
-			updateUrl();
-		}, query ? 250 : 0);
+		debounceTimer = setTimeout(() => fetchResults(true), query ? 250 : 0);
 	});
 
 	// Infinite scroll observer
@@ -141,37 +154,28 @@
 <div class="references-page">
 	<PageHeader title="References" />
 
-	<!-- Source tabs -->
-	<div class="source-tabs">
-		<button
-			class="tab-btn"
-			class:active={activeSource === ''}
-			onclick={() => (activeSource = '')}
-		>
-			All
-		</button>
-		{#each data.sources as src (src.code)}
-			<button
-				class="tab-btn"
-				class:active={activeSource === src.code}
-				onclick={() => (activeSource = src.code)}
-			>
-				{SOURCE_LABELS[src.code] ?? src.code}
-				<span class="tab-count">{src.count.toLocaleString()}</span>
-			</button>
-		{/each}
+	<div class="filter-bar">
+		<SearchInput bind:value={query} placeholder="Search references..." />
 	</div>
+
+	{#if !activeSource}
+		<div class="source-toggles" role="group" aria-label="Toggle reference sources">
+			{#each ALL_SOURCES as src}
+				<button
+					class="source-toggle"
+					class:active={enabledSources.has(src)}
+					onclick={() => toggleSource(src)}
+					aria-pressed={enabledSources.has(src)}
+				>
+					{SOURCE_LABELS[src]}
+				</button>
+			{/each}
+		</div>
+	{/if}
 
 	{#if activeSource && SOURCE_DESCRIPTIONS[activeSource]}
 		<p class="source-description">{SOURCE_DESCRIPTIONS[activeSource]}</p>
 	{/if}
-
-	<!-- Search + filter -->
-	<div class="filter-bar">
-		<div class="search-wrap">
-			<SearchInput bind:value={query} placeholder="Search references..." />
-		</div>
-	</div>
 
 	<!-- Results -->
 	{#if results.length === 0 && !loading}
@@ -207,48 +211,6 @@
 		padding: 0 16px 60px;
 	}
 
-	/* ─── Source tabs ─── */
-	.source-tabs {
-		display: flex;
-		gap: 4px;
-		overflow-x: auto;
-		padding-bottom: 8px;
-		border-bottom: 1px solid var(--color-border);
-		margin-bottom: 12px;
-	}
-
-	.tab-btn {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 6px 12px;
-		border: none;
-		background: none;
-		color: var(--color-text-muted);
-		font-family: inherit;
-		font-size: 0.75rem;
-		font-weight: 600;
-		cursor: pointer;
-		border-bottom: 2px solid transparent;
-		white-space: nowrap;
-		transition: color 0.15s, border-color 0.15s;
-	}
-
-	.tab-btn:hover {
-		color: var(--color-text);
-	}
-
-	.tab-btn.active {
-		color: var(--color-accent);
-		border-bottom-color: var(--color-accent);
-	}
-
-	.tab-count {
-		font-size: 0.6rem;
-		color: var(--color-text-muted);
-		font-weight: 400;
-	}
-
 	.source-description {
 		margin: 0 0 12px;
 		padding: 10px 14px;
@@ -262,14 +224,38 @@
 
 	/* ─── Filter bar ─── */
 	.filter-bar {
-		display: flex;
-		gap: 8px;
-		margin-bottom: 16px;
-		align-items: stretch;
+		margin-bottom: 10px;
 	}
 
-	.search-wrap {
-		flex: 1;
+	.source-toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-bottom: 14px;
+	}
+
+	.source-toggle {
+		padding: 4px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 20px;
+		background: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 0.72rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	.source-toggle.active {
+		background: var(--color-active);
+		color: var(--color-accent);
+		border-color: var(--color-accent);
+	}
+
+	.source-toggle:hover {
+		color: var(--color-text);
+		border-color: var(--color-text-muted);
 	}
 
 	/* ─── Results ─── */

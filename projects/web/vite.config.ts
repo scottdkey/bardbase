@@ -1,6 +1,8 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export default defineConfig({
 	ssr: {
@@ -17,6 +19,33 @@ export default defineConfig({
 		hmr: { port: 24678 }
 	},
 	plugins: [
+		{
+			name: 'bardbase-db-check',
+			configureServer() {
+				const root = resolve(import.meta.dirname, '../..');
+				const checks = [
+					{
+						path: resolve(root, 'build/bardbase.db'),
+						label: 'Main DB (bardbase.db)',
+						fix: 'make capell build  # then make capell run to populate'
+					},
+					{
+						path: resolve(root, 'build/bardbase-search.db'),
+						label: 'Search DB (bardbase-search.db)',
+						fix: 'make web search-db'
+					}
+				];
+				const missing = checks.filter((c) => !existsSync(c.path));
+				if (missing.length > 0) {
+					console.warn('\n\x1b[33m⚠  Missing local databases:\x1b[0m');
+					for (const c of missing) {
+						console.warn(`   \x1b[31m✗\x1b[0m  ${c.label}`);
+						console.warn(`       fix: \x1b[36m${c.fix}\x1b[0m`);
+					}
+					console.warn('');
+				}
+			}
+		},
 		sveltekit(),
 		SvelteKitPWA({
 			srcDir: 'src',

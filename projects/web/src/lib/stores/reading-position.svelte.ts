@@ -3,8 +3,10 @@ import { browser } from '$app/environment';
 export interface ReadingPosition {
 	act: number;
 	scene: number;
+	rowIdx: number;
 	scrollY: number;
 	timestamp: number;
+	completed?: boolean;
 }
 
 const STORAGE_KEY = 'bardbase-reading-positions';
@@ -35,10 +37,10 @@ class ReadingPositionStore {
 		return this.positions[String(workId)] ?? null;
 	}
 
-	save(workId: number, act: number, scene: number, scrollY: number) {
+	save(workId: number, act: number, scene: number, rowIdx: number, scrollY: number, completed = false) {
 		this.positions = {
 			...this.positions,
-			[String(workId)]: { act, scene, scrollY, timestamp: Date.now() }
+			[String(workId)]: { act, scene, rowIdx, scrollY, timestamp: Date.now(), completed }
 		};
 		saveToStorage(this.positions);
 	}

@@ -122,11 +122,7 @@ function getWorks(): { plays: Work[]; poetry: Work[] } {
         const work: Work = { ...row, slug: slugify(row.title) };
         if (row.work_type === 'comedy' || row.work_type === 'tragedy' || row.work_type === 'history') {
             plays.push(work);
-        } else if (
-            row.work_type === 'poem' ||
-            row.work_type === 'sonnet_sequence' ||
-            row.work_type === 'apocrypha'
-        ) {
+        } else if (row.work_type === 'poem' || row.work_type === 'sonnet_sequence') {
             poetry.push(work);
         }
     }
@@ -139,12 +135,19 @@ function getWorkTOC(idOrSlug: number | string): WorkDivision[] {
     if (workId === null) return [];
     return db
         .prepare(
-            `SELECT act, scene, description, line_count
-            FROM text_divisions
-            WHERE work_id = ? AND edition_id = (
+            `SELECT td.act, td.scene, td.description,
+                COUNT(tl.id) AS line_count
+            FROM text_divisions td
+            LEFT JOIN text_lines tl
+                ON tl.work_id = td.work_id
+                AND tl.act = td.act
+                AND tl.scene = td.scene
+                AND tl.edition_id = td.edition_id
+            WHERE td.work_id = ? AND td.edition_id = (
               SELECT MIN(edition_id) FROM text_divisions WHERE work_id = ?
             )
-            ORDER BY act, scene`
+            GROUP BY td.act, td.scene
+            ORDER BY td.act, td.scene`
         )
         .all(workId, workId) as unknown as WorkDivision[];
 }

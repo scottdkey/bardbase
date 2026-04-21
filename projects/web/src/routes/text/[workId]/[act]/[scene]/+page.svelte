@@ -2,8 +2,6 @@
 	import { onMount } from 'svelte';
 	import type { MultiEditionScene } from '$lib/types';
 	import type { LineReference } from '$lib/server/api';
-	import IconBack from '$lib/components/icons/IconBack.svelte';
-	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import WordPopover from '$lib/components/WordPopover.svelte';
 	import ReferenceDrawer from '$lib/components/ReferenceDrawer.svelte';
 	import { goto } from '$app/navigation';
@@ -292,12 +290,34 @@
 
 	// Reading position: save on scene load and restore scroll
 	onMount(() => {
+		function getCurrentRowIdx(): number {
+			const clearance = headerHeight + 16;
+			const rows = document.querySelectorAll<HTMLElement>('[id^="scene-row-"]');
+			let idx = 0;
+			for (const row of rows) {
+				if (row.getBoundingClientRect().top <= clearance) {
+					idx = parseInt(row.id.replace('scene-row-', ''), 10);
+				} else {
+					break;
+				}
+			}
+			return idx;
+		}
+
 		if (!isReference) {
 			const saved = readingPosition.get(data.workId);
-			if (saved && saved.act === data.act && saved.scene === data.sceneNum && saved.scrollY > 0) {
-				requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
+			if (saved && saved.act === data.act && saved.scene === data.sceneNum) {
+				requestAnimationFrame(() => {
+					const rowEl = document.getElementById(`scene-row-${saved.rowIdx ?? 0}`);
+					if (rowEl) {
+						rowEl.scrollIntoView({ behavior: 'instant' });
+						window.scrollBy(0, -(headerHeight + 16));
+					} else if (saved.scrollY > 0) {
+						window.scrollTo(0, saved.scrollY);
+					}
+				});
 			}
-			readingPosition.save(data.workId, data.act, data.sceneNum, 0);
+			readingPosition.save(data.workId, data.act, data.sceneNum, 0, 0, !adjacent.next);
 		}
 
 		let scrollTimer: ReturnType<typeof setTimeout>;
@@ -313,11 +333,14 @@
 			}
 			lastScrollY = y;
 
-			// Save reading position (debounced)
+			// Save reading position with current row (debounced)
 			if (!isReference) {
 				clearTimeout(scrollTimer);
 				scrollTimer = setTimeout(() => {
-					readingPosition.save(data.workId, data.act, data.sceneNum, window.scrollY);
+					readingPosition.save(
+						data.workId, data.act, data.sceneNum,
+						getCurrentRowIdx(), window.scrollY, !adjacent.next
+					);
 				}, 500);
 			}
 		}
@@ -421,9 +444,6 @@
 		return `Act ${scene.act}, Scene ${scene.scene}`;
 	}
 
-	function goBack() {
-		history.back();
-	}
 
 	function gotoScene(act: number, sc: number) {
 		tocOpen = false;
@@ -487,13 +507,15 @@
 >
 	<div class="scene-header" class:hidden={!headerVisible} bind:this={headerEl}>
 		<div class="header-row">
-			<IconButton onclick={goBack} label="Back" size={36}>
-				<IconBack size={20} />
-			</IconButton>
 			{#if !isReference}
 				<button class="toc-btn" onclick={() => (tocOpen = !tocOpen)} aria-label="Table of contents">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+						<line x1="9" y1="6" x2="20" y2="6"/>
+						<line x1="9" y1="12" x2="20" y2="12"/>
+						<line x1="9" y1="18" x2="20" y2="18"/>
+						<text x="3" y="7" font-size="5" fill="currentColor" stroke="none">I</text>
+						<text x="3" y="13" font-size="5" fill="currentColor" stroke="none">II</text>
+						<text x="3" y="19" font-size="5" fill="currentColor" stroke="none">III</text>
 					</svg>
 				</button>
 			{/if}
@@ -579,7 +601,7 @@
 			{#each scene.rows as row, rowIdx (rowIdx)}
 				{@const char = getRowCharacter(row)}
 				{@const prevChar = rowIdx > 0 ? getRowCharacter(scene.rows[rowIdx - 1]) : null}
-				{#if char && char !== prevChar}
+				{#if char && char !== prevChar && char.toLowerCase() !== 'shakespeare'}
 					{@const desc = charDescriptions.get(char)}
 					<div class="speaker-row">
 						{#if desc}
@@ -690,6 +712,7 @@
 	.scene-page {
 		margin: 0 auto;
 		padding: 0 56px 48px;
+		margin-top: calc(-1 * var(--hamburger-clearance));
 	}
 
 	.scene-header {
@@ -917,16 +940,25 @@
 	}
 
 	.speaker-name {
-		font-size: 0.7rem;
-		font-weight: 700;
-		color: var(--color-accent);
+		font-size: 0.65rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.08em;
 	}
 
 	.speaker-name.has-desc {
 		cursor: pointer;
 		position: relative;
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		font-size: inherit;
+		font-weight: inherit;
+		color: inherit;
+		letter-spacing: inherit;
+		text-transform: inherit;
 	}
 
 	.speaker-desc {
@@ -1010,16 +1042,22 @@
 
 	.line-content .word.ref {
 		cursor: pointer;
-		border-radius: 3px;
-		color: var(--color-accent);
-		font-weight: 700;
-		background: var(--color-hover);
-		padding: 1px 2px;
-		transition: background 0.15s;
+		color: inherit;
+		font-weight: inherit;
+		background: none;
+		padding: 0;
+		border-radius: 0;
+		border: none;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		text-decoration-color: var(--color-accent);
+		text-underline-offset: 3px;
+		transition: text-decoration-color 0.15s, color 0.15s;
 	}
 
 	.line-content .word.ref:hover {
-		background: var(--color-active);
+		color: var(--color-accent);
+		background: none;
 	}
 
 	.line-empty {
