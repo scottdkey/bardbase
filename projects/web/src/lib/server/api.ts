@@ -98,18 +98,41 @@ function placeholders(n: number): string {
     return Array(n).fill('?').join(',');
 }
 
+// ── Module-level caches ──────────────────────────────────────────────────────
+// Worker isolates persist for minutes to hours. Every value cached below is
+// derived from immutable DB content (the DB is rebuilt and redeployed together;
+// nothing mutates at runtime), so cache-forever-per-isolate is correct. A new
+// deploy recycles the isolate, which naturally invalidates.
+
+let worksCache: { plays: Work[]; poetry: Work[] } | null = null;
+let attributionsCache: FooterAttribution[] | null = null;
+let referenceSourcesCache: ReferenceSource[] | null = null;
+let lexiconKeysCache: string[] | null = null;
+let lexiconLettersCache: LexiconLetter[] | null = null;
+const workTOCCache = new Map<string | number, WorkDivision[]>();
+const workBySlugCache = new Map<string, { id: number; title: string; slug: string }>();
+const workEditionsCache = new Map<string | number, WorkEdition[]>();
+const charactersCache = new Map<number, { name: string; description?: string; speech_count: number }[]>();
+
+// slug → id lookup, built lazily from getWorks.
+let slugToIdCache: Map<string, number> | null = null;
+
 async function resolveWorkId(db: D1Database, idOrSlug: number | string): Promise<number | null> {
     if (typeof idOrSlug === 'number') return idOrSlug;
     const n = Number(idOrSlug);
     if (!isNaN(n) && String(n) === idOrSlug) return n;
-    const { results } = await db.prepare('SELECT id, title FROM works').all<{ id: number; title: string }>();
-    for (const row of results ?? []) {
-        if (slugify(row.title) === idOrSlug) return row.id;
+
+    if (!slugToIdCache) {
+        const works = await getWorks(db);
+        slugToIdCache = new Map();
+        for (const w of [...works.plays, ...works.poetry]) slugToIdCache.set(w.slug, w.id);
     }
-    return null;
+    return slugToIdCache.get(idOrSlug) ?? null;
 }
 
 export async function getWorks(db: D1Database): Promise<{ plays: Work[]; poetry: Work[] }> {
+    if (worksCache) return worksCache;
+
     const { results } = await db
         .prepare('SELECT id, title, work_type, date_composed FROM works ORDER BY title')
         .all<{ id: number; title: string; work_type: string; date_composed: string | null }>();
@@ -124,10 +147,14 @@ export async function getWorks(db: D1Database): Promise<{ plays: Work[]; poetry:
             poetry.push(work);
         }
     }
-    return { plays, poetry };
+    worksCache = { plays, poetry };
+    return worksCache;
 }
 
 export async function getWorkTOC(db: D1Database, idOrSlug: number | string): Promise<WorkDivision[]> {
+    const cached = workTOCCache.get(idOrSlug);
+    if (cached) return cached;
+
     const workId = await resolveWorkId(db, idOrSlug);
     if (workId === null) return [];
     const { results } = await db
@@ -148,20 +175,31 @@ export async function getWorkTOC(db: D1Database, idOrSlug: number | string): Pro
         )
         .bind(workId, workId)
         .all<WorkDivision>();
-    return results ?? [];
+    const toc = results ?? [];
+    workTOCCache.set(idOrSlug, toc);
+    return toc;
 }
 
 export async function getWorkBySlug(db: D1Database, slug: string): Promise<{ id: number; title: string; slug: string }> {
-    const { results } = await db.prepare('SELECT id, title FROM works').all<{ id: number; title: string }>();
-    for (const row of results ?? []) {
-        if (slugify(row.title) === slug) {
-            return { id: row.id, title: row.title, slug };
+    const cached = workBySlugCache.get(slug);
+    if (cached) return cached;
+
+    // Resolve through the cached works list — no extra query.
+    const works = await getWorks(db);
+    for (const w of [...works.plays, ...works.poetry]) {
+        if (w.slug === slug) {
+            const out = { id: w.id, title: w.title, slug };
+            workBySlugCache.set(slug, out);
+            return out;
         }
     }
     throw new Error(`Work not found: ${slug}`);
 }
 
 export async function getWorkEditions(db: D1Database, idOrSlug: number | string): Promise<WorkEdition[]> {
+    const cached = workEditionsCache.get(idOrSlug);
+    if (cached) return cached;
+
     const workId = await resolveWorkId(db, idOrSlug);
     if (workId === null) return [];
     const { results } = await db
@@ -176,10 +214,14 @@ export async function getWorkEditions(db: D1Database, idOrSlug: number | string)
         )
         .bind(workId)
         .all<WorkEdition>();
-    return results ?? [];
+    const editions = results ?? [];
+    workEditionsCache.set(idOrSlug, editions);
+    return editions;
 }
 
 export async function getAttributions(db: D1Database): Promise<FooterAttribution[]> {
+    if (attributionsCache) return attributionsCache;
+
     const { results } = await db
         .prepare(
             `SELECT s.name AS source_name, a.attribution_html, a.license_notice_text,
@@ -205,24 +247,31 @@ export async function getAttributions(db: D1Database): Promise<FooterAttribution
             display_priority: number;
             required: number;
         }>();
-    return (results ?? []).map((r) => ({ ...r, required: r.required === 1 }));
+    attributionsCache = (results ?? []).map((r) => ({ ...r, required: r.required === 1 }));
+    return attributionsCache;
 }
 
 export async function getLexiconKeys(db: D1Database): Promise<string[]> {
+    if (lexiconKeysCache) return lexiconKeysCache;
     const { results } = await db
         .prepare('SELECT DISTINCT LOWER(base_key) AS key FROM lexicon_entries ORDER BY 1')
         .all<{ key: string }>();
-    return (results ?? []).map((r) => r.key);
+    lexiconKeysCache = (results ?? []).map((r) => r.key);
+    return lexiconKeysCache;
 }
 
 export async function getLexiconLetters(db: D1Database): Promise<LexiconLetter[]> {
+    if (lexiconLettersCache) return lexiconLettersCache;
     const { results } = await db
         .prepare('SELECT letter, COUNT(*) AS count FROM lexicon_entries GROUP BY letter ORDER BY letter')
         .all<LexiconLetter>();
-    return results ?? [];
+    lexiconLettersCache = results ?? [];
+    return lexiconLettersCache;
 }
 
 export async function getReferenceSources(db: D1Database): Promise<ReferenceSource[]> {
+    if (referenceSourcesCache) return referenceSourcesCache;
+
     const result: ReferenceSource[] = [];
 
     const schmidtRow = await db
@@ -244,6 +293,7 @@ export async function getReferenceSources(db: D1Database): Promise<ReferenceSour
     for (const row of results ?? []) {
         result.push({ code: row.short_code, name: row.name, count: row.entry_count });
     }
+    referenceSourcesCache = result;
     return result;
 }
 
@@ -668,6 +718,9 @@ export async function getScene(
 }
 
 async function loadCharacters(db: D1Database, workId: number) {
+    const cached = charactersCache.get(workId);
+    if (cached) return cached;
+
     const { results } = await db
         .prepare(
             `SELECT name, description, COALESCE(speech_count, 0) AS speech_count
@@ -675,7 +728,9 @@ async function loadCharacters(db: D1Database, workId: number) {
         )
         .bind(workId)
         .all<{ name: string; description: string | null; speech_count: number }>();
-    return (results ?? []).map((r) => ({ ...r, description: r.description ?? undefined }));
+    const characters = (results ?? []).map((r) => ({ ...r, description: r.description ?? undefined }));
+    charactersCache.set(workId, characters);
+    return characters;
 }
 
 export async function getSceneReferences(

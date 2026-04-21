@@ -6,10 +6,11 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		// interface PageState {}
+		// Platform is kept for SvelteKit load-function typing but is no longer
+		// used — DB access is owned by $lib/server/db, which uses TURSO_URL +
+		// TURSO_AUTH_TOKEN from $env/dynamic/private.
 		interface Platform {
-			env: {
-				SEARCH_DB: import('@cloudflare/workers-types').D1Database;
-			};
+			env?: Record<string, unknown>;
 		}
 	}
 }

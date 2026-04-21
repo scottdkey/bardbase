@@ -1,17 +1,14 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { CACHE_STATIC } from '$lib/server/cache';
+import { getDb } from '$lib/server/db';
 
 export const GET: RequestHandler = async ({ params, platform }) => {
 	const id = parseInt(params.id, 10);
 	if (isNaN(id)) throw error(400, 'Invalid entry ID');
 
-	const db = platform?.env?.SEARCH_DB;
-	if (!db) {
-		console.error('[lexicon/entry] SEARCH_DB binding not available');
-		throw error(503, 'Search database unavailable');
-	}
-
 	try {
+		const db = getDb(platform);
 		// Load the entry and all sub-entries (same sense_group)
 		const entryRow = await db
 			.prepare(`SELECT id, key, base_key, orthography, entry_type, full_text FROM lexicon_entries WHERE id = ?`)
@@ -103,7 +100,7 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 			references: []
 		};
 
-		return json(result);
+		return json(result, { headers: { 'cache-control': CACHE_STATIC } });
 	} catch (err) {
 		if (err && typeof err === 'object' && 'status' in err) throw err;
 		console.error('[lexicon/entry] query failed:', err);

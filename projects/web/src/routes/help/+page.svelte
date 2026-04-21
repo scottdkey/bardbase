@@ -1,7 +1,3 @@
-<script>
-	export const prerender = true;
-</script>
-
 <svelte:head>
 	<title>Help &mdash; Bardbase</title>
 </svelte:head>

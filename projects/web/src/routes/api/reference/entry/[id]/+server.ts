@@ -1,5 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { CACHE_STATIC } from '$lib/server/cache';
+import { getDb } from '$lib/server/db';
 
 function slugify(title: string): string {
 	return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -9,13 +11,8 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 	const id = parseInt(params.id, 10);
 	if (isNaN(id)) throw error(400, 'Invalid entry ID');
 
-	const db = platform?.env?.SEARCH_DB;
-	if (!db) {
-		console.error('[reference/entry] SEARCH_DB binding not available');
-		throw error(503, 'Search database unavailable');
-	}
-
 	try {
+		const db = getDb(platform);
 		const base = await db
 			.prepare(
 				`SELECT re.id, re.headword, re.raw_text,
@@ -47,7 +44,7 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 			work_slug: c.work_title ? slugify(c.work_title) : null
 		}));
 
-		return json({ ...base, citation_spans: [], citations });
+		return json({ ...base, citation_spans: [], citations }, { headers: { 'cache-control': CACHE_STATIC } });
 	} catch (err) {
 		if (err && typeof err === 'object' && 'status' in err) throw err;
 		console.error('[reference/entry] query failed:', err);

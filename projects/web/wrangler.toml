@@ -3,12 +3,6 @@ pages_build_output_dir = ".svelte-kit/cloudflare"
 compatibility_date = "2026-03-21"
 compatibility_flags = ["nodejs_compat"]
 
-# No [vars] needed — site is fully static. DB_PATH is set in CI env only (build phase).
-# API_KEY is no longer used (Go API removed).
-
-# Search database — D1 SQLite, populated by `make capell export-search` in CI.
-# Database ID changes when the search DB is rotated (see docs/search-db-rotation.md).
-[[d1_databases]]
-binding = "SEARCH_DB"
-database_name = "bardbase-search-test"
-database_id = "82ab37c5-d38a-4026-a63d-f583c3528f53"
+# DB access is via Turso (libSQL). Set TURSO_URL and TURSO_AUTH_TOKEN in the
+# Cloudflare Pages dashboard (Settings → Environment variables → Production
+# and Preview). The web app's $lib/server/db reads them via $env/dynamic/private.

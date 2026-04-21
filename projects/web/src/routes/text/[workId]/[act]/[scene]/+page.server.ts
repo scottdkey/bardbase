@@ -1,8 +1,10 @@
 import { error, redirect } from '@sveltejs/kit';
 import { getScene, getSceneReferences, getWorkBySlug, getWorkTOC, getWorks } from '$lib/server/api';
 import { getDb } from '$lib/server/db';
+import { CACHE_STATIC } from '$lib/server/cache';
 
-export async function load({ params, url, platform }) {
+export async function load({ params, url, platform, setHeaders }) {
+	setHeaders({ 'cache-control': CACHE_STATIC });
 	const act = parseInt(params.act, 10);
 	const scene = parseInt(params.scene, 10);
 

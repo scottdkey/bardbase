@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { getWorkTOC } from '$lib/server/api';
 import { getDb } from '$lib/server/db';
+import { CACHE_STATIC } from '$lib/server/cache';
 
 export async function GET({ params, platform }) {
 	const id = parseInt(params.id, 10);
@@ -8,7 +9,7 @@ export async function GET({ params, platform }) {
 
 	try {
 		const toc = await getWorkTOC(getDb(platform), id);
-		return json(toc);
+		return json(toc, { headers: { 'cache-control': CACHE_STATIC } });
 	} catch (err) {
 		console.error('[works/toc]', err);
 		throw error(502, 'TOC unavailable');

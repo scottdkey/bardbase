@@ -1,36 +1,14 @@
 import type { PageServerLoad } from './$types';
+import { getReferenceSources } from '$lib/server/api';
+import { getDb } from '$lib/server/db';
+import { CACHE_STATIC } from '$lib/server/cache';
 
-export const load: PageServerLoad = async ({ platform, url }) => {
+export const load: PageServerLoad = async ({ platform, url, setHeaders }) => {
 	const initialSource = url.searchParams.get('source') ?? '';
 	const initialQuery = url.searchParams.get('q') ?? '';
+	setHeaders({ 'cache-control': CACHE_STATIC });
 	try {
-		const db = platform?.env?.SEARCH_DB;
-		if (!db) {
-			console.error('[references] SEARCH_DB binding not available');
-			return { sources: [] };
-		}
-
-		const [schmidtRow, refSources] = await Promise.all([
-			db.prepare('SELECT COUNT(DISTINCT key) AS cnt FROM lexicon_fts').first<{ cnt: number }>(),
-			db
-				.prepare(
-					`SELECT s.short_code AS code, s.name AS name, COUNT(*) AS count
-					 FROM reference_entries re
-					 JOIN sources s ON s.id = re.source_id
-					 GROUP BY s.id
-					 ORDER BY s.name`
-				)
-				.all<{ code: string; name: string; count: number }>()
-		]);
-
-		const sources = [];
-		if (schmidtRow) {
-			sources.push({ code: 'schmidt', name: 'Schmidt Shakespeare Lexicon', count: schmidtRow.cnt });
-		}
-		for (const row of refSources.results ?? []) {
-			sources.push(row);
-		}
-
+		const sources = await getReferenceSources(getDb(platform));
 		return { sources, initialSource, initialQuery };
 	} catch (err) {
 		console.error('[references] failed to load:', err);

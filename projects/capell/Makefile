@@ -11,7 +11,7 @@
 #   make capell lint          # Run go vet
 #   make capell clean         # Remove build artifacts
 
-.PHONY: build test run run-fresh lint cover setup clean release release-upload api-build api-run api-docker export-search
+.PHONY: build test run run-fresh lint cover setup clean release release-upload api-build api-run api-docker export-search turso-dump
 
 # Compile the CLI binary to the repo-root bin/ directory
 build:
@@ -90,24 +90,26 @@ release-upload:
 #   make capell export-search
 
 SEARCH_SQL := ../../build/bardbase-search.sql
-VALIDATE_DB := ../../build/bardbase-search-validate.db
+SEARCH_DB := ../../build/bardbase-search.db
 
 export-search:
 	@echo "→ generating $(SEARCH_SQL)"
 	@go run ./cmd/export-search -src ../../build/bardbase.db -out $(SEARCH_SQL)
 	@ls -lh $(SEARCH_SQL)
-	@echo "→ validating by loading into sqlite3 (fast mode: single txn, no journal)"
-	@rm -f $(VALIDATE_DB)
+	@echo "→ building $(SEARCH_DB) from SQL (fast mode: single txn, no journal)"
+	@rm -f $(SEARCH_DB)
 	@(echo "PRAGMA synchronous=OFF;"; \
 	  echo "PRAGMA journal_mode=OFF;"; \
 	  echo "PRAGMA temp_store=MEMORY;"; \
 	  echo "PRAGMA cache_size=-1000000;"; \
 	  echo "BEGIN;"; \
 	  cat $(SEARCH_SQL); \
-	  echo "COMMIT;") | sqlite3 $(VALIDATE_DB)
+	  echo "COMMIT;") | sqlite3 $(SEARCH_DB)
+	@ls -lh $(SEARCH_DB)
 	@echo "→ row counts"
-	@sqlite3 $(VALIDATE_DB) \
+	@sqlite3 $(SEARCH_DB) \
 		"SELECT 'works' AS t, COUNT(*) FROM works \
+
 		 UNION ALL SELECT 'sources', COUNT(*) FROM sources \
 		 UNION ALL SELECT 'editions', COUNT(*) FROM editions \
 		 UNION ALL SELECT 'attributions', COUNT(*) FROM attributions \
@@ -127,8 +129,27 @@ export-search:
 		 UNION ALL SELECT 'reference_fts', COUNT(*) FROM reference_fts \
 		 UNION ALL SELECT 'reference_spans', COUNT(*) FROM reference_spans \
 		 UNION ALL SELECT 'lexicon_drawer', COUNT(*) FROM lexicon_drawer;"
-	@rm -f $(VALIDATE_DB)
-	@echo "✓ export-search complete — $(SEARCH_SQL) is valid"
+	@echo "✓ export-search complete — $(SEARCH_SQL) and $(SEARCH_DB) ready"
+	@echo "   • Turso upload: turso db create bardbase --from-dump $(SEARCH_SQL)"
+	@echo "   • Local dev:   uses $(SEARCH_DB) via db.ts file:// fallback"
+
+# ─── Turso Dump ──────────────────────────────────────────────────────────
+#
+# Generates a Turso-compatible SQL dump from bardbase.db. Use it for:
+#   turso db create bardbase --from-file build/bardbase.dump.sql
+#
+# Usage:
+#   make capell turso-dump
+
+TURSO_DUMP := ../../build/bardbase.dump.sql
+
+turso-dump:
+	@echo "→ dumping ../../build/bardbase.db → $(TURSO_DUMP)"
+	@sqlite3 ../../build/bardbase.db .dump | grep -v '^/\*' > $(TURSO_DUMP)
+	@ls -lh $(TURSO_DUMP)
+	@head -1 $(TURSO_DUMP) | grep -q "^PRAGMA foreign_keys=OFF;" \
+		&& echo "✓ dump valid — import with: turso db create bardbase --from-dump $(TURSO_DUMP)" \
+		|| (echo "✗ dump does not start with PRAGMA foreign_keys=OFF"; exit 1)
 
 # ─── API Server (invoked via `make api build/run/docker` at repo root) ───
 

@@ -1,5 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { CACHE_SHORT } from '$lib/server/cache';
+import { getDb } from '$lib/server/db';
 
 export const GET: RequestHandler = async ({ url, platform }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
@@ -11,13 +13,8 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 	const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
 	const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
-	const db = platform?.env?.SEARCH_DB;
-	if (!db) {
-		console.error('[reference/search] SEARCH_DB binding not available');
-		return json([]);
-	}
-
 	try {
+		const db = getDb(platform);
 		const results: unknown[] = [];
 
 		const includeSchmidt = sourcesFilter
@@ -108,7 +105,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 			}
 		}
 
-		return json(results);
+		return json(results, { headers: { 'cache-control': CACHE_SHORT } });
 	} catch (err) {
 		console.error('[reference/search] D1 query failed:', err);
 		return json([]);
