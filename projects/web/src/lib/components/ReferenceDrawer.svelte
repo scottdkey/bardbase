@@ -74,7 +74,10 @@
 		referenceEntry = null;
 
 		if (ref.source_code === 'schmidt') {
-			fetch(`/api/lexicon/entry/${ref.entry_id}`)
+			// Use key-based lookup (stable across DB rebuilds) instead of
+			// numeric entry_id, which is baked into pre-rendered HTML at build
+			// time but may differ from the runtime Turso DB's auto-increment IDs.
+			fetch(`/api/lexicon/key/${encodeURIComponent(ref.entry_key)}`)
 				.then((res) => {
 					if (!res.ok) throw new Error('Failed to load entry');
 					return res.json();
@@ -88,7 +91,12 @@
 					loading = false;
 				});
 		} else {
-			fetch(`/api/reference/entry/${ref.entry_id}`)
+			// Use source + headword for stable lookup (same reason as above).
+			const refUrl =
+				`/api/reference/key` +
+				`?source=${encodeURIComponent(ref.source_code)}` +
+				`&headword=${encodeURIComponent(ref.entry_key)}`;
+			fetch(refUrl)
 				.then((res) => {
 					if (!res.ok) throw new Error('Failed to load entry');
 					return res.json();
