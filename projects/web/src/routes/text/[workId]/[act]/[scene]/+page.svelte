@@ -1042,7 +1042,7 @@
 
 	.line-content .word.ref {
 		cursor: pointer;
-		color: var(--color-text-secondary);
+		color: inherit;
 		font-weight: inherit;
 		background: none;
 		padding: 0;
@@ -1053,13 +1053,13 @@
 	}
 
 	.line-content .word.ref:hover {
-		color: var(--color-text);
-		background: rgba(255, 255, 255, 0.07);
+		color: inherit;
+		background: var(--color-hover);
 	}
 
 	.line-content .word.ref:active {
 		color: var(--color-accent);
-		background: rgba(255, 255, 255, 0.04);
+		background: var(--color-active);
 	}
 
 	.line-empty {
