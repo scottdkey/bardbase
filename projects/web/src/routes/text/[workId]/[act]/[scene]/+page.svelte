@@ -1042,22 +1042,24 @@
 
 	.line-content .word.ref {
 		cursor: pointer;
-		color: inherit;
+		color: var(--color-text-secondary);
 		font-weight: inherit;
 		background: none;
 		padding: 0;
-		border-radius: 0;
+		border-radius: 2px;
 		border: none;
-		text-decoration: underline;
-		text-decoration-style: dotted;
-		text-decoration-color: var(--color-accent);
-		text-underline-offset: 3px;
-		transition: text-decoration-color 0.15s, color 0.15s;
+		text-decoration: none;
+		transition: color 0.1s, background 0.1s;
 	}
 
 	.line-content .word.ref:hover {
+		color: var(--color-text);
+		background: rgba(255, 255, 255, 0.07);
+	}
+
+	.line-content .word.ref:active {
 		color: var(--color-accent);
-		background: none;
+		background: rgba(255, 255, 255, 0.04);
 	}
 
 	.line-empty {

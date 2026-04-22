@@ -39,7 +39,7 @@
 	let expandedWorkId = $state<number | null>(null);
 	let workTocs = $state<Record<number, WorkDivision[]>>({});
 	let loadingToc = $state<number | null>(null);
-	let expandedGenres = $state<Set<string>>(new Set());
+	let expandedGenres = $state<Set<string>>(new Set(['tragedy', 'comedy', 'history', 'poetry']));
 
 	let currentPath = $derived(page.url.pathname);
 
@@ -202,14 +202,6 @@
 
 	<div class="sidebar-body">
 		<section class="sidebar-section">
-			<button
-				class="section-link"
-				class:active={isActive('/') && !isActive('/references') && !isActive('/corrections')}
-				onclick={() => navigate('/')}
-			>
-				Texts
-			</button>
-
 			{#each TYPE_ORDER as workType (workType)}
 				{@const groupWorks = playGroups.get(workType) ?? []}
 				{#if groupWorks.length > 0}
