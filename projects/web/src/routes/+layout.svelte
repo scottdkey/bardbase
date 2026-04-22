@@ -15,6 +15,7 @@
 	onMount(() => {
 		theme.init();
 		checkServerVersion();
+		if (window.innerWidth >= 900) sidebar.show();
 	});
 
 	async function checkServerVersion() {
