@@ -706,6 +706,16 @@ export async function getScene(
 
     [rows, availEditions] = await mergeWorkLevelEditions(db, workId, anchorId, anchorLines, rows, availEditions);
 
+    // Drop any edition that produced no visible rows (e.g. Perseus Globe on
+    // poetry that has text_lines but no line_mappings connecting them).
+    const editionsInRows = new Set<number>();
+    for (const row of rows) {
+        for (const edId of Object.keys(row.editions)) {
+            editionsInRows.add(Number(edId));
+        }
+    }
+    availEditions = availEditions.filter((e) => editionsInRows.has(e.id));
+
     const characters = await loadCharacters(db, workId);
     return {
         work_title: workRow.title,
