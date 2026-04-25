@@ -149,6 +149,7 @@
 		--color-focus: #6B4D2E;
 		--color-warning: #c48a1a;
 		--color-danger: #c44428;
+		--color-ref-word: #9B6435;
 		color-scheme: light;
 	}
 
@@ -169,6 +170,7 @@
 		--color-focus: #6DDAD0;
 		--color-warning: #e8a735;
 		--color-danger: #e85535;
+		--color-ref-word: color-mix(in srgb, var(--color-accent) 55%, var(--color-text));
 		color-scheme: dark;
 	}
 

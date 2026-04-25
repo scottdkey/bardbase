@@ -1042,8 +1042,8 @@
 
 	.line-content .word.ref {
 		cursor: pointer;
-		color: color-mix(in srgb, var(--color-accent) 55%, var(--color-text));
-		font-weight: inherit;
+		color: var(--color-ref-word);
+		font: inherit;
 		background: none;
 		padding: 0;
 		border-radius: 2px;
