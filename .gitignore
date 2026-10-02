@@ -40,3 +40,6 @@ coverage.html
 sql.zip
 projects/capell/build
 tmp
+
+# Claude Code machine-local settings
+.claude/
